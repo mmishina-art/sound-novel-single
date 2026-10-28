@@ -14,7 +14,8 @@ PWA アプリ(ツール/ゲーム)の共通テンプレート。**新しいア�
 - 公開 URL: https://mmishina-art.github.io/sound-novel-single/
 - 追加した拡張:
   - `vite.config.ts` の workbox: `globPatterns` に `json` を追加(本文データ `book/data.json` をオフライン用に持つため)。`maximumFileSizeToCacheInBytes` を 5MB に引き上げ(章音声が1ファイル約3〜4MBのため)。
-  - 効果音は持たないので、`src/sound.ts` はテンプレートのまま未使用で置いてある(効果音を足すときに使う)。
+  - `src/sound.ts` は読書用BGMの再生に使う(作曲データは本固有の `src/bgm-song.ts`。効果音の beep は未使用)。BGM の設定キーは `bgm`(既定オン)、音量は朗読の平均より約21dB下に固定(根拠は `src/sound.ts` のコメントと `work/measure-bgm.mjs`)。
+  - 男性パートの声は avocado_v2:MAI_03・speed 90 + 章ごとに決める atempo で、完成音声の実測300字/分にそろえる(`work/gen_mai.py`)。女性パートは Lily・speed 112、後処理なし。
   - デフォルトブランチは `master`(このリポジトリの従来どおり)。テンプレートの記述で `main` とあるところは `master` に読み替える。公開は GitHub Actions ではなく `gh-pages` ブランチへの手作業の反映(このリポジトリの Pages 設定がブランチ配信のため)。`pages.yml` は入れていない。
   - 本のデータ生成(`work/build_data.py` など)は Python の著作用パイプラインで、アプリのビルドとは別。生成物は `data/chapters.json` と `public/book/data.json`(同一内容)、音声は `audio/` と `public/book/audio/` に置く。
 

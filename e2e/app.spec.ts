@@ -135,6 +135,21 @@ test('背景イメージのオン/オフが切り替わる', async ({ page }) =>
   await expect(page.locator('body')).not.toHaveClass(/bg-off/);
 });
 
+test('BGMは最初のタップで流れ始め、設定でオン/オフが切り替わる', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('body')).not.toHaveAttribute('data-bgm', 'on'); // まだ操作していないので鳴らない
+  await page.locator('#coverTap').click(); // 最初のタップで流れ始める
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await openMenuInReader(page);
+  await expect(page.locator('#bgmToggle')).toBeChecked(); // 既定はオン
+  await page.locator('#bgmToggle').click();
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'off'); // オフで即止まる
+  await page.locator('#bgmToggle').click();
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+});
+
 test('manifest と Service Worker が使える', async ({ page }) => {
   await page.goto('/');
   const href = await page.locator('link[rel="manifest"]').getAttribute('href');

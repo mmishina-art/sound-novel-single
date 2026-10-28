@@ -1,0 +1,28 @@
+ch2-13 CHECK sim=0.73 len=1.00
+  T:たちばなとおるの『そらのゆうびん』。
+  H:立派なトールの空の郵便
+ch2-16 CHECK sim=0.76 len=1.10
+  T:そう言ったのは僕だ。
+  H:そういった名を僕だ
+ch2-32 CHECK sim=0.73 len=0.86
+  T:ねこがいっぴき、僕のくつのにおいを嗅いだ。
+  H:猫が1匹、僕の靴のにお湯を買いだ。
+ch2-63 CHECK sim=0.67 len=1.00
+  T:しめきりはみっかご。
+  H:締め切りは3日後
+ch2-64 CHECK sim=0.76 len=0.89
+  T:さんびゃくページのぶんこのさいこうだ。
+  H:300ページの文庫の最高だ
+ch2 done, CHECK sentences: ['13', '16', '32', '63', '64']
+ch4-13 CHECK sim=0.50 len=0.71
+  T:ねだんはにせんはっぴゃくえん。
+  H:値段は2,800円
+ch4 done, CHECK sentences: ['13']
+ch6-19 CHECK sim=0.29 len=1.33
+  T:あるよ。
+  H:アデュー!
+ch6-34 CHECK sim=0.71 len=1.00
+  T:ほこりっぽいゆかに、ふたりのあしあとが付いた。
+  H:誇りっぽい床に二人の足跡がついた
+ch6 done, CHECK sentences: ['19', '34']
+saved /home/hatch/workspace/sound-novel-single/work/verify-mai.json

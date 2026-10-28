@@ -1,0 +1,13 @@
+total sentences: 195
+progress 40/195 ok=40 skipped=0 failed=0 calls=43 failures=0
+progress 80/195 ok=80 skipped=0 failed=0 calls=83 failures=0
+progress 120/195 ok=120 skipped=0 failed=0 calls=123 failures=0
+progress 160/195 ok=160 skipped=0 failed=0 calls=163 failures=0
+generation done ok=195 skipped=0 failed=[] calls=195 failures=0
+  ch2: chars=1947 raw_speech=313.1s required=369.9s atempo=0.8463 raw_cpm=373.2
+  built ch2: 388.4s -> 300.8 chars/min
+  ch4: chars=1904 raw_speech=311.3s required=361.6s atempo=0.8610 raw_cpm=366.9
+  built ch4: 379.8s -> 300.8 chars/min
+  ch6: chars=1925 raw_speech=303.9s required=366.1s atempo=0.8301 raw_cpm=380.1
+  built ch6: 384.0s -> 300.8 chars/min
+ALL BUILT

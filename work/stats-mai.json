@@ -1,0 +1,40 @@
+{
+ "tts_calls": 195,
+ "tts_failures": 0,
+ "chapters": {
+  "ch2": {
+   "sentences": 66,
+   "chars": 1947,
+   "voice": "avocado_v2:MAI_03",
+   "speed": 90,
+   "atempo": 0.8463,
+   "raw_speech_sec": 313.06,
+   "final_sec": 388.38,
+   "final_cpm": 300.8,
+   "done": true
+  },
+  "ch4": {
+   "sentences": 65,
+   "chars": 1904,
+   "voice": "avocado_v2:MAI_03",
+   "speed": 90,
+   "atempo": 0.861,
+   "raw_speech_sec": 311.33,
+   "final_sec": 379.78,
+   "final_cpm": 300.8,
+   "done": true
+  },
+  "ch6": {
+   "sentences": 64,
+   "chars": 1925,
+   "voice": "avocado_v2:MAI_03",
+   "speed": 90,
+   "atempo": 0.8301,
+   "raw_speech_sec": 303.89,
+   "final_sec": 383.95,
+   "final_cpm": 300.8,
+   "done": true
+  }
+ },
+ "finished_at": 1793191392.3699765
+}

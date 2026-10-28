@@ -17,6 +17,7 @@ import {
   type Page,
   type Unit,
 } from './logic';
+import { isBgmOn, setBgmOn, startBgm } from './sound';
 import { load, remove, save } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -573,6 +574,17 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
     });
+    $<HTMLInputElement>('bgmToggle').addEventListener('change', (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      // オフは即停止、オンは（この操作自体がジェスチャなので）すぐ鳴らし始める
+      setBgmOn(checked);
+      if (checked) startBgm();
+    });
+    /* BGM は最初のタップ以降に鳴らせる（ブラウザの自動再生の制約）。
+       表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く */
+    document.addEventListener('pointerdown', () => {
+      if (isBgmOn()) startBgm();
+    });
     $<HTMLInputElement>('progressBar').addEventListener('input', (e) => {
       if (isFinite(audio.duration) && audio.duration > 0) {
         audio.currentTime = (Number((e.target as HTMLInputElement).value) / 100) * audio.duration;
@@ -681,6 +693,7 @@ export function createReader(book: BookData): Reader {
   const bgOn = load<boolean>('bg', true);
   $<HTMLInputElement>('bgToggle').checked = bgOn;
   document.body.classList.toggle('bg-off', !bgOn);
+  $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   buildToc();
   bind();
   refreshResume();
@@ -697,6 +710,9 @@ export function createReader(book: BookData): Reader {
       const bg = load<boolean>('bg', true);
       $<HTMLInputElement>('bgToggle').checked = bg;
       document.body.classList.toggle('bg-off', !bg);
+      const bgm = load<boolean>('bgm', true);
+      $<HTMLInputElement>('bgmToggle').checked = bgm;
+      setBgmOn(bgm);
       updateNav();
       refreshResume();
     },
