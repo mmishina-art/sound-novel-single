@@ -96,6 +96,10 @@ data = {
     'chapters': chapters,
 }
 json.dump(data, open(os.path.join(ROOT, 'data', 'chapters.json'), 'w'), ensure_ascii=False, indent=1)
+# アプリ（pwa-template 構成）の配信データは public/book/data.json（data/chapters.json と同一内容）
+_pub = os.path.join(ROOT, 'public', 'book', 'data.json')
+os.makedirs(os.path.dirname(_pub), exist_ok=True)
+json.dump(data, open(_pub, 'w'), ensure_ascii=False, indent=1)
 print('chapters:', len(chapters), 'total chars:', total)
 for ch in chapters:
     print(ch['id'], ch['title'], ch['narrator'], ch['chars'], 'spoken', ch['spokenChars'])

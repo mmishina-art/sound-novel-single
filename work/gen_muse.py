@@ -4,7 +4,7 @@
 - Male (ch2,4,6): avocado_v2:qvd_02415 speed 104, PLAIN G, NO post-processing
   (spec change 2026-10-28: g-mod3a rubberband/EQ/highshelf NOT applied)
 - Sentence-by-sentence generation, skip existing, concurrency 4, up to 5 attempts
-- Assemble: 0.3s silence between sentences, 96kbps MP3 to audio/ch{N}.mp3 and app/audio/ch{N}.mp3
+- Assemble: 0.3s silence between sentences, 96kbps MP3 to audio/ch{N}.mp3 and public/book/audio/ch{N}.mp3
 - No atempo / tempo adjustment
 """
 import json, os, re, subprocess, sys, time, threading
@@ -14,7 +14,7 @@ BASE = os.path.expanduser('~/workspace/sound-novel-single')
 WORK = os.path.join(BASE, 'work')
 RAW = os.path.join(WORK, 'muse-raw')
 AUDIO = os.path.join(BASE, 'audio')
-APP_AUDIO = os.path.join(BASE, 'app', 'audio')
+APP_AUDIO = os.path.join(BASE, 'public', 'book', 'audio')
 os.makedirs(RAW, exist_ok=True); os.makedirs(AUDIO, exist_ok=True); os.makedirs(APP_AUDIO, exist_ok=True)
 TTS = '/opt/hatch/bin/tts'
 VOICE = {

@@ -1,0 +1,26 @@
+# 依存パッケージと GitHub Actions の更新を、自動で PR にする（マージは、CI が緑なのを確認してから）
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # 同時に更新しないと、組み合わせられない（別々だと CI が失敗する）パッケージは、1つの PR にまとめる。
+      # 例: vite 8 には vitest 5 と vite-plugin-pwa 2 が必要。先に書いたグループが優先される。
+      vite-family:
+        patterns: ["vite", "vitest", "@vitest/*", "vite-plugin-pwa", "workbox-window"]
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # typescript-eslint が TypeScript 7 に対応する（peer の範囲に入る）までは、メジャー更新を見送る。対応したら、この項目を外す。
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # 型の定義は、CI で動かす Node のメジャー（.github/workflows の node-version）に合わせる。Node を上げるときに、いっしょに上げる。
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

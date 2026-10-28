@@ -4,81 +4,106 @@
 
 雨の日の古本屋・柏木書店を舞台に、店主・柏木 遥と、十四年ぶりに町へ戻った西野 悠真が、高校時代に貸し借りしたままになっていた詩集『空の郵便』をめぐって再会する物語。忘れ物の傘、取り置きの本、閉店の危機を経て、届かなかった感想＝「空の郵便」が十四年越しに届くまでを描く。
 
+サウンド単行本（朗読つき電子書籍・分岐なし）のサンプル作品です。
+
+**公開 URL： https://mmishina-art.github.io/sound-novel-single/**
+
 ## 本の概要
 
 - **タイトル**：空の郵便が届くまで
 - **著者**：水瀬 葵
 - **章構成**：全7章・分岐なし（一本道の単行本形式）
 - **視点**：男女交互視点
-  - 奇数章（第一・三・五・七章）：柏木 遥 視点／語り・柏木 遥（女性）
-  - 偶数章（第二・四・六章）：西野 悠真 視点／語り・西野 悠真（男性）
-- **総字数**：11,008字（本文段落の合計。`data/chapters.json` の `totalChars`）
+- 奇数章（第一・三・五・七章）：柏木 遥 視点／語り・柏木 遥（女性）
+- 偶数章（第二・四・六章）：西野 悠真 視点／語り・西野 悠真（男性）
+- **総字数**：11,009字（本文段落の合計。`data/chapters.json` の `totalChars`）
 
 | 章 | タイトル | 語り | 字数 |
 |---|---|---|---|
-| 第一章 | 雨の日の客 | 柏木 遥 | 1,735 |
+| 第一章 | 雨の日の客 | 柏木 遥 | 1,736 |
 | 第二章 | 忘れ物の傘 | 西野 悠真 | 1,624 |
 | 第三章 | 取り置きの本 | 柏木 遥 | 1,559 |
 | 第四章 | 感想の宿題 | 西野 悠真 | 1,565 |
 | 第五章 | 閉店まで三か月 | 柏木 遥 | 1,514 |
 | 第六章 | できること | 西野 悠真 | 1,569 |
 | 第七章 | 空の郵便が届くまで | 柏木 遥 | 1,442 |
-| **合計** |  |  | **11,008** |
-
-## リポジトリ構成
-
-```
-sound-novel-single/
-├── README.md            # このファイル
-├── manuscript/
-│   └── story.md         # 原稿（Markdown、全7章）
-├── data/
-│   ├── chapters.json    # 構造化データ（正本）：title / author / totalChars / chapters[]
-│   │                    #   各章: id, num, title, narrator, narratorName, paragraphs, ruby, chars ほか
-│   ├── readings.json    # 読み辞書データ
-│   ├── readings.py      # 読み辞書（WORDS / SINGLE）
-│   └── stems.py         # 語幹データ（NOUN1 / VERB）
-├── audio/               # 章別音声の置き場（リポジトリ直下の作業用。アプリ用は app/audio/）
-├── app/                 # 単体ブックアプリ（静的サイト）
-│   ├── index.html
-│   ├── style.css        # 縦書き（vertical-rl）本文・表紙・プレイヤー
-│   ├── app.js           # 再生・章送り・しおり（localStorage）・ルビ変換
-│   ├── data.json        # data/chapters.json のコピー（アプリが fetch する）
-│   ├── cover.svg        # 自作表紙（紺基調／白い鳥と雨の書店）
-│   └── audio/
-│       ├── ch1.mp3      # 第一章 …（音声は別途生成・配置）
-│       ├── ch2.mp3
-│       ├── ch3.mp3
-│       ├── ch4.mp3
-│       ├── ch5.mp3
-│       ├── ch6.mp3
-│       └── ch7.mp3      # 第七章
-└── work/
-    └── build_data.py    # manuscript/story.md から data/chapters.json を生成するスクリプト
-```
+| **合計** | | | **11,009** |
 
 ## アプリの使い方
 
-`app/` を静的ホスティングするか、ローカルで簡易サーバーを立てて開く。
+- 最初の画面が表紙そのもの。表紙タップで第一章の扉→朗読開始。
+- 各章の開始時に章扉（中扉：章タイトル＋語り手名）を表示し、タップまたは自動（約1.8秒）で本文へ。
+- 本文はページめくり表示（その画面に収まる分量が1ページ。右綴じなので次ページは左側タップ／左スワイプ）。朗読の進行にページが追従する。
+- 本文は縦書き表示、フリガナ（ルビ）のオン／オフ切替あり（全文ルビ）。
+- 再生／停止、前章／次章、章一覧、再生速度（0.8 / 1.0 / 1.25 / 1.5 / 2.0、ピッチ維持、章をまたいで維持）、章内シーク（プログレスバー）が可能。
+- 章が終わると次の章へ自動送り。最終章の後は「おわり」を表示。
+- しおり（章＋再生位置＋ページ位置）を随時保存し、表紙に「しおりから再開」を表示。読了時はしおりをクリア。
+- ホーム画面に追加するとアプリとして使え、オフラインでも開ける（PWA）。
+- 外部フォント・CDN・外部画像は不使用。フォントは端末標準の明朝体スタック。文章・表紙・音声はすべて自作（音声は音声合成で生成）。
+
+## 開発
+
+このアプリは PWA アプリの共通テンプレート（`mmishina-art/pwa-template`）の構成で作られている。ルールの詳細は [CLAUDE.md](./CLAUDE.md)、作業状態は [docs/HANDOVER.md](./docs/HANDOVER.md) を参照。
 
 ```bash
-cd app
-python3 -m http.server 8000
-# http://localhost:8000/ を開く
+npm ci
+npm run dev # 開発サーバー
+npm run verify # lint → test → build → check:dist
+npm run shots # 画面の一括撮影（shots/）
+npx playwright install chromium && npm run test:e2e
 ```
 
-- 最初の画面が表紙そのもの。表紙タップで第一章の扉→朗読開始。
-- 各章の開始時に章扉（章タイトル＋語り手名）を表示し、タップまたは自動（約1.8秒）で本文へ。
-- 本文は縦書き表示、フリガナ（ルビ）のオン／オフ切替あり。
-- 再生／停止、前章／次章、章一覧、再生速度（0.8 / 1.0 / 1.25 / 1.5 / 2.0、`preservesPitch` 有効、章をまたいで維持）、章内シーク（プログレスバー）が可能。
-- 章が終わると次の章へ自動送り。最終章の後は「おわり」を表示。
-- 再生位置（章＋秒数）を `localStorage` に随時保存し、表紙に「しおりから再開」を表示。読了時はしおりをクリア。
-- 外部フォント・CDN・外部画像は不使用。フォントは端末標準の明朝体スタック。
-- 音声ファイルが無い状態でも画面遷移と UI は動作し、再生はエラー表示になる。
+公開は `gh-pages` ブランチへの反映（`npm run build` の成果物 `dist/` の中身を gh-pages のルートに置く）。
+
+### デバッグモード
+
+表紙のバージョン表示（`v1.0.0`）を続けて 5 回タップすると、左下に操作パネル（DEBUG）が出る。もう一度 5 回タップするか、パネルの「終了」で消える。パネルからは最終章へのジャンプとしおりの消去ができる。
+
+## リポジトリ構成
+
+テンプレート由来の土台と、この本固有のものを分けてある。
+
+```
+sound-novel-single/
+├── CLAUDE.md # テンプレート共通ルール＋このアプリの方針
+├── docs/HANDOVER.md # 引き継ぎメモ
+├── package.json # アプリ ID は sound-novel-single
+├── vite.config.ts # アプリ名・色・manifest・PWA 設定
+├── index.html # 画面の骨組み（表紙・扉・読書画面＋共通ブロック）
+├── public/
+│ ├── boot.js # 起動失敗時の復旧
+│ ├── icons/ # アイコン（scripts/make-icons.mjs で生成）
+│ └── book/ # 配信資産
+│ ├── data.json # data/chapters.json と同一内容（アプリが fetch する）
+│ ├── cover.svg # 自作表紙（紺基調／白い鳥と雨の書店）
+│ └── audio/ch1〜7.mp3 # 章ごとの朗読音声
+├── src/
+│ ├── main.ts # 起動と共通機能の配線
+│ ├── reader.ts # ページ割り・描画・朗読・しおり
+│ ├── logic.ts # ルビ変換・文分割・ページ計算（純関数）
+│ ├── style.css # 色変数・共通部品・本の装丁
+│ ├── storage.ts # 保存（旧キーの移行処理だけこの本用に記入）
+│ ├── backup.ts # 記録のバックアップ
+│ ├── debug.ts # デバッグモード
+│ ├── install.ts # インストール方法の説明
+│ ├── pwa.ts # 更新バナー
+│ └── sound.ts # 効果音（この本では未使用）
+├── tests/ # 単体テスト（ロジック・データ検証・共通部品）
+├── e2e/ # 画面テスト（Playwright）
+├── scripts/ # check-dist / make-icons / shots / build-preview
+├── manuscript/
+│ └── story.md # 原稿（Markdown、全7章）
+├── data/
+│ ├── chapters.json # 構造化データ（正本）
+│ ├── readings.json # 読み辞書データ
+│ ├── readings.py # 読み辞書（WORDS / SINGLE）
+│ └── stems.py # 語幹データ（NOUN1 / VERB）
+├── audio/ # 章別音声の作業用置き場（配信は public/book/audio/）
+└── work/ # 生成・検証スクリプト（build_data.py ほか）
+```
 
 ## データ再生成
 
 ```bash
-python3 work/build_data.py
-cp data/chapters.json app/data.json
+python3 work/build_data.py # data/chapters.json と public/book/data.json を生成
 ```
