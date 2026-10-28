@@ -18,7 +18,17 @@ const openReader = async (page) => {
 };
 const SCREENS = [
   { name: 'cover' },
+  { name: 'toc-page', open: async (page) => { await waitBook(page); await page.click('#coverTocBtn'); await page.waitForSelector('#tocView:not([hidden])'); } },
   { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#coverTap'); } },
+  {
+    name: 'gate2',
+    open: async (page) => {
+      await waitBook(page);
+      await page.click('#coverTocBtn');
+      await page.locator('.toc-item').nth(1).click();
+      await page.waitForSelector('#gateView:not([hidden])');
+    },
+  },
   // page1 は操作UIが出ている状態（開いた直後は出ていないので、中央タップで出す）、
   // page-clean は自動で消えたあとの本文だけの状態
   {
@@ -59,9 +69,37 @@ const SCREENS = [
       await page.click('#menuBtn');
     },
   },
+  {
+    name: 'page-highlight',
+    open: async (page) => {
+      await openReader(page);
+      // 朗読中の文に強調が付くまで待つ
+      await page.waitForSelector('.unit.now', { timeout: 10000 });
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: 'final-page',
+    open: async (page) => {
+      await waitBook(page);
+      await page.click('#coverTocBtn');
+      await page.locator('.toc-item').nth(6).click();
+      await page.click('#gateView');
+      await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
+      const box = await page.locator('#pageWrap').boundingBox();
+      for (let i = 0; i < 80; i++) {
+        const pos = await page.locator('#pageChapterPos').textContent();
+        const m = /(\d+) \/ (\d+)/.exec(pos || '');
+        if (m && m[1] === m[2]) break;
+        await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+        await page.waitForTimeout(40);
+      }
+      await page.waitForTimeout(300);
+    },
+  },
   // 管理系はメニュー（表紙の「設定」）の中に集約した
   { name: 'install', open: async (page) => { await page.click('#coverMenuBtn'); await page.click('#install-open'); } },
-  { name: 'backup', open: async (page) => { await page.click('#coverMenuBtn'); await page.click('.backup summary'); } },
+  { name: 'cover-menu', open: async (page) => { await page.click('#coverMenuBtn'); } },
 ];
 
 /** 撮る大きさ。このアプリは暗い固定配色なので、ダークモードの撮り分けはしない。 */

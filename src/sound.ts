@@ -7,8 +7,11 @@ let enabled = load('sound', true);
 
 function ac(): AudioContext {
   ctx ??= new AudioContext();
-  // iPhone では操作のあとに resume が必要
-  void ctx.resume();
+  // iPhone では操作のあとに resume が必要。ただし、鳴っている最中（running）に
+  // resume を繰り返し呼ぶと iOS では音が乱れることがある。ページ送りの連打の
+  // たびに pointerdown から呼ばれて resume が連打される実機報告への対策として、
+  // 止まっているときだけ開け直す
+  if (ctx.state !== 'running') void ctx.resume();
   return ctx;
 }
 

@@ -36,6 +36,13 @@ async function openMenuOnCover(page: import('@playwright/test').Page): Promise<v
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
+/** 読書画面から表紙へ戻る（画面上のボタンはなく、メニューの「表紙に戻る」から） */
+async function backToCover(page: import('@playwright/test').Page): Promise<void> {
+  await openMenuInReader(page);
+  await page.locator('#toCoverFromMenuBtn').click();
+  await expect(page.locator('#coverView')).toBeVisible();
+}
+
 test('表紙が開き、タイトルと著者が見える', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#coverView')).toBeVisible();
@@ -52,9 +59,7 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   // 読み始めて表紙に戻ると、ヒントは消え、しおりの手がかりだけが残る
   await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
-  await ensureChrome(page);
-  await page.locator('#toCoverBtn').click();
-  await expect(page.locator('#coverView')).toBeVisible();
+  await backToCover(page);
   await expect(page.locator('#coverHint')).toBeHidden();
   await expect(page.locator('#coverBookmarkNote')).toBeVisible();
 });
@@ -69,6 +74,22 @@ test('表紙タップで章扉が出て、本文へ進む', async ({ page }) => 
   await page.locator('#gateView').click(); // 扉タップで即本文へ
   await expect(page.locator('#readerView')).toBeVisible();
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+});
+
+test('章扉では語り手名が「語り・」なしで、タイトルと同じ列に続けて表示される', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNarrator')).toHaveText('柏木 遥'); // 「語り・柏木 遥」ではない
+  // 縦書きでは「同じ列」＝ x の帯が重なり、「続く」＝ 題より下（y が大きい）に名前がある
+  const titleBox = await page.locator('#gateTitle').boundingBox();
+  const nameBox = await page.locator('#gateNarrator').boundingBox();
+  if (!titleBox || !nameBox) throw new Error('bounding box not found');
+  const titleCx = titleBox.x + titleBox.width / 2;
+  expect(titleCx).toBeGreaterThanOrEqual(nameBox.x - 2);
+  expect(titleCx).toBeLessThanOrEqual(nameBox.x + nameBox.width + 2);
+  expect(nameBox.y).toBeGreaterThan(titleBox.y + titleBox.height - 2);
 });
 
 test('ページめくり: 左側タップで次ページ（右綴じ）へ進み、ノンブルが増える', async ({ page }) => {
@@ -117,15 +138,67 @@ test('章扉の枠と本文ページの枠の大きさ・位置が一致する',
   }
 });
 
-test('目次から章を選べる', async ({ page }) => {
+test('目次はモーダルではなく本の目次ページとして開き、章を選べる', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await openMenuOnCover(page);
-  await page.locator('#tocFromMenuBtn').click();
-  await expect(page.locator('#tocModal')).toBeVisible();
+  await expect(page.locator('#tocModal')).toHaveCount(0); // モーダルは廃止
+  // 表紙の「目次」から目次ページへ
+  await page.locator('#coverTocBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
   await expect(page.locator('.toc-item')).toHaveCount(7);
   await page.locator('.toc-item').nth(2).click();
   await expect(page.locator('#gateNum')).toHaveText('第三章');
+});
+
+test('読書中のメニューから目次ページを開き、「戻る」で読書画面に帰る', async ({ page }) => {
+  await openReader(page);
+  await openMenuInReader(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await page.locator('#tocBackBtn').click();
+  await expect(page.locator('#readerView')).toBeVisible();
+  await expect(page.locator('#tocView')).toBeHidden();
+});
+
+test('読書画面の操作は再生／停止とメニューだけ。前章／次章・シークバー・表紙ボタンは画面にない', async ({ page }) => {
+  await openReader(page);
+  // 画面から外した要素は、DOM にも残っていない
+  await expect(page.locator('#prevChapterBtn')).toHaveCount(0);
+  await expect(page.locator('#nextChapterBtn')).toHaveCount(0);
+  await expect(page.locator('#progressBar')).toHaveCount(0);
+  await expect(page.locator('#toCoverBtn')).toHaveCount(0);
+  // 残した操作：操作UIを出すと、再生／停止とメニューが使える
+  await ensureChrome(page);
+  await expect(page.locator('#playPauseBtn')).toBeVisible();
+  await expect(page.locator('#menuBtn')).toBeVisible();
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+  // 「表紙に戻る」は、表紙で開いたメニューには出ず、読書画面のメニューにだけ出る
+  await page.locator('#menuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await expect(page.locator('#toCoverFromMenuBtn')).toBeVisible();
+  await page.locator('#menuCloseBtn').click();
+});
+
+test('表紙で開いたメニューには「表紙に戻る」が出ない', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await openMenuOnCover(page);
+  await expect(page.locator('#toCoverFromMenuBtn')).toBeHidden();
+});
+
+test('音声をシークすると本文ページが朗読位置に追従する（シークバー撤去後も）', async ({ page }) => {
+  await openReader(page);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await page.evaluate(async () => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    // メタデータ（duration）が届くまで待ってからシークする
+    for (let i = 0; i < 50 && !(isFinite(a.duration) && a.duration > 0); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (isFinite(a.duration) && a.duration > 0) a.currentTime = a.duration * 0.5;
+  });
+  // seeked でページが中ほどまで進む
+  await expect(page.locator('#pageFolio')).not.toHaveText('― 1 ―', { timeout: 5000 });
 });
 
 test('しおりが残り、表紙から再開できる', async ({ page }) => {
@@ -134,20 +207,89 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   if (!box) throw new Error('pageWrap not found');
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
-  await ensureChrome(page);
-  await page.locator('#toCoverBtn').click();
-  await expect(page.locator('#coverView')).toBeVisible();
+  await backToCover(page);
   // 表紙の常時表示は入口だけ。しおりの手がかりは入口の下に小さく出る
   await expect(page.locator('#coverBookmarkNote')).toBeVisible();
   await expect(page.locator('#coverBookmarkNote')).toContainText('ページ');
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開はメニューの中から
-  await openMenuOnCover(page);
-  await expect(page.locator('#resumeFromMenuBtn')).toBeVisible();
-  await page.locator('#resumeFromMenuBtn').click();
+  // 再開は表紙のボタンから（メニューの中には入れない）
+  await expect(page.locator('#resumeBtn')).toBeVisible();
+  await expect(page.locator('#resumeBtn')).toContainText('第一章');
+  await page.locator('#resumeBtn').click();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+});
+
+test('しおりがないときは表紙に再開ボタンが出ず、メニューにも再開の項目はない', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('#resumeBtn')).toBeHidden();
+  await openMenuOnCover(page);
+  await expect(page.locator('#resumeFromMenuBtn')).toHaveCount(0);
+  await expect(page.locator('#menuModal #version-line')).toHaveCount(0); // バージョン表記はメニューではなく表紙にある
+});
+
+test('最終ページの本文末尾に「おわり」があり、下部の帯に奥付と表紙への導線がある', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('#endView')).toHaveCount(0); // 独立した「おわり」ページは作らない
+  await expect(page.locator('#colophonView')).toHaveCount(0); // 独立した奥付ページも作らない
+  // 目次ページから最終章（第七章）へ
+  await page.locator('#coverTocBtn').click();
+  await page.locator('.toc-item').nth(6).click();
+  await expect(page.locator('#gateNum')).toHaveText('第七章');
+  await page.locator('#gateView').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  // 最終ページまで送る
+  for (let i = 0; i < 80; i++) {
+    const pos = await page.locator('#pageChapterPos').textContent();
+    const m = /(\d+) \/ (\d+)/.exec(pos || '');
+    if (m && m[1] === m[2]) break;
+    await page.mouse.click(78, 400);
+    await page.waitForTimeout(50);
+  }
+  await expect(page.locator('#pageContent .story-end')).toHaveText('おわり');
+  await expect(page.locator('#finalPageFoot')).toBeVisible();
+  await expect(page.locator('.final-colophon')).toContainText('水瀬 葵');
+  await expect(page.locator('.final-colophon')).toContainText('サウンド単行本');
+  await expect(page.locator('.final-colophon')).toContainText('Lily');
+  await page.locator('#finalToCoverBtn').click();
+  await expect(page.locator('#coverView')).toBeVisible();
+});
+
+test('再生中にページをめくると、朗読がそのページの先頭へ移り、引き戻されない', async ({ page }) => {
+  await openReader(page);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await page.mouse.click(78, 400); // 次ページへ
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await page.waitForTimeout(700); // ページ→音声シーク（260msデバウンス＋反映）
+  const t = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  expect(t).toBeGreaterThan(2); // 2ページ目の先頭は冒頭より後
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―'); // 音声側に引き戻されない
+});
+
+test('停止中にめくると位置がそのページに合い、再生はそこから始まる', async ({ page }) => {
+  await openReader(page);
+  await ensureChrome(page);
+  await page.locator('#playPauseBtn').click(); // 停止
+  await page.mouse.click(78, 400); // 次ページへ
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await page.waitForTimeout(700);
+  const t1 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  expect(t1).toBeGreaterThan(2); // 停止中でも位置はページに合っている
+  await ensureChrome(page);
+  await page.locator('#playPauseBtn').click(); // 再生
+  await page.waitForTimeout(600);
+  const t2 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  expect(t2).toBeGreaterThan(2); // 冒頭に戻らず、そのページから読む
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+});
+
+test('朗読中の文が1つだけ強調される', async ({ page }) => {
+  await openReader(page);
+  await expect(page.locator('.unit.now')).toHaveCount(1, { timeout: 8000 });
 });
 
 test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
@@ -177,10 +319,10 @@ test('中央タップで操作UIの表示・非表示が切り替わり、放っ
   await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
   await page.mouse.click(cx, cy); // 消えている → 出る
   await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
-  await expect(page.locator('#toCoverBtn')).toBeVisible();
+  await expect(page.locator('#playPauseBtn')).toBeVisible();
   await page.mouse.click(cx, cy); // 表示中 → 消える
   await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
-  await expect(page.locator('#toCoverBtn')).toBeHidden();
+  await expect(page.locator('#playPauseBtn')).toBeHidden();
   await page.mouse.click(cx, cy); // また出す
   await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
   // 数秒で自動的に消える
@@ -273,42 +415,6 @@ test('最初の画面にバージョンが表示される', async ({ page }) => 
   await expect(page.locator('#version')).toHaveText(/^\d+\.\d+\.\d+$/);
 });
 
-test('記録をファイルに書き出し、消えたあとに読み込んで戻せる', async ({ page }) => {
-  await openReader(page);
-  const box = await page.locator('#pageWrap').boundingBox();
-  if (!box) throw new Error('pageWrap not found');
-  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
-  await ensureChrome(page);
-  await page.locator('#toCoverBtn').click();
-  await openMenuOnCover(page);
-  await page.getByText('記録のバックアップ').click();
-
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'ファイルに書き出す' }).click()]);
-  const path = await download.path();
-  const { readFileSync } = await import('node:fs');
-  const text = readFileSync(path, 'utf8');
-  expect(JSON.parse(text).data[`${APP_ID}-bookmark`]).toBeTruthy();
-
-  // 記録を消す → 読み込んで戻す
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverBookmarkNote')).toBeHidden();
-  await openMenuOnCover(page);
-  await page.getByText('記録のバックアップ').click();
-  await page.locator('#backup-import').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(text) });
-  await expect(page.locator('#resumeFromMenuBtn')).toBeVisible();
-  await expect(page.locator('#backup-message')).toContainText('読み込みました');
-});
-
-test('おかしいバックアップファイルは、理由を表示して読み込まない', async ({ page }) => {
-  await page.goto('/');
-  await openMenuOnCover(page);
-  await page.getByText('記録のバックアップ').click();
-  await page.locator('#backup-import').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"other"}') });
-  await expect(page.locator('#backup-message')).toContainText('このアプリのバックアップではありません');
-});
-
 test('起動できないときは「なおす」ボタンが出て、押すと起動できる（記録と、ほかのアプリのキャッシュは消えない）', async ({ page }) => {
   await page.addInitScript((id) => {
     (window as unknown as { __bootWaitMs: number }).__bootWaitMs = 500;
@@ -336,11 +442,12 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
 
-test('デバッグモード: バージョンを 5 回タップで操作パネルが出る', async ({ page }) => {
+test('デバッグモード: 表紙のバージョン表記を 5 回タップで操作パネルが出る', async ({ page }) => {
   await page.goto('/');
   const panel = page.locator('#debug-panel');
   await expect(panel).toBeHidden();
-  await openMenuOnCover(page);
+  // バージョン表記は表紙の隅にある（メニューは開かない）
+  await expect(page.locator('#version-line')).toBeVisible();
   for (let i = 0; i < 5; i++) await page.locator('#version-line').click();
   await expect(panel).toBeVisible();
   await page.getByRole('button', { name: '最終章の扉へ飛ぶ' }).click();
@@ -456,6 +563,95 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
   });
 });
 
+test('進み具合ラインは縦書き（右綴じ）では右から左へ伸びる', async ({ page }) => {
+  await openReader(page);
+  const track = await page.locator('.read-progress').boundingBox();
+  const fill = await page.locator('#readProgressFill').boundingBox();
+  if (!track || !fill) throw new Error('bounding box not found');
+  expect(fill.width).toBeGreaterThan(0);
+  expect(fill.width).toBeLessThan(track.width); // まだ途中なので満ちていない
+  // 右端がそろい、左へ伸びる（右端一致・左端は内側）
+  expect(Math.abs(fill.x + fill.width - (track.x + track.width))).toBeLessThanOrEqual(1);
+  expect(fill.x).toBeGreaterThan(track.x);
+});
+
+/* 安全領域のある端末（iPhone Air 相当：420×912、Dynamic Island 上59px／ホームインジケータ下34px）では、
+   本の枠の角も進捗ラインも、安全領域の内側に収まって見切れないことを確かめる */
+test.describe('安全領域のある画面（iPhone Air 相当）', () => {
+  test.use({ viewport: { width: 420, height: 912 } });
+
+  async function applySafeAreaInsets(page: import('@playwright/test').Page): Promise<void> {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+      insets: { top: 59, left: 0, bottom: 34, right: 0 },
+    });
+  }
+
+  test('本文ページと章扉の枠が安全領域の内側に収まり、角が見切れない', async ({ page }) => {
+    await applySafeAreaInsets(page);
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#coverTap').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    const gate = await page.locator('.gate-sheet').boundingBox();
+    if (!gate) throw new Error('gate box not found');
+    expect(gate.y).toBeGreaterThanOrEqual(59);
+    expect(gate.y + gate.height).toBeLessThanOrEqual(912 - 34);
+    await page.locator('#gateView').click();
+    await expect(page.locator('#readerView')).toBeVisible();
+    await expect(page.locator('#pageFolio')).not.toHaveText('');
+    const paper = await page.locator('#pageEl').boundingBox();
+    if (!paper) throw new Error('paper box not found');
+    expect(paper.y).toBeGreaterThanOrEqual(59);
+    expect(paper.y + paper.height).toBeLessThanOrEqual(912 - 34);
+    expect(paper.x).toBeGreaterThan(0);
+    expect(paper.x + paper.width).toBeLessThan(420);
+    // 扉と本文の枠は同じ位置・大きさのまま
+    for (const k of ['x', 'y', 'width', 'height'] as const) {
+      expect(Math.abs(gate[k] - paper[k])).toBeLessThanOrEqual(2);
+    }
+  });
+
+  test('進み具合ラインが画面最下部に張り付かず、安全領域の内側にある', async ({ page }) => {
+    await applySafeAreaInsets(page);
+    await openReader(page);
+    const line = await page.locator('.read-progress').boundingBox();
+    if (!line) throw new Error('progress box not found');
+    expect(line.y + line.height).toBeLessThanOrEqual(912 - 34); // ホームインジケータ帯より上
+    expect(line.y + line.height).toBeLessThan(912); // 画面端に張り付いていない
+  });
+});
+
+test('ページ送りを連打しても AudioContext.resume を連打しない（実機の音声ノイズ対策）', async ({ page }) => {
+  // resume の呼び出しを、アプリのスクリプトより先に数えられるようにしておく
+  await page.addInitScript(() => {
+    const state = { resumeCalls: 0 };
+    (window as unknown as { __resumeProbe: typeof state }).__resumeProbe = state;
+    const orig = AudioContext.prototype.resume;
+    AudioContext.prototype.resume = function (...args: Parameters<AudioContext['resume']>): ReturnType<AudioContext['resume']> {
+      state.resumeCalls += 1;
+      return orig.apply(this, args);
+    };
+  });
+  const resumeCalls = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { __resumeProbe: { resumeCalls: number } }).__resumeProbe.resumeCalls);
+
+  await openReader(page);
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on'); // BGM が鳴っている状態で
+  const before = await resumeCalls();
+  const folioBefore = await page.locator('#pageFolio').textContent();
+  // 次ページ側を高速で連打する（章内に収まる回数）
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  for (let i = 0; i < 6; i++) {
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.waitForTimeout(50);
+  }
+  // ページは軽快に進み（応答性は落とさない）、resume は増えていない
+  await expect(page.locator('#pageFolio')).not.toHaveText(folioBefore as string);
+  expect(await resumeCalls()).toBe(before);
+});
+
 test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙では解放する。設定でオフにもできる', async ({ page }) => {
   // Screen Wake Lock API の物まねを、アプリのスクリプトより先に差し込む
   await page.addInitScript(() => {
@@ -501,9 +697,7 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   await expect.poll(wlState).toBe('on');
 
   // 表紙に戻ると解放する
-  await ensureChrome(page);
-  await page.locator('#toCoverBtn').click();
-  await expect(page.locator('#coverView')).toBeVisible();
+  await backToCover(page);
   await expect.poll(wlHeld).toBe(false);
   await expect.poll(wlState).toBe('off');
 

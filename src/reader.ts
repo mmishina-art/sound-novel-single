@@ -4,7 +4,6 @@ import {
   SPEEDS,
   buildUnits,
   directionOf,
-  fmt,
   groupClass,
   pageForChar,
   rubyToHtml,
@@ -45,8 +44,6 @@ function setHtml(el: HTMLElement, html: string): void {
 }
 
 export interface Reader {
-  /** バックアップ読み込み後などに、保存済みの設定（速度・ルビ・しおり）を読み直す */
-  reloadSettings(): void;
   /** デバッグ用: 最終章の扉へ飛ぶ */
   goLastChapter(): void;
   /** デバッグ用: しおりを消す */
@@ -61,12 +58,12 @@ export function createReader(book: BookData): Reader {
 
   const coverView = $('coverView');
   const gateView = $('gateView');
+  const tocView = $('tocView');
   const readerView = $('readerView');
   const pageWrap = $('pageWrap');
   const pageEl = $('pageEl');
   const pageAnim = $<HTMLDivElement>('pageAnim');
   const pageContent = $('pageContent');
-  const endView = $('endView');
   const audio = $<HTMLAudioElement>('audioEl');
   const audioError = $('audioError');
   const headerEl = document.querySelector<HTMLElement>('.reader-header');
@@ -80,13 +77,44 @@ export function createReader(book: BookData): Reader {
   let pendingSeek = 0;
   const UNITS: Unit[][] = chapters.map((ch) => buildUnits(ch));
   const CH_CHARS: number[] = UNITS.map((us) => us.reduce((a, u) => a + u.len, 0));
+  /* 最終ページの本文末尾に置く「おわり」（独立したページは作らない） */
+  const END_MARK_HTML = '<span class="story-end">おわり</span>';
+  /* 文単位の描画（朗読中の文の強調に使う。ページ計測と描画で同じHTMLにする） */
+  function unitHtml(u: Unit): string {
+    return '<span class="unit">' + rubyToHtml(u.html) + '</span>';
+  }
   let PAGES: Page[][] = [];
   let CUM_PAGES: number[] = [];
   let TOTAL_PAGES = 0;
   let pageSizeKey = '';
   let curPage = 0;
-  let endShown = false;
+
   let lastManualTurn = 0;
+  /* 朗読中の文の強調：現ページの各文の文字範囲と、強調中の文番号 */
+  let pageUnitRanges: { start: number; len: number }[] = [];
+  let nowUnitIdx = -1;
+  function updateNowHighlight(): void {
+    if (!pageUnitRanges.length || !isFinite(audio.duration) || audio.duration <= 0) return;
+    const total = CH_CHARS[current] || 0;
+    if (!total) return;
+    const target = Math.floor((audio.currentTime / audio.duration) * total) + 1; // 境界の往復誤差対策に +1（syncPageToAudio と同じ）
+    let idx = -1;
+    for (let i = 0; i < pageUnitRanges.length; i++) {
+      const r = pageUnitRanges[i];
+      if (target >= r.start && target < r.start + r.len) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === nowUnitIdx) return;
+    const prev = pageContent.querySelector('.unit.now');
+    if (prev) prev.classList.remove('now');
+    nowUnitIdx = idx;
+    if (idx >= 0) {
+      const spans = pageContent.querySelectorAll('.unit');
+      if (spans[idx]) spans[idx].classList.add('now');
+    }
+  }
   let enterStamp = 0;
   let measurer: HTMLDivElement | null = null;
   const tocItems: HTMLButtonElement[] = [];
@@ -99,9 +127,10 @@ export function createReader(book: BookData): Reader {
   }
   setPreservesPitch();
 
-  function showView(name: 'cover' | 'gate' | 'reader'): void {
+  function showView(name: 'cover' | 'gate' | 'toc' | 'reader'): void {
     coverView.hidden = name !== 'cover';
     gateView.hidden = name !== 'gate';
+    tocView.hidden = name !== 'toc';
     readerView.hidden = name !== 'reader';
     window.scrollTo(0, 0);
     syncWakeLock();
@@ -127,6 +156,8 @@ export function createReader(book: BookData): Reader {
   }
   function openMenu(): void {
     showChrome(false);
+    // 「表紙に戻る」は読書画面から開いたときだけ出す（表紙で開いたメニューには不要）
+    $('toCoverFromMenuBtn').hidden = readerView.hidden;
     $('menuModal').hidden = false;
   }
   function closeMenu(): void {
@@ -184,8 +215,11 @@ export function createReader(book: BookData): Reader {
     let group: HTMLParagraphElement | null = null;
     for (const u of units) {
       if (!group || curPara !== u.para) group = startGroup(u);
+      // 最終章の最後の文は、「おわり」の分も含めて収まるか測る（はみ出して消えないように）
+      const isFinalUnit = chIdx === chapters.length - 1 && u === units[units.length - 1];
+      const uHtml = unitHtml(u) + (isFinalUnit ? END_MARK_HTML : '');
       savedHtml = group.innerHTML;
-      setHtml(group, savedHtml + rubyToHtml(u.html));
+      setHtml(group, savedHtml + uHtml);
       if (!fits() && pageUnits.length) {
         // この文は次のページへ
         setHtml(group, savedHtml);
@@ -195,7 +229,7 @@ export function createReader(book: BookData): Reader {
         }
         closePage();
         group = startGroup(u);
-        setHtml(group, rubyToHtml(u.html));
+        setHtml(group, uHtml);
       }
       pageUnits.push(u);
       charCount += u.len;
@@ -246,6 +280,8 @@ export function createReader(book: BookData): Reader {
         openPara = -1;
       }
     };
+    pageUnitRanges = [];
+    let runStart = page.startChar;
     for (const u of page.units) {
       if (u.para !== openPara) {
         closeP();
@@ -254,10 +290,19 @@ export function createReader(book: BookData): Reader {
         openPara = u.para;
         paraBegun.add(u.para);
       }
-      html += rubyToHtml(u.html);
+      html += unitHtml(u);
+      pageUnitRanges.push({ start: runStart, len: u.len });
+      runStart += u.len;
     }
+    // 最終章の最終ページでは、本文の流れの末尾に「おわり」を置く（独立したページは作らない）
+    const isFinalPage = current === chapters.length - 1 && curPage === pages.length - 1;
+    if (isFinalPage) html += END_MARK_HTML;
     closeP();
     setHtml(pageContent, html);
+    nowUnitIdx = -1;
+    updateNowHighlight();
+    $('finalPageFoot').hidden = !isFinalPage;
+    pageEl.classList.toggle('is-final', isFinalPage);
     $('pageFolio').textContent = '― ' + bookPageOf(current, curPage) + ' ―';
     $('pageChapterPos').textContent = curPage + 1 + ' / ' + pages.length;
     $('readerChapterLabel').textContent = ch.num + ' ' + ch.title;
@@ -268,45 +313,63 @@ export function createReader(book: BookData): Reader {
       pageEl.classList.add(animDir > 0 ? 'turn-next' : 'turn-prev');
     }
   }
-  function showEndPage(): void {
-    endShown = true;
-    pageEl.hidden = true;
-    endView.hidden = false;
-    $('readerChapterLabel').textContent = chapters[current].num + ' ' + chapters[current].title;
-    $('readProgressFill').style.width = '100%';
+  /* ---------- ページ→音声の追従（ページが主、音声が従） ----------
+     手でページをめくったら、朗読もそのページの先頭へ移す。連打されても
+     currentTime の書き換えが重ならないよう、落ち着いてから（260ms）最終ページへ
+     1回だけシークする（ページ送り自体の応答は即時のまま）。停止中にめくった場合は
+     位置だけ先に合わせておき、次に再生したときそのページから読まれるようにする */
+  let pageSeekTimer: ReturnType<typeof setTimeout> | undefined;
+  let pageSeekPending = false;
+  function pageStartTime(): number | null {
+    if (!isFinite(audio.duration) || audio.duration <= 0) return null;
+    const total = CH_CHARS[current] || 0;
+    const pages = PAGES[current];
+    if (!total || !pages || !pages.length) return null;
+    // ページ先頭きっかりではなく1文字分だけ内側に落とす（境界の往復誤差対策）
+    return ((pages[curPage].startChar + 1) / total) * audio.duration;
   }
-  function hideEndPage(): void {
-    endShown = false;
-    endView.hidden = true;
-    pageEl.hidden = false;
+  function applyPageSeek(): void {
+    const t = pageStartTime();
+    if (t === null) {
+      pageSeekPending = true;
+      return;
+    }
+    pageSeekPending = false;
+    try {
+      audio.currentTime = t;
+    } catch {
+      // 位置指定できなくても続行する
+    }
   }
+  function schedulePageSeek(): void {
+    if (pageSeekTimer !== undefined) clearTimeout(pageSeekTimer);
+    pageSeekTimer = setTimeout(() => {
+      pageSeekTimer = undefined;
+      applyPageSeek();
+    }, 260);
+  }
+
   function turnPage(dir: number): void {
     if (!PAGES.length || readerView.hidden) return;
     lastManualTurn = Date.now();
     const pages = PAGES[current];
     if (dir > 0) {
       // 次ページ（左へ）
-      if (endShown) return;
       if (curPage < pages.length - 1) {
         curPage++;
         renderPage(1);
+        schedulePageSeek();
       } else if (current < chapters.length - 1) {
         // 章をまたぐときも必ず章扉に止まる（扉を素通りして本文に入らない）
         showGate(current + 1, { autoplay: !audio.paused });
         return;
-      } else {
-        showEndPage();
-        return;
-      }
+      } else return; // 最終ページより先のページはない
     } else {
       // 前ページ（右へ）
-      if (endShown) {
-        hideEndPage();
-        curPage = pages.length - 1;
-        renderPage(-1);
-      } else if (curPage > 0) {
+      if (curPage > 0) {
         curPage--;
         renderPage(-1);
+        schedulePageSeek();
       } else if (current > 0) {
         // 前章へ戻るときも章扉に止まる
         showGate(current - 1, { page: 'last', autoplay: !audio.paused });
@@ -315,24 +378,26 @@ export function createReader(book: BookData): Reader {
     }
     saveBookmark();
   }
-  /* 朗読の進行にページを合わせる（手動でめくった直後は干渉しない） */
+  /* 朗読の進行にページを合わせる（音声→ページの追従）。
+     手でめくった場合は上のページ→音声シークで位置が合うため、ここが手で開いた
+     ページを勝手に引き戻すことはない。念のため、手動操作直後は干渉しない */
   function syncPageToAudio(force: boolean): void {
     if (!PAGES.length || !isFinite(audio.duration) || audio.duration <= 0) return;
     const total = CH_CHARS[current] || 0;
     if (!total) return;
-    const target = Math.floor((audio.currentTime / audio.duration) * total);
+    // +1 は、ページ先頭へシークした直後の往復変換誤差で1つ前のページに
+    // 戻ってしまうのを防ぐための僅かな遊び（1文字分≒0.2秒）
+    const target = Math.floor((audio.currentTime / audio.duration) * total) + 1;
     const p = pageForChar(PAGES[current], target);
     if (p === curPage) return;
     if (force) {
-      if (!endShown) {
-        curPage = p;
-        renderPage(0);
-      }
+      curPage = p;
+      renderPage(0);
       return;
     }
     if (audio.paused) return;
     if (Date.now() - lastManualTurn < 12000) return;
-    if (p > curPage && !endShown) {
+    if (p > curPage) {
       curPage = p;
       renderPage(1);
     }
@@ -357,13 +422,13 @@ export function createReader(book: BookData): Reader {
     return load<Bookmark | null>('bookmark', null);
   }
   /* 表紙は「表紙だけが静かに出ている」状態が原則。常時出すのは入口の「メニュー」だけで、
-     しおりがあるときは入口の下に最小限の手がかりを小さく出す。再開そのものはメニューの中。
+     しおりがあるときは、表紙に再開ボタンと最小限の手がかりを小さく出す（再開は表紙に置き、メニューには入れない）。
      ヒント文は初回（しおりがなく、まだ読み始めた記録もないとき）だけの控えめな案内 */
   function refreshResume(): void {
     const bm = loadBookmark();
     const has = !!(bm && chapters[bm.chapter]);
     const note = $('coverBookmarkNote');
-    const resumeBtn = $('resumeFromMenuBtn');
+    const resumeBtn = $('resumeBtn');
     note.hidden = !has;
     resumeBtn.hidden = !has;
     if (has && bm) {
@@ -479,7 +544,7 @@ export function createReader(book: BookData): Reader {
   function fillGate(ch: ChapterData): void {
     $('gateNum').textContent = ch.num;
     $('gateTitle').textContent = ch.title;
-    $('gateNarrator').textContent = '語り・' + ch.narratorName;
+    $('gateNarrator').textContent = ch.narratorName;
   }
   function showGate(idx: number, opts: EnterOptions = {}): void {
     save('seen', true); // 一度読み始めたら、表紙のヒント文は二度と出さない
@@ -506,7 +571,6 @@ export function createReader(book: BookData): Reader {
     // リーダーが表示された状態でページ割りをする
     if (!PAGES.length || sizeKeyNow() !== pageSizeKey) paginateAll();
     if (!PAGES.length) return;
-    hideEndPage();
     if (opts.anchor != null) curPage = pageForChar(PAGES[current], opts.anchor);
     else if (opts.page === 'last') curPage = PAGES[current].length - 1;
     else if (typeof opts.page === 'number') curPage = opts.page;
@@ -573,6 +637,8 @@ export function createReader(book: BookData): Reader {
     syncMediaState();
   }
   function playAudio(): void {
+    // 停止中にめくって位置合わせが保留になっていたら、再生前にそのページへ合わせる
+    if (pageSeekPending) applyPageSeek();
     audio.playbackRate = SPEEDS[speedIdx];
     setPreservesPitch();
     const p = audio.play();
@@ -589,8 +655,6 @@ export function createReader(book: BookData): Reader {
     $('playPauseBtn').textContent = !audio.paused && !audio.ended ? '⏸ 停止' : '▶ 再生';
   }
   function updateNav(): void {
-    $<HTMLButtonElement>('prevChapterBtn').disabled = current <= 0;
-    $<HTMLButtonElement>('nextChapterBtn').disabled = current >= chapters.length - 1;
     $('speedBtn').textContent = speedLabel(SPEEDS[speedIdx]);
   }
   function goCover(): void {
@@ -750,7 +814,16 @@ export function createReader(book: BookData): Reader {
     }
   }
 
-  /* ---------- TOC ---------- */
+  /* ---------- 目次ページ（モーダルではなく本の1ページとして独立させる） ---------- */
+  let tocReturn: 'cover' | 'reader' = 'cover';
+  function openTocPage(): void {
+    /* 開いた元の画面（表紙／読書画面）を覚えておき、「戻る」でそこへ帰る */
+    tocReturn = readerView.hidden ? 'cover' : 'reader';
+    showView('toc');
+  }
+  function closeTocPage(): void {
+    showView(tocReturn);
+  }
   function buildToc(): void {
     const list = $('tocList');
     list.replaceChildren();
@@ -768,10 +841,9 @@ export function createReader(book: BookData): Reader {
       ttl.textContent = c.title;
       const narr = document.createElement('span');
       narr.className = 'toc-narr';
-      narr.textContent = '語り・' + c.narratorName;
+      narr.textContent = c.narratorName;
       btn.append(num, ttl, narr);
       btn.addEventListener('click', () => {
-        $('tocModal').hidden = true;
         showGate(i);
       });
       li.appendChild(btn);
@@ -787,27 +859,24 @@ export function createReader(book: BookData): Reader {
        再開・目次・設定はすべてこの中にある） */
     $('menuBtn').addEventListener('click', openMenu);
     $('coverMenuBtn').addEventListener('click', openMenu);
-    $('resumeFromMenuBtn').addEventListener('click', () => {
-      closeMenu();
-      resumeFromBookmark();
-    });
+    /* 再開は表紙のボタンから（メニューの中には入れない） */
+    $('resumeBtn').addEventListener('click', resumeFromBookmark);
     $('menuCloseBtn').addEventListener('click', closeMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
     $('tocFromMenuBtn').addEventListener('click', () => {
       closeMenu();
-      $('tocModal').hidden = false;
+      openTocPage();
     });
+    $('coverTocBtn').addEventListener('click', openTocPage);
+    $('tocBackBtn').addEventListener('click', closeTocPage);
     /* 操作UIに触れている間は、自動消去のタイマーを仕切り直す */
     if (headerEl) headerEl.addEventListener('pointerdown', () => showChrome());
     if (playerEl) playerEl.addEventListener('pointerdown', () => showChrome());
-    $('tocCloseBtn').addEventListener('click', () => {
-      $('tocModal').hidden = true;
+    $('finalToCoverBtn').addEventListener('click', goCover);
+    $('toCoverFromMenuBtn').addEventListener('click', () => {
+      closeMenu();
+      goCover();
     });
-    $('tocBackdrop').addEventListener('click', () => {
-      $('tocModal').hidden = true;
-    });
-    $('toCoverBtn').addEventListener('click', goCover);
-    $('endToCoverBtn').addEventListener('click', goCover);
     $('playPauseBtn').addEventListener('click', () => {
       if (audio.paused) playAudio();
       else {
@@ -815,12 +884,8 @@ export function createReader(book: BookData): Reader {
         saveBookmark();
       }
     });
-    $('prevChapterBtn').addEventListener('click', () => {
-      if (current > 0) showGate(current - 1);
-    });
-    $('nextChapterBtn').addEventListener('click', () => {
-      if (current < chapters.length - 1) showGate(current + 1);
-    });
+    /* 章移動の入口は画面上のボタンではなく、ページめくり（章またぎ）と目次に一本化した。
+       前章／次章は Media Session の previoustrack / nexttrack でも行える */
     $('speedBtn').addEventListener('click', () => {
       speedIdx = (speedIdx + 1) % SPEEDS.length;
       audio.playbackRate = SPEEDS[speedIdx];
@@ -837,6 +902,11 @@ export function createReader(book: BookData): Reader {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
+    });
+    $<HTMLInputElement>('hlToggle').addEventListener('change', (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      document.body.classList.toggle('hl-off', !checked);
+      save('hl', checked);
     });
     $<HTMLInputElement>('bgmToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
@@ -859,13 +929,6 @@ export function createReader(book: BookData): Reader {
     document.addEventListener('pointerdown', () => {
       if (isBgmOn()) startBgm();
     });
-    $<HTMLInputElement>('progressBar').addEventListener('input', (e) => {
-      if (isFinite(audio.duration) && audio.duration > 0) {
-        audio.currentTime = (Number((e.target as HTMLInputElement).value) / 100) * audio.duration;
-        saveBookmark();
-      }
-    });
-
     /* ページめくり：タップ（小口側＝次／綴じ側＝前）とスワイプ。
        「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右） */
     let pDown: { x: number; y: number } | null = null;
@@ -914,30 +977,29 @@ export function createReader(book: BookData): Reader {
         const anchor = currentAnchorChar();
         if (paginateAll()) {
           curPage = pageForChar(PAGES[current], anchor);
-          if (!endShown) renderPage(0);
+          renderPage(0);
         }
       }, 250);
     });
 
+    /* 画面上にシークバーや時刻は出さない。ここでは、しおりの保存・Media Session への
+       位置同期・朗読位置へのページ追従だけを行う */
     audio.addEventListener('timeupdate', () => {
-      $('currentTime').textContent = fmt(audio.currentTime);
-      $('durationTime').textContent = fmt(audio.duration);
-      if (isFinite(audio.duration) && audio.duration > 0) {
-        $<HTMLInputElement>('progressBar').value = String((audio.currentTime / audio.duration) * 100);
-      }
       if (Math.floor(audio.currentTime) % 5 === 0) {
         saveBookmark();
         syncMediaPosition();
       }
       syncPageToAudio(false);
+      updateNowHighlight();
     });
     audio.addEventListener('seeked', () => {
       syncPageToAudio(true);
       syncMediaPosition();
+      updateNowHighlight();
     });
     audio.addEventListener('loadedmetadata', () => {
-      $('durationTime').textContent = fmt(audio.duration);
       syncMediaPosition();
+      if (pageSeekPending) applyPageSeek();
     });
     audio.addEventListener('play', updatePlayBtn);
     audio.addEventListener('play', syncMediaState);
@@ -963,7 +1025,8 @@ export function createReader(book: BookData): Reader {
       if (current < chapters.length - 1) {
         showGate(current + 1);
       } else {
-        showEndPage();
+        // 最終章の朗読が終わったら、最終ページ（「おわり」のあるページ）に留まる
+        syncPageToAudio(true);
         remove('bookmark');
         refreshResume();
         updatePlayBtn();
@@ -978,6 +1041,9 @@ export function createReader(book: BookData): Reader {
   const bgOn = load<boolean>('bg', true);
   $<HTMLInputElement>('bgToggle').checked = bgOn;
   document.body.classList.toggle('bg-off', !bgOn);
+  const hlOn = load<boolean>('hl', true);
+  $<HTMLInputElement>('hlToggle').checked = hlOn;
+  document.body.classList.toggle('hl-off', !hlOn);
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
@@ -989,26 +1055,6 @@ export function createReader(book: BookData): Reader {
   updateNav();
 
   return {
-    reloadSettings(): void {
-      speedIdx = speedIndexOf(load<number>('speed', 1.0));
-      audio.playbackRate = SPEEDS[speedIdx];
-      const on = load<boolean>('ruby', true);
-      $<HTMLInputElement>('rubyToggle').checked = on;
-      document.body.classList.toggle('ruby-off', !on);
-      const bg = load<boolean>('bg', true);
-      $<HTMLInputElement>('bgToggle').checked = bg;
-      document.body.classList.toggle('bg-off', !bg);
-      const bgm = load<boolean>('bgm', true);
-      $<HTMLInputElement>('bgmToggle').checked = bgm;
-      setBgmOn(bgm);
-      bgPlay = load<boolean>('bgplay', true);
-      $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
-      wakeLockOn = load<boolean>('wakelock', true);
-      $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
-      syncWakeLock();
-      updateNav();
-      refreshResume();
-    },
     goLastChapter(): void {
       if (chapters.length) showGate(chapters.length - 1);
     },

@@ -81,10 +81,11 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
   - 公開のたびに `version` を上げる。Service Worker のキャッシュ名は自動生成なので、手で合わせる番号はない。
   - `npm run check:dist` が `#version` の有無を確認する。
 - ユーザーデータは `src/storage.ts` 経由(`localStorage` を `try/catch` で囲む)。**保存キー名は変更しない**(記録が消える)。
-  - **保存データには版番号(`schemaVersion`、`src/backup.ts`)を持たせる。** 保存の形を変えるときは版を上げ、`src/storage.ts` の `migrate()` に移行処理を書く(キー名を変えたまま古い記録を捨てない)。
+  - **保存データには版番号(`schemaVersion`、`src/storage.ts` の `SCHEMA_VERSION`)を持たせる。** 保存の形を変えるときは版を上げ、`src/storage.ts` の `migrate()` に移行処理を書く(キー名を変えたまま古い記録を捨てない)。
   - **記録を残すアプリは、ファイルへの書き出し / 読み込みを用意する**(テンプレートの「記録のバックアップ」)。`localStorage` は、ブラウザの都合で消えることがある(特に iPhone)。読み込みは、別のアプリや新しすぎる版のファイルを、理由を示して断る。
+    - **例外（このアプリ）**：サウンド単行本は、納品される本に記録の持ち出し機能は不要というユーザー判断により、バックアップ機能を持たない（v1.5.0 で撤去、`src/backup.ts` は無い）。保存は localStorage のまま、データ形式・版番号の扱いは上のとおり。
 - **起動に失敗したときの復旧を用意する。** キャッシュ優先の Service Worker は、ファイルが食い違うと起動しなくなることがある。`public/boot.js`(メインとは別の普通のスクリプト)が、起動できなかったとき、キャッシュを消して読み込み直す(1回目は自動、2分以内の2回目は「なおす」ボタン)。保存データは消さない。**消すのは、このアプリの Service Worker とキャッシュだけ**(範囲を絞らないと、同じサイトのほかのアプリのキャッシュまで消える)。`src/main.ts` の最後で `window.__appStarted = true` にする。`npm run check:dist` が確認する。
-- **同じサイトに載るアプリ: 名前をアプリごとに別にする。** GitHub Pages では、すべてのアプリが同じサイト(`mmishina-art.github.io`)に載る。`localStorage`・`sessionStorage`・Service Worker・キャッシュは、サイトの単位で共有されるので、アプリの ID(`package.json` の `name`)を、保存データのキーの接頭辞(`src/storage.ts`)・バックアップの `app` 名(`src/backup.ts`)・復旧の範囲(`public/boot.js`)に使い、ほかのアプリと混ざらないようにする。**新しいアプリでは `name` を変え、テンプレート用の印 `"pwaTemplate": true` を `package.json` から削除する**(`npm run check:dist` が、どちらも確認する)。
+- **同じサイトに載るアプリ: 名前をアプリごとに別にする。** GitHub Pages では、すべてのアプリが同じサイト(`mmishina-art.github.io`)に載る。`localStorage`・`sessionStorage`・Service Worker・キャッシュは、サイトの単位で共有されるので、アプリの ID(`package.json` の `name`)を、保存データのキーの接頭辞(`src/storage.ts`)・復旧の範囲(`public/boot.js`)に使い、ほかのアプリと混ざらないようにする（このアプリにはバックアップが無いので、その分の分離は不要）。**新しいアプリでは `name` を変え、テンプレート用の印 `"pwaTemplate": true` を `package.json` から削除する**(`npm run check:dist` が、どちらも確認する)。
 - **外部のリソース(Web フォント、CDN のスクリプトなど)に頼らない。** オフラインで動かなくなるため。フォント・音・画像のファイルは、アプリの中に入れてキャッシュ対象(`vite.config.ts` の `globPatterns`)にし、ライセンスを README に書けば使ってよい。
 - **画像・音・問題文・文章は、自作するか、ライセンスを README に明記する。** 公開するアプリなので、あとで困らないようにする。
 - iPhone の安全領域(`env(safe-area-inset-*)`)を考慮する。
@@ -114,7 +115,7 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
 - 画面の確認やバランス調整のための、隠れた操作(`src/debug.ts`)。**バージョンの表示を続けて 5 回タップ**で切り替わり、オンのあいだだけ左下に操作パネル(DEBUG)が出る。「終了」で消える。
 - パネルの操作は、アプリごとに `src/main.ts` の `setupDebug(...)` に足す(例: 所持金を最大にする、すぐ勝つ、次の画面へ飛ぶ)。
 - **デバッグの操作を使った回は、記録を残さない**(ふつうに遊んだ記録と混ざらないように。テンプレートの `cheated`)。
-- オン/オフの保存キーは `<アプリID>.debug` で、記録(`<アプリID>-...`)とは別。バックアップには入らない。
+- オン/オフの保存キーは `<アプリID>.debug` で、記録(`<アプリID>-...`)とは別（このアプリにはバックアップ機能自体が無い）。バージョン表示（デバッグ入口）は v1.5.0 から表紙の右下隅に置く。
 - README に入り方を書く。
 
 ## 画面の確認

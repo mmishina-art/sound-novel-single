@@ -4,7 +4,7 @@ import { setupInstallGuide } from './install';
 import type { BookData } from './logic';
 import { setupUpdateBanner } from './pwa';
 import { createReader, type Reader } from './reader';
-import { exportBackup, importBackup, migrateStorage, requestPersist } from './storage';
+import { migrateStorage, requestPersist } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -15,29 +15,6 @@ const $ = <T extends HTMLElement>(id: string): T => {
 migrateStorage();
 
 let reader: Reader | null = null;
-
-$('backup-export').addEventListener('click', () => {
-  const blob = new Blob([exportBackup()], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${__APP_ID__}-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
-$<HTMLInputElement>('backup-import').addEventListener('change', async (e) => {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  const message = $('backup-message');
-  try {
-    const n = importBackup(await file.text());
-    reader?.reloadSettings();
-    message.textContent = `${n} 件の記録を読み込みました`;
-  } catch (err) {
-    message.textContent = err instanceof Error ? err.message : '読み込めませんでした';
-  }
-  input.value = '';
-});
 
 $('version').textContent = __APP_VERSION__;
 // デバッグモード: バージョンの表示を続けて 5 回タップで切り替え。

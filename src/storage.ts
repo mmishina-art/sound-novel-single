@@ -1,7 +1,9 @@
 // localStorage は使えない環境（プライベートブラウズなど）でもアプリが動くよう、必ず try/catch で囲む。
 // 保存キー名を変えると利用者の記録が消える。変えるときは移行処理を書くこと。
 
-import { SCHEMA_VERSION, createBackup, parseBackup } from './backup';
+/** 保存データの形（schemaVersion）。保存の形を変えるときは上げ、下の migrate() に移行処理を書く。
+    値は従来どおり 1（記録のバックアップ機能を外したときも、保存データの形式は変えていない）。 */
+export const SCHEMA_VERSION = 1;
 
 // 保存データのキーの接頭辞。GitHub Pages では、すべてのアプリが同じサイトに載り、localStorage を共有するので、
 // アプリごとに別の名前にする（package.json の name）。
@@ -88,26 +90,3 @@ export function migrateStorage(): void {
   }
 }
 
-// ---- バックアップ ----
-
-/** このアプリの保存データを、ファイルの中身（JSON の文字列）にする */
-export function exportBackup(): string {
-  const data: Record<string, string> = {};
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(`${PREFIX}-`)) data[key] = localStorage.getItem(key) ?? '';
-    }
-  } catch {
-    // 読めなければ空のバックアップになる
-  }
-  return createBackup(data);
-}
-
-/** バックアップの中身を保存する。おかしいファイルは例外（理由つき）で止める。保存した件数を返す。 */
-export function importBackup(text: string): number {
-  const data = parseBackup(text);
-  const keys = Object.keys(data).filter((k) => k.startsWith(`${PREFIX}-`));
-  for (const key of keys) localStorage.setItem(key, data[key]);
-  return keys.length;
-}
