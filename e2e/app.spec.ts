@@ -278,7 +278,7 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await openReader(page);
     const anim = page.locator('#pageAnim');
     await expect(anim).toHaveAttribute('data-chapter', '1');
-    await expect(anim.locator('.anim-rain')).toHaveCount(14); // 第一章は雨
+    await expect(anim.locator('.anim-rain')).toHaveCount(7); // 第一章は雨（v1.2.1で静か側に半減）
     await openMenuInReader(page);
     await page.locator('#tocFromMenuBtn').click();
     await page.locator('.toc-item').nth(1).click();
@@ -286,8 +286,8 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await page.locator('#gateView').click();
     await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
     await expect(anim).toHaveAttribute('data-chapter', '2');
-    await expect(anim.locator('.anim-rain')).toHaveCount(6); // 第二章は雨上がりでまばら
-    await expect(anim.locator('.anim-glint')).toHaveCount(3);
+    await expect(anim.locator('.anim-rain')).toHaveCount(4); // 第二章は雨上がりでさらにまばら
+    await expect(anim.locator('.anim-glint')).toHaveCount(2);
   });
 
   test('背景をオフにするとアニメーションの層も消える', async ({ page }) => {

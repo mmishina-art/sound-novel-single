@@ -369,7 +369,9 @@ export function createReader(book: BookData): Reader {
   /* ---------- 章背景のアニメーション ----------
      線画（--chapter-bg）の上に、章に合う小さな動きだけを重ねる（CSS の .page-anim 配下）。
      要素は章ごとに作り直す。配置は章番号で種をまいた決定的な乱数で決め、
-     開くたびに同じ景色になるようにしている */
+     開くたびに同じ景色になるようにしている。
+     静かさの基準（v1.2.1〜）: あくまで雰囲気。本文より主張しないよう、動きは薄く・
+     ゆっくり・少なくし、配置もページの端や隅の帯に寄せて本文の中央域は極力空ける */
   function buildPageAnim(idx: number): void {
     pageAnim.replaceChildren();
     pageAnim.dataset.chapter = String(idx + 1);
@@ -384,61 +386,64 @@ export function createReader(book: BookData): Reader {
       for (const [k, v] of Object.entries(styles)) el.style.setProperty(k, v);
       pageAnim.appendChild(el);
     };
+    // 水平位置を左右の端の帯（2〜24%／72〜97%）から選ぶ。本文の中央域には置かない
+    const edgeX = (): string => (rand() < 0.5 ? 2 + rand() * 22 : 72 + rand() * 25).toFixed(1) + '%';
     const rain = (count: number, dim: boolean, slow: boolean): void => {
       for (let i = 0; i < count; i++) {
         put('anim-rain' + (dim ? ' dim' : ''), {
-          left: (3 + rand() * 93).toFixed(1) + '%',
-          '--d': (slow ? 2.1 + rand() * 1.1 : 1.5 + rand() * 0.9).toFixed(2) + 's',
-          '--dl': (-rand() * 3).toFixed(2) + 's',
+          left: edgeX(),
+          '--d': (slow ? 3.6 + rand() * 1.6 : 2.7 + rand() * 1.2).toFixed(2) + 's',
+          '--dl': (-rand() * 5).toFixed(2) + 's',
         });
       }
     };
     const motes = (count: number): void => {
       for (let i = 0; i < count; i++) {
+        // 四隅まわりの帯に寄せる（横は端の帯、縦は上端か下端の帯）
         put('anim-mote', {
-          left: (6 + rand() * 88).toFixed(1) + '%',
-          top: (8 + rand() * 80).toFixed(1) + '%',
-          '--d': (7 + rand() * 5).toFixed(1) + 's',
-          '--dl': (-rand() * 6).toFixed(1) + 's',
-          '--dx': (rand() * 24 - 12).toFixed(0) + 'px',
-          '--dy': (-(10 + rand() * 16)).toFixed(0) + 'px',
+          left: edgeX(),
+          top: (rand() < 0.5 ? 6 + rand() * 22 : 64 + rand() * 26).toFixed(1) + '%',
+          '--d': (13 + rand() * 8).toFixed(1) + 's',
+          '--dl': (-rand() * 10).toFixed(1) + 's',
+          '--dx': (rand() * 14 - 7).toFixed(0) + 'px',
+          '--dy': (-(6 + rand() * 8)).toFixed(0) + 'px',
         });
       }
     };
     switch (idx) {
-      case 0: // 第一章：雨の日の古本屋。細い雨が静かに落ち続ける
-        rain(14, false, false);
+      case 0: // 第一章：雨の日の古本屋。細い雨が両端に静かに落ち続ける
+        rain(7, false, false);
         break;
-      case 1: // 第二章：雨上がり。雨はまばらで弱く、水たまりがかすかにきらめく
-        rain(6, true, true);
-        for (let i = 0; i < 3; i++) {
+      case 1: // 第二章：雨上がり。雨はさらにまばらで弱く、水たまりがかすかにきらめく
+        rain(4, true, true);
+        for (let i = 0; i < 2; i++) {
           put('anim-glint', {
-            left: (18 + rand() * 60).toFixed(1) + '%',
+            left: edgeX(),
             bottom: (4 + rand() * 4).toFixed(1) + '%',
-            '--d': (3.8 + rand() * 2).toFixed(1) + 's',
-            '--dl': (-rand() * 4).toFixed(1) + 's',
+            '--d': (7 + rand() * 3.5).toFixed(1) + 's',
+            '--dl': (-rand() * 7).toFixed(1) + 's',
           });
         }
         break;
-      case 2: // 第三章：本棚の埃のような粒が、ごくゆっくり漂う
-        motes(9);
+      case 2: // 第三章：本棚の埃のような粒が、隅のほうでごくゆっくり漂う
+        motes(5);
         break;
       case 3: // 第四章：封筒とメモのあたりで、光が静かにゆらぐ
-        put('anim-glow', { right: '4%', bottom: '3%', width: '58%', height: '27%', '--d': '8s' });
-        motes(3);
+        put('anim-glow', { right: '4%', bottom: '3%', width: '58%', height: '27%', '--d': '14s' });
+        motes(2);
         break;
       case 4: // 第五章：夕日の光がゆっくり明滅し、貼り紙がかすかに揺れる
-        put('anim-glow sunset', { right: '2%', bottom: '15%', width: '48%', height: '23%', '--d': '9.5s' });
+        put('anim-glow sunset', { right: '2%', bottom: '15%', width: '48%', height: '23%', '--d': '16s' });
         put('anim-sway', { left: '21%', bottom: '12.5%' });
         break;
       case 5: // 第六章：窓の光の帯がゆっくり揺れる
         put('anim-band', { bottom: '1%' });
-        motes(2);
+        motes(1);
         break;
       case 6: {
         // 第七章：雲がゆっくり流れ、鳥がときおり上部を横切る
-        put('anim-cloud', { left: '6%', top: '5%', width: '36%', '--d': '26s' });
-        put('anim-cloud', { right: '5%', top: '34%', width: '27%', '--d': '33s', '--dl': '-12s' });
+        put('anim-cloud', { left: '6%', top: '5%', width: '36%', '--d': '46s' });
+        put('anim-cloud', { right: '5%', top: '34%', width: '27%', '--d': '58s', '--dl': '-20s' });
         const bird = document.createElement('span');
         bird.className = 'anim-bird';
         setHtml(bird, BIRD_SVG);

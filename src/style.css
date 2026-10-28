@@ -368,27 +368,26 @@ body.bound-left .gate-text { left: 17%; }
 .read-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 9; background: rgba(201,184,122,.18); }
 .read-progress span { display: block; height: 100%; width: 0; background: var(--gold); transition: width .3s ease; }
 
-.page-wrap { position: relative; flex: 1; min-height: 0; margin: 12px 14px 14px; }
+.page-wrap { position: relative; flex: 1; min-height: 0; margin: 12px 14px 14px; --folio-band: 44px; }
 /* 1ページの紙。背（綴じ側）は右、 小口は左。
-   一番上の層は章ごとの背景イメージ（--chapter-bg、reader.ts が章ごとに差し込む。
-   背景オフのときは body.bg-off で紙だけに戻す） */
+   章ごとの背景イメージ（--chapter-bg、reader.ts が章ごとに差し込む）は ::before の
+   専用層に敷く。下端はノンブルの帯（--folio-band）の上で止め、ページ数の表示と
+   絵が重ならないようにする（本文の下余白42pxともほぼ揃う）。
+   背景オフのときは body.bg-off で ::before とアニメーション層を消し、紙だけに戻す */
 .page {
   position: absolute; inset: 0;
   background-image:
-    var(--chapter-bg, none),
     repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px),
     linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
-  background-size: cover, auto, auto;
-  background-position: center bottom, 0 0, 0 0;
-  background-repeat: no-repeat, repeat, repeat;
   overflow: hidden;
 }
-body.bg-off .page {
-  background-image:
-    none,
-    repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px),
-    linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
+.page::before { /* 章背景（線画）の専用層：ノンブルの帯には入り込まない */
+  content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: var(--folio-band);
+  background-image: var(--chapter-bg, none);
+  background-size: cover; background-position: center bottom; background-repeat: no-repeat;
+  pointer-events: none;
 }
+body.bg-off .page::before { display: none; }
 body.bound-right .page {
   border-radius: 6px 2px 2px 6px;
   box-shadow: 0 12px 28px rgba(0,0,0,.5), -2px 2px 0 0 #eae1c9, -4px 4px 0 0 #f3edda, -6px 6px 0 0 #e0d5b8;
@@ -410,8 +409,11 @@ body.bound-left .page::after {
    線画（--chapter-bg）の上に、章に合う小さな動きだけを重ねる。本文（.page-content）より
    下の層に置き、動きは transform / opacity のみ・要素数も最小限にして描画負荷を抑える。
    中身は reader.ts の buildPageAnim() が章ごとに作る（--d=周期、--dl=遅延、--dx/--dy=漂う量）。
-   背景オフ（body.bg-off）のときと、端末の「視覚効果を減らす」設定のときは層ごと出さない */
-.page-anim { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+   背景オフ（body.bg-off）のときと、端末の「視覚効果を減らす」設定のときは層ごと出さない。
+   濃さ・速さの基準（v1.2.1〜）: あくまで雰囲気であり、本文より主張してはいけない。
+   意識して見れば動いているのが分かるが、読んでいる間は視界に入ってこない水準に抑え、
+   迷ったら弱める側に倒す。各要素の実効最大不透明度は線画本体（0.30）以下を目安にする */
+.page-anim { position: absolute; top: 0; left: 0; right: 0; bottom: var(--folio-band, 44px); z-index: 0; overflow: hidden; pointer-events: none; }
 body.bg-off .page-anim { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .page-anim { display: none; }
@@ -419,93 +421,93 @@ body.bg-off .page-anim { display: none; }
 /* 雨：細い線が斜めに落ち続ける */
 .anim-rain {
   position: absolute; top: -56px; width: 2px; height: 38px; border-radius: 2px;
-  background: linear-gradient(to bottom, rgba(107,90,51,0), rgba(107,90,51,.5), rgba(107,90,51,0));
-  animation: animRain var(--d, 2s) linear var(--dl, 0s) infinite;
+  background: linear-gradient(to bottom, rgba(107,90,51,0), rgba(107,90,51,.3), rgba(107,90,51,0));
+  animation: animRain var(--d, 3.2s) linear var(--dl, 0s) infinite;
 }
 .anim-rain.dim { animation-name: animRainDim; }
 @keyframes animRain {
   0% { transform: translate3d(0, -12px, 0) rotate(14deg); opacity: 0; }
-  10% { opacity: .5; }
-  86% { opacity: .5; }
-  100% { transform: translate3d(-9dvh, 114dvh, 0) rotate(14deg); opacity: 0; }
+  10% { opacity: .42; }
+  86% { opacity: .42; }
+  100% { transform: translate3d(-6dvh, 114dvh, 0) rotate(14deg); opacity: 0; }
 }
 @keyframes animRainDim {
   0% { transform: translate3d(0, -12px, 0) rotate(14deg); opacity: 0; }
-  10% { opacity: .26; }
-  86% { opacity: .26; }
-  100% { transform: translate3d(-9dvh, 114dvh, 0) rotate(14deg); opacity: 0; }
+  10% { opacity: .17; }
+  86% { opacity: .17; }
+  100% { transform: translate3d(-6dvh, 114dvh, 0) rotate(14deg); opacity: 0; }
 }
 /* 埃のような粒・水たまりのきらめき */
 .anim-mote {
   position: absolute; width: 4px; height: 4px; border-radius: 50%;
-  background: rgba(150,124,66,.55);
-  animation: animMote var(--d, 9s) ease-in-out var(--dl, 0s) infinite alternate;
+  background: rgba(150,124,66,.38);
+  animation: animMote var(--d, 16s) ease-in-out var(--dl, 0s) infinite alternate;
 }
 @keyframes animMote {
-  from { transform: translate(0, 0); opacity: .16; }
-  to { transform: translate(var(--dx, 10px), var(--dy, -18px)); opacity: .5; }
+  from { transform: translate(0, 0); opacity: .1; }
+  to { transform: translate(var(--dx, 6px), var(--dy, -10px)); opacity: .28; }
 }
 .anim-glint {
   position: absolute; width: 5px; height: 5px; border-radius: 50%;
-  background: rgba(190,170,105,.6);
-  animation: animGlint var(--d, 4.6s) ease-in-out var(--dl, 0s) infinite;
+  background: rgba(190,170,105,.42);
+  animation: animGlint var(--d, 8s) ease-in-out var(--dl, 0s) infinite;
 }
 @keyframes animGlint {
-  0%, 100% { opacity: .05; transform: scale(.7); }
-  50% { opacity: .55; transform: scale(1.15); }
+  0%, 100% { opacity: .04; transform: scale(.7); }
+  50% { opacity: .3; transform: scale(1.1); }
 }
 /* 光のゆらぎ（封筒・メモのあたり、夕日） */
 .anim-glow {
   position: absolute; border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(222,196,120,.34), rgba(222,196,120,0) 68%);
-  animation: animGlow var(--d, 8s) ease-in-out var(--dl, 0s) infinite alternate;
+  background: radial-gradient(ellipse at center, rgba(222,196,120,.22), rgba(222,196,120,0) 68%);
+  animation: animGlow var(--d, 14s) ease-in-out var(--dl, 0s) infinite alternate;
 }
-.anim-glow.sunset { background: radial-gradient(ellipse at center, rgba(226,164,92,.42), rgba(226,164,92,0) 68%); }
+.anim-glow.sunset { background: radial-gradient(ellipse at center, rgba(226,164,92,.27), rgba(226,164,92,0) 68%); }
 @keyframes animGlow {
-  from { opacity: .45; transform: scale(1); }
-  to { opacity: .85; transform: scale(1.07); }
+  from { opacity: .3; transform: scale(1); }
+  to { opacity: .5; transform: scale(1.05); }
 }
 /* 貼り紙のかすかな揺れ（上端を留め具にして） */
 .anim-sway {
   position: absolute; width: 15px; height: 19px; border-radius: 2px;
-  border: 1.5px solid rgba(107,90,51,.4); background: rgba(255,253,246,.35);
+  border: 1.5px solid rgba(107,90,51,.3); background: rgba(255,253,246,.25);
   transform-origin: 50% 0;
-  animation: animSway 5.6s ease-in-out infinite alternate;
+  animation: animSway 10s ease-in-out infinite alternate;
 }
 @keyframes animSway {
-  from { transform: rotate(-2.2deg); }
-  to { transform: rotate(1.6deg); }
+  from { transform: rotate(-1.1deg); }
+  to { transform: rotate(0.8deg); }
 }
 /* 窓の光の帯：ゆっくり左右に揺れる */
 .anim-band {
   position: absolute; left: -18%; width: 136%; height: 36%;
-  background: linear-gradient(100deg, rgba(201,184,122,0) 22%, rgba(201,184,122,.13) 48%, rgba(201,184,122,.2) 55%, rgba(201,184,122,0) 80%);
-  animation: animBand 9.5s ease-in-out infinite alternate;
+  background: linear-gradient(100deg, rgba(201,184,122,0) 22%, rgba(201,184,122,.08) 48%, rgba(201,184,122,.13) 55%, rgba(201,184,122,0) 80%);
+  animation: animBand 17s ease-in-out infinite alternate;
 }
 @keyframes animBand {
-  from { transform: rotate(-7deg) translateX(-14px); opacity: .7; }
-  to { transform: rotate(-7deg) translateX(16px); opacity: 1; }
+  from { transform: rotate(-7deg) translateX(-8px); opacity: .5; }
+  to { transform: rotate(-7deg) translateX(9px); opacity: .72; }
 }
 /* 雲：ゆっくり流れる */
 .anim-cloud {
   position: absolute; height: 9%; border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(255,254,248,.8), rgba(255,254,248,0) 70%);
-  animation: animCloud var(--d, 26s) ease-in-out var(--dl, 0s) infinite alternate;
+  background: radial-gradient(ellipse at center, rgba(255,254,248,.58), rgba(255,254,248,0) 70%);
+  animation: animCloud var(--d, 46s) ease-in-out var(--dl, 0s) infinite alternate;
 }
 @keyframes animCloud {
-  from { transform: translateX(-18px); }
-  to { transform: translateX(36px); }
+  from { transform: translateX(-10px); }
+  to { transform: translateX(20px); }
 }
-/* 鳥：ときおり上部を横切る（36秒周期のうち、横切るのは初めの約8秒だけ） */
+/* 鳥：ときおり上部を横切る（60秒周期のうち、横切るのは初めの約12秒だけ） */
 .anim-bird {
   position: absolute; top: 10%; left: 0; width: 46px; opacity: 0;
-  animation: animBird 36s linear infinite;
+  animation: animBird 60s linear infinite;
 }
-.anim-bird svg { display: block; width: 100%; height: auto; animation: animBob 1.6s ease-in-out infinite alternate; }
+.anim-bird svg { display: block; width: 100%; height: auto; animation: animBob 2.8s ease-in-out infinite alternate; }
 @keyframes animBird {
   0% { transform: translateX(-64px); opacity: 0; }
-  3% { opacity: .32; }
-  20% { transform: translateX(105dvw); opacity: .32; }
+  3% { opacity: .2; }
+  20% { transform: translateX(105dvw); opacity: .2; }
   23%, 100% { transform: translateX(105dvw); opacity: 0; }
 }
 @keyframes animBob {
