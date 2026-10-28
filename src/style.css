@@ -259,7 +259,12 @@ button.link {
    姉妹アプリ『サウンドノベル』本棚の表紙と同言語：綴じ側に背の陰影、
    角丸は小口側を大きく、綴じ側を小さくする */
 .book-cover {
-  position: relative; display: block; width: min(88vw, 420px); aspect-ratio: 3/4;
+  /* 縦横比は四六判（127mm × 188mm）と同じ 127:188。
+     幅の3つ目は高さの上限ガード：表紙の高さが 100dvh - 190px を超えない幅
+     （(100dvh - 190px) × 127/188 = 67.55dvh - 128px）で、ヒント文や
+     操作ボタンまで含めて画面内に収める */
+  position: relative; display: block;
+  width: min(88vw, 420px, calc(67.55dvh - 128px)); aspect-ratio: 127/188;
   overflow: hidden; background: #10182b;
   container-type: inline-size;
 }
@@ -343,19 +348,43 @@ body.bound-left .gate-text { left: 17%; }
 .gate-hint { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; margin: 0; font-size: .78rem; color: #a3936d; letter-spacing: .25em; }
 
 /* ============ Reader — 机の上に開いた右綴じの本 ============ */
-.view-reader { height: 100dvh; background: radial-gradient(ellipse at 50% 20%, var(--desk2), var(--desk) 78%); display: flex; flex-direction: column; }
-.reader-header { position: relative; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: max(10px, var(--safe-top)) 12px 10px; background: rgba(253,250,240,.97); border-bottom: 1px solid #e2dcc8; }
+/* 操作UI（.chrome）は普段は隠れ、中央タップで上下にうっすら浮かび上がる。
+   常時見えるのは下端の進み具合ラインだけ。本文ページは画面いっぱいに取る */
+.view-reader { position: relative; height: 100dvh; background: radial-gradient(ellipse at 50% 20%, var(--desk2), var(--desk) 78%); display: flex; flex-direction: column; }
+.reader-header { position: absolute; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: max(10px, var(--safe-top)) 12px 10px; background: rgba(253,250,240,.94); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-bottom: 1px solid #e2dcc8; }
 .reader-chapter-label { flex: 1; text-align: center; font-size: .9rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toggle-label { font-size: .85rem; display: flex; align-items: center; gap: 4px; white-space: nowrap; min-height: 44px; }
+.chrome { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s; }
+.chrome-top { transform: translateY(-8px); }
+.chrome-bottom { transform: translateY(8px); }
+.view-reader.chrome-on .chrome { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition: opacity .25s ease, transform .25s ease; }
+/* ページの数字（ノンブル・章内位置）も、操作表示中だけ出す */
+.folio, .folio-chapter { transition: opacity .25s ease; }
+.view-reader:not(.chrome-on) .folio, .view-reader:not(.chrome-on) .folio-chapter { opacity: 0; }
+/* 進み具合：画面下端の極細ライン（本全体のページ位置） */
+.read-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 9; background: rgba(201,184,122,.18); }
+.read-progress span { display: block; height: 100%; width: 0; background: var(--gold); transition: width .3s ease; }
 
 .page-wrap { position: relative; flex: 1; min-height: 0; margin: 12px 14px 14px; }
-/* 1ページの紙。背（綴じ側）は右、 小口は左 */
+/* 1ページの紙。背（綴じ側）は右、 小口は左。
+   一番上の層は章ごとの背景イメージ（--chapter-bg、reader.ts が章ごとに差し込む。
+   背景オフのときは body.bg-off で紙だけに戻す） */
 .page {
   position: absolute; inset: 0;
-  background:
+  background-image:
+    var(--chapter-bg, none),
     repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px),
     linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
+  background-size: cover, auto, auto;
+  background-position: center bottom, 0 0, 0 0;
+  background-repeat: no-repeat, repeat, repeat;
   overflow: hidden;
+}
+body.bg-off .page {
+  background-image:
+    none,
+    repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px),
+    linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
 }
 body.bound-right .page {
   border-radius: 6px 2px 2px 6px;
@@ -404,13 +433,7 @@ body.bound-left .page.turn-prev { animation: turnFromLeft .18s ease-out; }
 .folio-chapter { position: absolute; bottom: 11px; z-index: 2; font-size: .72rem; letter-spacing: .14em; color: #b0a077; pointer-events: none; }
 body.bound-right .folio-chapter { left: 38px; }
 body.bound-left .folio-chapter { right: 38px; }
-.turn-hint { position: absolute; bottom: 9px; z-index: 2; font-size: .78rem; color: #b3a67f; pointer-events: none; animation: hintPulse 1.8s ease-in-out infinite; }
-/* 次ページの合図は小口側、前ページの合図は綴じ側 */
-body.bound-right .hint-next { left: 14px; }
-body.bound-right .hint-prev { right: 16px; }
-body.bound-left .hint-next { right: 14px; }
-body.bound-left .hint-prev { left: 16px; }
-@keyframes hintPulse { 0%, 100% { opacity: .3; } 50% { opacity: .85; } }
+/* ページ送りの合図（常設の矢印）は置かない。送りはタップ／スワイプ、操作は中央タップで出す */
 
 /* 最終ページ（おわり） */
 .end-page { display: flex; align-items: center; justify-content: center; }
@@ -418,8 +441,8 @@ body.bound-left .hint-prev { left: 16px; }
 .end-mark { font-size: 1.6rem; letter-spacing: .5em; margin: 0 0 14px; color: #1b2a4a; }
 .end-sub { color: #555; font-size: .9rem; line-height: 1.9; margin: 0 0 20px; }
 
-/* Player */
-.player { position: relative; z-index: 5; background: #fffdf6; border-top: 1px solid #ddd6c2; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }
+/* Player（下部オーバーレイ） */
+.player { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255,253,246,.96); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-top: 1px solid #ddd6c2; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }
 .audio-error { color: #a33; background: #fdf0f0; border: 1px solid #e8bcbc; border-radius: 8px; padding: 6px 10px; font-size: .85rem; margin: 0 0 8px; text-align: center; }
 .progress-row { display: flex; align-items: center; gap: 10px; }
 .time-label { font-size: .8rem; font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: center; color: #444; }
@@ -439,3 +462,17 @@ body.bound-left .hint-prev { left: 16px; }
 .toc-item .toc-title { font-size: 1.05rem; display: block; margin: 2px 0; }
 .toc-item .toc-narr { font-size: .85rem; color: #666; }
 .toc-item.current { background: #f3efe2; border-radius: 8px; }
+
+/* メニューモーダル：機能の入口をここに集約する */
+.menu-panel .menu-section { margin-top: 16px; }
+.menu-panel .menu-section h4 { margin: 0 0 6px; font-size: .92rem; color: #6a6252; letter-spacing: .08em; }
+.menu-wide { width: 100%; margin-bottom: 6px; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 4px 2px; font-size: .95rem; }
+.menu-row.toggle-label { font-size: .95rem; }
+.menu-row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--navy); }
+.menu-panel .backup { width: 100%; margin-top: 4px; }
+.menu-panel .link { margin: 10px 0 0; color: var(--navy); }
+.menu-panel .version { text-align: left; margin: 12px 0 0; color: var(--muted); }
+
+/* 表紙の「設定」入口：表紙そのものを中心にするため、目立たない小さな文字ボタンにする */
+.cover-settings { background: transparent; border: 1px solid rgba(201,189,160,.4); color: var(--desk-text); border-radius: 999px; padding: .3em 1.3em; font-size: .82rem; letter-spacing: .18em; opacity: .8; margin-top: 2px; }

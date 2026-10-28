@@ -55,10 +55,8 @@ export function createReader(book: BookData): Reader {
   const endView = $('endView');
   const audio = $<HTMLAudioElement>('audioEl');
   const audioError = $('audioError');
-  const hintNext = document.querySelector<HTMLElement>('.hint-next');
-  const hintPrev = document.querySelector<HTMLElement>('.hint-prev');
-  if (hintNext) hintNext.textContent = DIR.nextSide === 'left' ? '◀' : '▶';
-  if (hintPrev) hintPrev.textContent = DIR.nextSide === 'left' ? '▶' : '◀';
+  const headerEl = document.querySelector<HTMLElement>('.reader-header');
+  const playerEl = document.querySelector<HTMLElement>('.player');
 
   /* ---- 状態 ---- */
   let current = 0;
@@ -91,6 +89,33 @@ export function createReader(book: BookData): Reader {
     gateView.hidden = name !== 'gate';
     readerView.hidden = name !== 'reader';
     window.scrollTo(0, 0);
+  }
+
+  /* ---------- 操作UI（クローム）の表示・自動消去 ----------
+     普段は本文だけ。中央タップで出し、数秒で消える。モーダルを開いている間は消さない */
+  let chromeTimer: ReturnType<typeof setTimeout> | undefined;
+  function showChrome(autoHide = true): void {
+    readerView.classList.add('chrome-on');
+    if (chromeTimer !== undefined) clearTimeout(chromeTimer);
+    chromeTimer = undefined;
+    if (autoHide) chromeTimer = setTimeout(hideChrome, 3500);
+  }
+  function hideChrome(): void {
+    readerView.classList.remove('chrome-on');
+    if (chromeTimer !== undefined) clearTimeout(chromeTimer);
+    chromeTimer = undefined;
+  }
+  function toggleChrome(): void {
+    if (readerView.classList.contains('chrome-on')) hideChrome();
+    else showChrome();
+  }
+  function openMenu(): void {
+    showChrome(false);
+    $('menuModal').hidden = false;
+  }
+  function closeMenu(): void {
+    $('menuModal').hidden = true;
+    if (!readerView.hidden) showChrome();
   }
   function audioSrc(idx: number): string {
     return 'book/audio/ch' + (idx + 1) + '.mp3';
@@ -220,13 +245,7 @@ export function createReader(book: BookData): Reader {
     $('pageFolio').textContent = '― ' + bookPageOf(current, curPage) + ' ―';
     $('pageChapterPos').textContent = curPage + 1 + ' / ' + pages.length;
     $('readerChapterLabel').textContent = ch.num + ' ' + ch.title;
-    if (hintNext) {
-      hintNext.style.visibility =
-        current === chapters.length - 1 && curPage === pages.length - 1 && endShown ? 'hidden' : 'visible';
-    }
-    if (hintPrev) {
-      hintPrev.style.visibility = current === 0 && curPage === 0 && !endShown ? 'hidden' : 'visible';
-    }
+    $('readProgressFill').style.width = TOTAL_PAGES ? (bookPageOf(current, curPage) / TOTAL_PAGES) * 100 + '%' : '0%';
     if (animDir) {
       pageEl.classList.remove('turn-next', 'turn-prev');
       void pageEl.offsetWidth;
@@ -238,6 +257,7 @@ export function createReader(book: BookData): Reader {
     pageEl.hidden = true;
     endView.hidden = false;
     $('readerChapterLabel').textContent = chapters[current].num + ' ' + chapters[current].title;
+    $('readProgressFill').style.width = '100%';
   }
   function hideEndPage(): void {
     endShown = false;
@@ -365,6 +385,11 @@ export function createReader(book: BookData): Reader {
     gateTimer = setTimeout(start, 1800);
   }
   function layoutChapter(opts: EnterOptions): void {
+    // 章ごとの背景イメージを差し込む（オフ設定のときは CSS 側で紙だけになる）。
+    // URL は文書基準の絶対URLにする（CSS 変数経由の url() はスタイルシート基準で
+    // 解決されてしまい、dist の assets/ から見た相対パスでは画像に届かないため）
+    const bgUrl = new URL('book/bg/ch' + (current + 1) + '.svg', document.baseURI).href;
+    pageWrap.style.setProperty('--chapter-bg', 'url("' + bgUrl + '")');
     // リーダーが表示された状態でページ割りをする
     if (!PAGES.length || sizeKeyNow() !== pageSizeKey) paginateAll();
     if (!PAGES.length) return;
@@ -380,6 +405,7 @@ export function createReader(book: BookData): Reader {
     current = idx;
     enterStamp = Date.now();
     showView('reader');
+    showChrome();
     audio.src = audioSrc(idx);
     audio.playbackRate = SPEEDS[speedIdx];
     setPreservesPitch();
@@ -451,6 +477,7 @@ export function createReader(book: BookData): Reader {
   function goCover(): void {
     audio.pause();
     saveBookmark();
+    hideChrome();
     showView('cover');
     refreshResume();
   }
@@ -496,9 +523,18 @@ export function createReader(book: BookData): Reader {
     $('tocFromCoverBtn').addEventListener('click', () => {
       $('tocModal').hidden = false;
     });
-    $('tocBtn').addEventListener('click', () => {
+    /* メニュー（入口は読書画面の「メニュー」と表紙の「設定」の2か所、中身は1つ） */
+    $('menuBtn').addEventListener('click', openMenu);
+    $('settingsFromCoverBtn').addEventListener('click', openMenu);
+    $('menuCloseBtn').addEventListener('click', closeMenu);
+    $('menuBackdrop').addEventListener('click', closeMenu);
+    $('tocFromMenuBtn').addEventListener('click', () => {
+      closeMenu();
       $('tocModal').hidden = false;
     });
+    /* 操作UIに触れている間は、自動消去のタイマーを仕切り直す */
+    if (headerEl) headerEl.addEventListener('pointerdown', () => showChrome());
+    if (playerEl) playerEl.addEventListener('pointerdown', () => showChrome());
     $('tocCloseBtn').addEventListener('click', () => {
       $('tocModal').hidden = true;
     });
@@ -531,6 +567,11 @@ export function createReader(book: BookData): Reader {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('ruby-off', !checked);
       save('ruby', checked);
+    });
+    $<HTMLInputElement>('bgToggle').addEventListener('change', (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      document.body.classList.toggle('bg-off', !checked);
+      save('bg', checked);
     });
     $<HTMLInputElement>('progressBar').addEventListener('input', (e) => {
       if (isFinite(audio.duration) && audio.duration > 0) {
@@ -566,6 +607,7 @@ export function createReader(book: BookData): Reader {
       const onPrevSide = DIR.nextSide === 'left' ? ratio > 0.58 : ratio < 0.42;
       if (onNextSide) turnPage(1);
       else if (onPrevSide) turnPage(-1);
+      else toggleChrome(); // 中央タップは操作UIの表示・非表示
     });
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
@@ -636,6 +678,9 @@ export function createReader(book: BookData): Reader {
   const rubyOn = load<boolean>('ruby', true);
   $<HTMLInputElement>('rubyToggle').checked = rubyOn;
   document.body.classList.toggle('ruby-off', !rubyOn);
+  const bgOn = load<boolean>('bg', true);
+  $<HTMLInputElement>('bgToggle').checked = bgOn;
+  document.body.classList.toggle('bg-off', !bgOn);
   buildToc();
   bind();
   refreshResume();
@@ -649,6 +694,9 @@ export function createReader(book: BookData): Reader {
       const on = load<boolean>('ruby', true);
       $<HTMLInputElement>('rubyToggle').checked = on;
       document.body.classList.toggle('ruby-off', !on);
+      const bg = load<boolean>('bg', true);
+      $<HTMLInputElement>('bgToggle').checked = bg;
+      document.body.classList.toggle('bg-off', !bg);
       updateNav();
       refreshResume();
     },

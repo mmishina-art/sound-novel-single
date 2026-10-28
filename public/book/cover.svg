@@ -1,8 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" width="600" height="800" role="img" aria-label="空の郵便が届くまで 表紙">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 0 540 800" width="540" height="800" role="img" aria-label="空の郵便が届くまで 表紙">
+  <!-- viewBox は四六判の比率（127:188 ≒ 540:800）に合わせ、元の画を中央で切り取る。
+       金枠は切り取り後の内側（左右18/28）に置く -->
   <!-- background navy -->
-  <rect width="600" height="800" fill="#1b2a4a"/>
-  <rect x="18" y="18" width="564" height="764" fill="none" stroke="#c9b87a" stroke-width="2"/>
-  <rect x="28" y="28" width="544" height="744" fill="none" stroke="#c9b87a" stroke-width="0.8" opacity="0.6"/>
+  <rect x="30" width="540" height="800" fill="#1b2a4a"/>
+  <rect x="48" y="18" width="504" height="764" fill="none" stroke="#c9b87a" stroke-width="2"/>
+  <rect x="58" y="28" width="484" height="744" fill="none" stroke="#c9b87a" stroke-width="0.8" opacity="0.6"/>
 
   <!-- rain lines -->
   <g stroke="#7aa0c8" stroke-width="1.6" stroke-linecap="round" opacity="0.55">

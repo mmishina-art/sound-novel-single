@@ -19,7 +19,16 @@ const openReader = async (page) => {
 const SCREENS = [
   { name: 'cover' },
   { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#coverTap'); } },
+  // page1 は操作UIが出ている状態、page-clean は自動で消えたあとの本文だけの状態
   { name: 'page1', open: openReader },
+  {
+    name: 'page-clean',
+    open: async (page) => {
+      await openReader(page);
+      await page.waitForSelector('#readerView:not(.chrome-on)', { timeout: 10000 });
+      await page.waitForTimeout(300);
+    },
+  },
   {
     name: 'page2',
     open: async (page) => {
@@ -30,8 +39,16 @@ const SCREENS = [
       await page.waitForTimeout(300);
     },
   },
-  { name: 'install', open: async (page) => page.click('#install-open') },
-  { name: 'backup', open: async (page) => page.click('.backup summary') },
+  {
+    name: 'menu',
+    open: async (page) => {
+      await openReader(page);
+      await page.click('#menuBtn');
+    },
+  },
+  // 管理系はメニュー（表紙の「設定」）の中に集約した
+  { name: 'install', open: async (page) => { await page.click('#settingsFromCoverBtn'); await page.click('#install-open'); } },
+  { name: 'backup', open: async (page) => { await page.click('#settingsFromCoverBtn'); await page.click('.backup summary'); } },
 ];
 
 /** 撮る大きさ。このアプリは暗い固定配色なので、ダークモードの撮り分けはしない。 */

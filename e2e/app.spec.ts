@@ -13,6 +13,29 @@ async function openReader(page: import('@playwright/test').Page): Promise<void> 
   await expect(page.locator('#pageFolio')).not.toHaveText('');
 }
 
+/** 操作UI（クローム）が消えているときだけ、中央タップで出す */
+async function ensureChrome(page: import('@playwright/test').Page): Promise<void> {
+  if ((await page.locator('#readerView.chrome-on').count()) === 0) {
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
+  }
+}
+
+/** 読書画面からメニューを開く */
+async function openMenuInReader(page: import('@playwright/test').Page): Promise<void> {
+  await ensureChrome(page);
+  await page.locator('#menuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+}
+
+/** 表紙からメニュー（設定）を開く */
+async function openMenuOnCover(page: import('@playwright/test').Page): Promise<void> {
+  await page.locator('#settingsFromCoverBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+}
+
 test('表紙が開き、タイトルと著者が見える', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#coverView')).toBeVisible();
@@ -60,6 +83,7 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   if (!box) throw new Error('pageWrap not found');
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await ensureChrome(page);
   await page.locator('#toCoverBtn').click();
   await expect(page.locator('#coverView')).toBeVisible();
   await expect(page.locator('#resumeBtn')).toBeVisible();
@@ -70,6 +94,7 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
 
 test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
   await openReader(page);
+  await openMenuInReader(page);
   const btn = page.locator('#speedBtn');
   await expect(btn).toHaveText('1.0×');
   await btn.click();
@@ -79,8 +104,35 @@ test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
 test('フリガナのオン/オフが切り替わる', async ({ page }) => {
   await openReader(page);
   await expect(page.locator('body')).not.toHaveClass(/ruby-off/);
+  await openMenuInReader(page);
   await page.locator('#rubyToggle').click();
   await expect(page.locator('body')).toHaveClass(/ruby-off/);
+});
+
+test('中央タップで操作UIの表示・非表示が切り替わり、放っておくと消える', async ({ page }) => {
+  await openReader(page);
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  const cx = box.x + box.width * 0.5;
+  const cy = box.y + box.height * 0.5;
+  await page.mouse.click(cx, cy); // 表示中 → 消える
+  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+  await expect(page.locator('#toCoverBtn')).toBeHidden();
+  await page.mouse.click(cx, cy); // 消えている → 出る
+  await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
+  await expect(page.locator('#toCoverBtn')).toBeVisible();
+  // 数秒で自動的に消える
+  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/, { timeout: 8000 });
+});
+
+test('背景イメージのオン/オフが切り替わる', async ({ page }) => {
+  await openReader(page);
+  await expect(page.locator('body')).not.toHaveClass(/bg-off/); // 既定はオン
+  await openMenuInReader(page);
+  await page.locator('#bgToggle').click();
+  await expect(page.locator('body')).toHaveClass(/bg-off/);
+  await page.locator('#bgToggle').click();
+  await expect(page.locator('body')).not.toHaveClass(/bg-off/);
 });
 
 test('manifest と Service Worker が使える', async ({ page }) => {
@@ -110,6 +162,7 @@ test('更新バナーは「あとで」で閉じられる', async ({ page }) => 
 
 test('最初の画面からインストール方法を開ける（使っている端末の説明が開いている）', async ({ page }) => {
   await page.goto('/');
+  await openMenuOnCover(page);
   await page.getByRole('button', { name: /インストールする方法/ }).click();
   const dialog = page.locator('#install-dialog');
   await expect(dialog).toBeVisible();
@@ -130,7 +183,9 @@ test('記録をファイルに書き出し、消えたあとに読み込んで�
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await ensureChrome(page);
   await page.locator('#toCoverBtn').click();
+  await openMenuOnCover(page);
   await page.getByText('記録のバックアップ').click();
 
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'ファイルに書き出す' }).click()]);
@@ -144,6 +199,7 @@ test('記録をファイルに書き出し、消えたあとに読み込んで�
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#resumeBtn')).toBeHidden();
+  await openMenuOnCover(page);
   await page.getByText('記録のバックアップ').click();
   await page.locator('#backup-import').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(text) });
   await expect(page.locator('#resumeBtn')).toBeVisible();
@@ -152,6 +208,7 @@ test('記録をファイルに書き出し、消えたあとに読み込んで�
 
 test('おかしいバックアップファイルは、理由を表示して読み込まない', async ({ page }) => {
   await page.goto('/');
+  await openMenuOnCover(page);
   await page.getByText('記録のバックアップ').click();
   await page.locator('#backup-import').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"other"}') });
   await expect(page.locator('#backup-message')).toContainText('このアプリのバックアップではありません');
@@ -188,6 +245,7 @@ test('デバッグモード: バージョンを 5 回タップで操作パネル
   await page.goto('/');
   const panel = page.locator('#debug-panel');
   await expect(panel).toBeHidden();
+  await openMenuOnCover(page);
   for (let i = 0; i < 5; i++) await page.locator('#version-line').click();
   await expect(panel).toBeVisible();
   await page.getByRole('button', { name: '最終章の扉へ飛ぶ' }).click();

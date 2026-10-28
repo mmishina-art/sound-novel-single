@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第七章の背景：青空と郵便">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.30">
+    <!-- 太陽（左上） -->
+    <g stroke-width="1.8">
+      <circle cx="96" cy="102" r="26"/>
+      <line x1="96" y1="56" x2="96" y2="68"/><line x1="96" y1="136" x2="96" y2="148"/>
+      <line x1="50" y1="102" x2="62" y2="102"/><line x1="130" y1="102" x2="142" y2="102"/>
+      <line x1="64" y1="70" x2="72" y2="78"/><line x1="120" y1="126" x2="128" y2="134"/>
+      <line x1="128" y1="70" x2="120" y2="78"/><line x1="72" y1="126" x2="64" y2="134"/>
+    </g>
+    <!-- 郵便を運ぶ鳥（上部・左寄り。章の冒頭ページは右半分に本文が寄るため） -->
+    <g transform="translate(215,300)">
+      <path d="M -78 18 Q -30 -38 28 -22 Q 62 -52 88 -30 Q 48 -18 38 2 Q 70 8 78 28 Q 38 22 10 34 Q -28 52 -58 40 Q -30 28 -78 18 Z"/>
+      <g transform="translate(38,44) rotate(-8)">
+        <rect x="-26" y="-14" width="52" height="32" rx="2"/>
+        <path d="M -26 -14 L 0 6 L 26 -14" stroke-width="1.6"/>
+      </g>
+    </g>
+    <!-- 雲（下部） -->
+    <g transform="translate(0,540)" stroke-width="2">
+      <path d="M 60 668 A 30 30 0 0 1 108 650 A 38 38 0 0 1 176 640 A 30 30 0 0 1 214 668 Z"/>
+      <path d="M 356 700 A 26 26 0 0 1 398 684 A 34 34 0 0 1 458 676 A 26 26 0 0 1 490 700 Z"/>
+      <path d="M 448 560 A 20 20 0 0 1 482 548 A 26 26 0 0 1 528 542 A 20 20 0 0 1 552 560 Z" stroke-width="1.7"/>
+    </g>
+  </g>
+</svg>

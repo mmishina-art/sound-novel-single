@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第二章の背景：忘れ物の傘と雨上がり">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.30">
+    <!-- 雨上がりの日差し（右上） -->
+    <g stroke-width="1.8">
+      <path d="M 452 118 A 44 44 0 0 1 540 118"/>
+      <line x1="496" y1="48" x2="496" y2="66"/><line x1="438" y1="66" x2="450" y2="80"/>
+      <line x1="554" y1="66" x2="542" y2="80"/><line x1="420" y1="118" x2="438" y2="118"/>
+      <line x1="554" y1="118" x2="572" y2="118"/>
+    </g>
+    <!-- まばらな雨（左上、上がりかけ） -->
+    <g stroke-width="1.8">
+      <line x1="92" y1="70" x2="84" y2="96"/><line x1="150" y1="120" x2="142" y2="146"/>
+      <line x1="70" y1="190" x2="62" y2="216"/>
+    </g>
+    <!-- 開いた傘（下部） -->
+    <g transform="translate(300,1000)">
+      <path d="M -148 118 A 148 148 0 0 1 148 118 Q 111 96 74 118 Q 37 96 0 118 Q -37 96 -74 118 Q -111 96 -148 118 Z"/>
+      <line x1="0" y1="-30" x2="0" y2="118"/>
+      <path d="M 0 118 L 0 168 Q 0 192 -22 192 Q -42 192 -42 174"/>
+      <path d="M -148 118 L 0 44 L 148 118" stroke-width="1.6"/>
+      <path d="M -74 118 L 0 44 L 74 118" stroke-width="1.6"/>
+    </g>
+    <!-- 水たまり -->
+    <ellipse cx="300" cy="1252" rx="176" ry="9" fill="#1b2a4a" stroke="none" fill-opacity="0.06"/>
+    <ellipse cx="392" cy="1252" rx="54" ry="4" fill="#1b2a4a" stroke="none" fill-opacity="0.06"/>
+  </g>
+</svg>
