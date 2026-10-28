@@ -79,6 +79,20 @@ const SCREENS = [
     },
   },
   {
+    name: 'sentence',
+    open: async (page) => {
+      await openReader(page);
+      const box = await page.locator('#pageWrap').boundingBox();
+      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
+      await page.click('#menuBtn');
+      await page.click('#displayModeBtn');
+      await page.click('#menuCloseBtn');
+      await page.waitForSelector('.unit.now', { timeout: 10000 });
+      await page.waitForTimeout(200);
+    },
+  },
+  {
     name: 'final-page',
     open: async (page) => {
       await waitBook(page);

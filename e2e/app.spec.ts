@@ -292,6 +292,35 @@ test('朗読中の文が1つだけ強調される', async ({ page }) => {
   await expect(page.locator('.unit.now')).toHaveCount(1, { timeout: 8000 });
 });
 
+test('表示方式をセンテンス形式に切り替えると2〜3文の塊になり、位置が保たれる', async ({ page }) => {
+  await openReader(page);
+  const pageUnits = await page.locator('#pageContent .unit').count();
+  expect(pageUnits).toBeGreaterThan(3); // ページ形式は1ページに多数の文
+  await openMenuInReader(page);
+  const btn = page.locator('#displayModeBtn');
+  await expect(btn).toHaveText('ページ形式');
+  await btn.click();
+  await expect(btn).toHaveText('センテンス形式');
+  await page.locator('#menuCloseBtn').click();
+  const blockUnits = await page.locator('#pageContent .unit').count();
+  expect(blockUnits).toBeGreaterThanOrEqual(1);
+  expect(blockUnits).toBeLessThanOrEqual(3); // センテンス形式は1画面に2〜3文
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+  // 塊単位の送りでも、音声がその塊へ追従する（ページ主導の仕様と同型）
+  await page.mouse.click(78, 400);
+  await page.waitForTimeout(700);
+  const t = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  expect(t).toBeGreaterThan(1);
+  // ページ形式へ戻しても、読んでいる章・位置は失われない
+  await openMenuInReader(page);
+  await page.locator('#displayModeBtn').click();
+  await expect(page.locator('#displayModeBtn')).toHaveText('ページ形式');
+  await page.locator('#menuCloseBtn').click();
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+  const backUnits = await page.locator('#pageContent .unit').count();
+  expect(backUnits).toBeGreaterThan(3);
+});
+
 test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
   await openReader(page);
   await openMenuInReader(page);

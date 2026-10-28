@@ -90,6 +90,30 @@ export function createReader(book: BookData): Reader {
   let curPage = 0;
 
   let lastManualTurn = 0;
+  /* 表示方式：'page'＝ページ形式（従来）／'sentence'＝センテンス形式（2〜3文の塊）。
+     切り替えても読んでいる位置（章・文）は失わない（文字位置をアンカーに組み直す） */
+  let displayMode: 'page' | 'sentence' = 'page';
+  function setDisplayMode(mode: 'page' | 'sentence'): void {
+    if (mode === displayMode) return;
+    let anchor = currentAnchorChar();
+    const total = CH_CHARS[current] || 0;
+    if (total && isFinite(audio.duration) && audio.duration > 0) {
+      anchor = Math.floor((audio.currentTime / audio.duration) * total);
+    }
+    displayMode = mode;
+    save('display', mode);
+    document.body.classList.toggle('mode-sentence', mode === 'sentence');
+    $('displayModeBtn').textContent = mode === 'page' ? 'ページ形式' : 'センテンス形式';
+    if (!readerView.hidden && PAGES.length) {
+      if (paginateAll()) {
+        curPage = pageForChar(PAGES[current], anchor);
+        renderPage(0);
+        tocItems.forEach((el, i) => el.classList.toggle('current', i === current));
+        schedulePageSeek();
+        saveBookmark();
+      }
+    }
+  }
   /* 朗読中の文の強調：現ページの各文の文字範囲と、強調中の文番号 */
   let pageUnitRanges: { start: number; len: number }[] = [];
   let nowUnitIdx = -1;
@@ -237,23 +261,50 @@ export function createReader(book: BookData): Reader {
     if (pageUnits.length) pages.push({ startChar: pageStart, units: pageUnits });
     return pages;
   }
+  /* センテンス形式の塊割り：段落を基本に、1画面に2〜3文入る塊に分ける。
+     段落が変わるときは塊を閉じる（ただし塊が1文だけのときは次の段落の頭と
+     合わせて2文にする）。長い段落は3文で割る。塊の形はページ形式の Page と同じ */
+  function chunkChapter(chIdx: number): Page[] {
+    const units = UNITS[chIdx];
+    const chunks: Page[] = [];
+    let cur: Unit[] = [];
+    let start = 0;
+    let pos = 0;
+    const flush = (): void => {
+      if (cur.length) chunks.push({ startChar: start, units: cur });
+      cur = [];
+    };
+    units.forEach((u, i) => {
+      const paraBreak = i > 0 && u.para !== units[i - 1].para;
+      if (cur.length && (cur.length >= 3 || (paraBreak && cur.length >= 2))) {
+        flush();
+        start = pos;
+      }
+      if (!cur.length) start = pos;
+      cur.push(u);
+      pos += u.len;
+    });
+    flush();
+    return chunks;
+  }
   function paginateAll(): boolean {
     const w = pageContent.clientWidth;
     const h = pageContent.clientHeight;
     if (!w || !h) return false;
     ensureMeasurer(w, h);
-    PAGES = chapters.map((_, i) => paginateChapter(i));
+    PAGES = chapters.map((_, i) => (displayMode === 'page' ? paginateChapter(i) : chunkChapter(i)));
     CUM_PAGES = [];
     TOTAL_PAGES = 0;
     PAGES.forEach((p) => {
       CUM_PAGES.push(TOTAL_PAGES);
       TOTAL_PAGES += p.length;
     });
-    pageSizeKey = w + 'x' + h;
+    pageSizeKey = sizeKeyNow();
     return true;
   }
   function sizeKeyNow(): string {
-    return pageContent.clientWidth + 'x' + pageContent.clientHeight;
+    // 表示方式が変わったら組み直すので、方式もキーに含める
+    return pageContent.clientWidth + 'x' + pageContent.clientHeight + ':' + displayMode;
   }
   function bookPageOf(chIdx: number, pageIdx: number): number {
     return CUM_PAGES[chIdx] + pageIdx + 1;
@@ -903,6 +954,9 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
     });
+    $('displayModeBtn').addEventListener('click', () => {
+      setDisplayMode(displayMode === 'page' ? 'sentence' : 'page');
+    });
     $<HTMLInputElement>('hlToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('hl-off', !checked);
@@ -1044,6 +1098,9 @@ export function createReader(book: BookData): Reader {
   const hlOn = load<boolean>('hl', true);
   $<HTMLInputElement>('hlToggle').checked = hlOn;
   document.body.classList.toggle('hl-off', !hlOn);
+  displayMode = load<'page' | 'sentence'>('display', 'page');
+  document.body.classList.toggle('mode-sentence', displayMode === 'sentence');
+  $('displayModeBtn').textContent = displayMode === 'page' ? 'ページ形式' : 'センテンス形式';
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
