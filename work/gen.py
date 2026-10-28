@@ -158,7 +158,7 @@ for ch in DATA['chapters']:
         tf = os.path.join(RAW, f'{cid}-{i}.txt')
         open(tf, 'w').write(style + chunk)
         done = False
-        waits = [0, 60, 120, 180, 240, 300]  # 初回 + 再試行5回 = 最大6回試行
+        waits = [0, 240, 480, 720, 900, 900]  # 初回 + 再試行5回 = 最大6回試行（429が頻発したため間隔を拡大）
         for attempt, wait in enumerate(waits):
             if wait:
                 print(f'  retry {attempt} for {cid}-{i} after {wait}s', flush=True)
@@ -174,8 +174,8 @@ for ch in DATA['chapters']:
             1 for j in range(len(chunks))
             if os.path.exists(os.path.join(RAW, f'{cid}-{j}.wav')))
         save_stats()
-        print(f'  {cid}-{i} done ({len(chunk)} chars), sleep 25s', flush=True)
-        time.sleep(25)
+        print(f'  {cid}-{i} done ({len(chunk)} chars), sleep 75s', flush=True)
+        time.sleep(75)
     if not ok:
         save_stats()
         continue

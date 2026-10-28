@@ -1,0 +1,26 @@
+{
+ "api_calls": 46,
+ "api_failures": 31,
+ "chapters": {
+  "ch1": {
+   "chunks_total": 12,
+   "chunks_done": 12,
+   "done": true,
+   "chunks": 12,
+   "spokenChars": 2107,
+   "raw_sec": 374.19,
+   "atempo": 0.888,
+   "final_sec": 421.37,
+   "cpm": 300.0
+  },
+  "ch2": {
+   "chunks_total": 11,
+   "chunks_done": 1
+  },
+  "ch3": {
+   "chunks_total": 10,
+   "chunks_done": 0
+  }
+ },
+ "started_at": 1793158869.0893803
+}
