@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-BEBcTrd0.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CS6C3VK5.css">
+    <script type="module" crossorigin src="./assets/index-C2zIYyOp.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CwcratkJ.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -29,16 +29,15 @@
           <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
         </span>
       </button>
-      <p class="cover-hint">表紙をタップすると 第1章の朗読が始まります</p>
-      <div class="cover-actions">
-        <button id="resumeBtn" class="btn btn-primary" hidden>しおりから再開</button>
-        <button id="tocFromCoverBtn" class="btn btn-ghost">目次</button>
-      </div>
-      <p id="bookmarkInfo" class="bookmark-info" hidden></p>
+      <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
+      <p id="coverHint" class="cover-hint" hidden>表紙をタップすると 第1章の朗読が始まります</p>
 
-      <!-- 管理系（バックアップ・インストール・バージョン）は奥のメニューに集約。
-           表紙には控えめな入口だけを置く -->
-      <button id="settingsFromCoverBtn" type="button" class="cover-settings">設定</button>
+      <!-- 入口は1つだけに集約：再開・目次・設定はすべて、読書画面と共通のメニューの中。
+           しおりがあるときだけ、入口の下に最小限の手がかりを小さく出す -->
+      <div class="cover-entry">
+        <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
+        <p id="coverBookmarkNote" class="cover-bookmark-note" hidden></p>
+      </div>
     </section>
 
     <!-- ============ GATE / CHAPTER TITLE VIEW （中扉） ============ -->
@@ -99,7 +98,7 @@
       <div class="read-progress" aria-hidden="true"><span id="readProgressFill"></span></div>
     </section>
 
-    <!-- ============ MENU MODAL（入口は1つに集約：読書画面の「メニュー」と表紙の「設定」） ============ -->
+    <!-- ============ MENU MODAL（入口は1つに集約：読書画面の「メニュー」と表紙の「メニュー」） ============ -->
     <div id="menuModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="メニュー">
       <div class="modal-backdrop" id="menuBackdrop"></div>
       <div class="modal-panel menu-panel">
@@ -109,6 +108,7 @@
         </div>
 
         <div class="menu-section">
+          <button id="resumeFromMenuBtn" class="btn menu-wide" hidden>しおりから再開</button>
           <button id="tocFromMenuBtn" class="btn menu-wide">目次を開く</button>
           <div class="menu-row">
             <span>再生速度</span>

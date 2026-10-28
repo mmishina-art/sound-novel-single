@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第一章の背景：雨の日の古本屋">
   <!-- 章背景の共通方針：生成りの紙の上にうっすら透かす線画。画布は本文ページの縦横比（約 600:1300）に合わせ、
        モチーフは上部と下部に寄せ、中央の本文域は空ける -->
-  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.30">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.20">
     <!-- 雨（上部にまばらに） -->
     <g stroke-width="1.8">
       <line x1="86" y1="60" x2="76" y2="92"/><line x1="168" y1="38" x2="158" y2="70"/>
