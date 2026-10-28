@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-F2Dt8cxL.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BR04-pH0.css">
+    <script type="module" crossorigin src="./assets/index-DRVhVSn7.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BP9QEgKu.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -59,8 +59,11 @@
     <!-- ============ TOC VIEW（目次ページ：モーダルではなく、表紙〜本文と同じ枠・紙の体裁の「本の1ページ」） ============ -->
     <section id="tocView" class="view view-toc" hidden>
       <div class="toc-sheet">
-        <h2 class="toc-heading">目次</h2>
-        <ul id="tocList" class="toc-list"></ul>
+        <div class="toc-inner">
+          <h2 id="tocHeading" class="toc-heading">目次</h2>
+          <ul id="tocList" class="toc-list"></ul>
+        </div>
+        <div id="tocPager" class="toc-pager" hidden></div>
         <button id="tocBackBtn" type="button" class="toc-back">戻る</button>
       </div>
     </section>
@@ -203,6 +206,9 @@
     </div>
 
     <audio id="audioEl" preload="metadata"></audio>
+    <!-- 章題コール専用（扉で「第N章・題・語り手」を読む短い音声。本文音声とは別要素にし、
+         本文の文字位置⇔時刻の対応に影響させない） -->
+    <audio id="gateAudio" preload="auto"></audio>
     <script src="boot.js"></script>
   </body>
 </html>
