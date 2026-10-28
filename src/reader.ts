@@ -30,6 +30,14 @@ const $ = <T extends HTMLElement>(id: string): T => {
 const BIRD_SVG =
   '<svg viewBox="-90 -60 180 110" aria-hidden="true"><path d="M -78 18 Q -30 -38 28 -22 Q 62 -52 88 -30 Q 48 -18 38 2 Q 70 8 78 28 Q 38 22 10 34 Q -28 52 -58 40 Q -30 28 -78 18 Z" fill="rgba(107,90,51,.5)"/></svg>';
 
+/** Screen Wake Lock の最小限の型（lib.dom に無い環境でも使えるよう、必要分だけ宣言する） */
+export interface WakeLockSentinelLike extends EventTarget {
+  release(): Promise<void>;
+}
+export interface WakeLockLike {
+  request(type: 'screen'): Promise<WakeLockSentinelLike>;
+}
+
 /** 本文の HTML は、自作の原稿データ（data.json）を rubyToHtml でエスケープしながら組み立てた固定のものだけを入れる */
 function setHtml(el: HTMLElement, html: string): void {
   // eslint-disable-next-line no-restricted-syntax -- 理由: 上記のとおり、外部入力ではなく自作データからの固定 HTML のため
@@ -96,6 +104,7 @@ export function createReader(book: BookData): Reader {
     gateView.hidden = name !== 'gate';
     readerView.hidden = name !== 'reader';
     window.scrollTo(0, 0);
+    syncWakeLock();
   }
 
   /* ---------- 操作UI（クローム）の表示・自動消去 ----------
@@ -511,7 +520,9 @@ export function createReader(book: BookData): Reader {
     current = idx;
     enterStamp = Date.now();
     showView('reader');
-    showChrome();
+    // 本を開いた直後は、操作UIを自動では出さない（出すのは中央タップだけ）。
+    // 自動で出すと、その間だけ有効になる右上の「メニュー」ボタンに、続くタップ
+    // （前ページ側のタップなど）が当たって、意図せずメニューが開くことがあるため
     audio.src = audioSrc(idx);
     audio.playbackRate = SPEEDS[speedIdx];
     setPreservesPitch();
@@ -654,6 +665,60 @@ export function createReader(book: BookData): Reader {
     });
   }
 
+  /* ---------- 画面を暗くしない（Screen Wake Lock） ----------
+     設定オン（既定）かつ読書画面を開いている間だけ、Screen Wake Lock を取って、
+     無操作でも画面が暗くならないようにする。表紙・扉へ移る／画面が隠れると解放する。
+     Wake Lock は「画面が見えている間」しか効かない仕様なので、画面を消して聞く
+     使い方の担当ではない（それは下のバックグラウンド再生設定の役割で、両者は独立）。
+     API が無い環境では何もしない（設定トグルは残るが無効）。状態はテストや確認の
+     ために body[data-wakelock]（on=取得中 / off=それ以外）にも出す */
+  const wakeLockApi: WakeLockLike | undefined = (navigator as Navigator & { wakeLock?: WakeLockLike }).wakeLock;
+  let wakeLockOn = load<boolean>('wakelock', true);
+  let wakeLockSentinel: WakeLockSentinelLike | null = null;
+  let wakeLockRequesting = false;
+  document.body.dataset.wakelock = 'off';
+
+  function wakeLockWanted(): boolean {
+    return wakeLockOn && !readerView.hidden && document.visibilityState === 'visible';
+  }
+  function syncWakeLock(): void {
+    if (!wakeLockApi) return;
+    if (!wakeLockWanted()) {
+      if (wakeLockSentinel) {
+        const s = wakeLockSentinel;
+        wakeLockSentinel = null;
+        document.body.dataset.wakelock = 'off';
+        void s.release().catch(() => undefined);
+      }
+      return;
+    }
+    if (wakeLockSentinel || wakeLockRequesting) return;
+    wakeLockRequesting = true;
+    wakeLockApi
+      .request('screen')
+      .then((s) => {
+        wakeLockRequesting = false;
+        // 取得を待つ間に条件が変わっていたら、持たずに手放す
+        if (!wakeLockWanted()) {
+          document.body.dataset.wakelock = 'off';
+          void s.release().catch(() => undefined);
+          return;
+        }
+        wakeLockSentinel = s;
+        document.body.dataset.wakelock = 'on';
+        s.addEventListener('release', () => {
+          if (wakeLockSentinel === s) {
+            wakeLockSentinel = null;
+            document.body.dataset.wakelock = 'off';
+          }
+        });
+      })
+      .catch(() => {
+        // 取れなくても読書は続ける（スリープ抑制は後押しであり、本筋ではない）
+        wakeLockRequesting = false;
+      });
+  }
+
   /* ---------- バックグラウンド再生 ----------
      設定オン（既定）: 画面を消しても・他アプリに切り替えても、朗読と BGM を止めない。
      朗読は <audio> 要素なので元々バックグラウンドでも鳴り続ける作りで、止める処理は
@@ -665,6 +730,8 @@ export function createReader(book: BookData): Reader {
   let hiddenPausedAudio = false;
   let hiddenStoppedBgm = false;
   function onVisibilityChange(): void {
+    // Wake Lock は隠れると OS に解放される。戻ってきたら、条件が合えば取り直す
+    syncWakeLock();
     if (document.hidden) {
       if (bgPlay) {
         resumeBgmContext();
@@ -780,6 +847,11 @@ export function createReader(book: BookData): Reader {
     $<HTMLInputElement>('bgPlayToggle').addEventListener('change', (e) => {
       bgPlay = (e.target as HTMLInputElement).checked;
       save('bgplay', bgPlay);
+    });
+    $<HTMLInputElement>('wakeLockToggle').addEventListener('change', (e) => {
+      wakeLockOn = (e.target as HTMLInputElement).checked;
+      save('wakelock', wakeLockOn);
+      syncWakeLock(); // 読書画面で切り替えたら、その場で取得／解放が効く
     });
     document.addEventListener('visibilitychange', onVisibilityChange);
     /* BGM は最初のタップ以降に鳴らせる（ブラウザの自動再生の制約）。
@@ -908,6 +980,7 @@ export function createReader(book: BookData): Reader {
   document.body.classList.toggle('bg-off', !bgOn);
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
+  $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
   setupMediaSession();
   buildToc();
   bind();
@@ -930,6 +1003,9 @@ export function createReader(book: BookData): Reader {
       setBgmOn(bgm);
       bgPlay = load<boolean>('bgplay', true);
       $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
+      wakeLockOn = load<boolean>('wakelock', true);
+      $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
+      syncWakeLock();
       updateNav();
       refreshResume();
     },

@@ -173,14 +173,36 @@ test('中央タップで操作UIの表示・非表示が切り替わり、放っ
   if (!box) throw new Error('pageWrap not found');
   const cx = box.x + box.width * 0.5;
   const cy = box.y + box.height * 0.5;
-  await page.mouse.click(cx, cy); // 表示中 → 消える
+  // 本を開いた直後は操作UIは出ていない（出すのは中央タップだけ）
   await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
-  await expect(page.locator('#toCoverBtn')).toBeHidden();
   await page.mouse.click(cx, cy); // 消えている → 出る
   await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
   await expect(page.locator('#toCoverBtn')).toBeVisible();
+  await page.mouse.click(cx, cy); // 表示中 → 消える
+  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+  await expect(page.locator('#toCoverBtn')).toBeHidden();
+  await page.mouse.click(cx, cy); // また出す
+  await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
   // 数秒で自動的に消える
   await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/, { timeout: 8000 });
+});
+
+test('本を開いた直後は、操作UIもメニューも勝手に出ない', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('#menuModal')).toBeHidden(); // 起動直後
+  await page.locator('#coverTap').click();
+  await page.locator('#gateView').click(); // 扉を即タップして本文へ（実機の速い操作を再現）
+  await expect(page.locator('#readerView')).toBeVisible();
+  await expect(page.locator('#pageFolio')).not.toHaveText('');
+  // 開いた直後は本文だけ。少し待っても、勝手に出てこない
+  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+  await expect(page.locator('#menuModal')).toBeHidden();
+  await page.waitForTimeout(1200);
+  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+  await expect(page.locator('#menuModal')).toBeHidden();
+  // メニューは、入口を明示的に押したときだけ開く
+  await openMenuInReader(page);
 });
 
 test('背景イメージのオン/オフが切り替わる', async ({ page }) => {
@@ -432,4 +454,68 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await setHidden(false);
     expect((await calls()).at(-1)).toBe('play'); // 戻ったら再開
   });
+});
+
+test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙では解放する。設定でオフにもできる', async ({ page }) => {
+  // Screen Wake Lock API の物まねを、アプリのスクリプトより先に差し込む
+  await page.addInitScript(() => {
+    const state = { held: false };
+    (window as unknown as { __wl: typeof state }).__wl = state;
+    const makeSentinel = (): object => {
+      const listeners = new Set<() => void>();
+      return {
+        get released() {
+          return !state.held;
+        },
+        release: async () => {
+          if (!state.held) return;
+          state.held = false;
+          listeners.forEach((f) => f());
+        },
+        addEventListener: (_t: string, f: () => void) => listeners.add(f),
+        removeEventListener: (_t: string, f: () => void) => listeners.delete(f),
+      };
+    };
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        request: async () => {
+          state.held = true;
+          return makeSentinel();
+        },
+      },
+    });
+  });
+  const wlHeld = (): Promise<boolean> => page.evaluate(() => (window as unknown as { __wl: { held: boolean } }).__wl.held);
+  const wlState = (): Promise<string | undefined> => page.evaluate(() => document.body.dataset.wakelock);
+
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  expect(await wlHeld()).toBe(false); // 表紙では取らない
+  expect(await wlState()).toBe('off');
+
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#pageFolio')).not.toHaveText('');
+  await expect.poll(wlHeld).toBe(true); // 読書画面では取得する
+  await expect.poll(wlState).toBe('on');
+
+  // 表紙に戻ると解放する
+  await ensureChrome(page);
+  await page.locator('#toCoverBtn').click();
+  await expect(page.locator('#coverView')).toBeVisible();
+  await expect.poll(wlHeld).toBe(false);
+  await expect.poll(wlState).toBe('off');
+
+  // 設定でオフにすると、読書画面でも取らない
+  await openMenuOnCover(page);
+  await expect(page.locator('#wakeLockToggle')).toBeChecked(); // 既定はオン
+  await page.locator('#wakeLockToggle').click();
+  await expect(page.locator('#wakeLockToggle')).not.toBeChecked();
+  await page.locator('#menuCloseBtn').click();
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await page.waitForTimeout(600);
+  expect(await wlHeld()).toBe(false);
+  expect(await wlState()).toBe('off');
 });

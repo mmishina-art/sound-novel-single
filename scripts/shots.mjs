@@ -19,8 +19,17 @@ const openReader = async (page) => {
 const SCREENS = [
   { name: 'cover' },
   { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#coverTap'); } },
-  // page1 は操作UIが出ている状態、page-clean は自動で消えたあとの本文だけの状態
-  { name: 'page1', open: openReader },
+  // page1 は操作UIが出ている状態（開いた直後は出ていないので、中央タップで出す）、
+  // page-clean は自動で消えたあとの本文だけの状態
+  {
+    name: 'page1',
+    open: async (page) => {
+      await openReader(page);
+      const box = await page.locator('#pageWrap').boundingBox();
+      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
+    },
+  },
   {
     name: 'page-clean',
     open: async (page) => {
@@ -43,6 +52,10 @@ const SCREENS = [
     name: 'menu',
     open: async (page) => {
       await openReader(page);
+      // 操作UIは開いた直後は出ていないので、中央タップで出してから「メニュー」を押す
+      const box = await page.locator('#pageWrap').boundingBox();
+      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
       await page.click('#menuBtn');
     },
   },
