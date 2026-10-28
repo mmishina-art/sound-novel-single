@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-BQ-U1XUZ.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CwcratkJ.css">
+    <script type="module" crossorigin src="./assets/index-C-Abr0AQ.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cvz1_6RI.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -32,12 +32,16 @@
       <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
       <p id="coverHint" class="cover-hint" hidden>表紙をタップすると 第1章の朗読が始まります</p>
 
-      <!-- 入口は1つだけに集約：再開・目次・設定はすべて、読書画面と共通のメニューの中。
-           しおりがあるときだけ、入口の下に最小限の手がかりを小さく出す -->
+      <!-- 表紙に出すのは、しおりがあるときだけの「再開」ボタンと、入口の「目次」「メニュー」だけ。
+           再開は表紙に置く（メニューの中には入れない）。目次はモーダルではなく本の目次ページとして開く -->
       <div class="cover-entry">
-        <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
+        <button id="resumeBtn" type="button" class="cover-resume" hidden>しおりから再開</button>
         <p id="coverBookmarkNote" class="cover-bookmark-note" hidden></p>
+        <button id="coverTocBtn" type="button" class="cover-settings">目次</button>
+        <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
       </div>
+      <!-- バージョン表記は表紙の隅に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
+      <p id="version-line" class="cover-version">v<span id="version"></span></p>
     </section>
 
     <!-- ============ GATE / CHAPTER TITLE VIEW （中扉） ============ -->
@@ -45,10 +49,19 @@
       <div class="gate-sheet">
         <div class="gate-text">
           <p id="gateNum" class="gate-num"></p>
-          <h2 id="gateTitle" class="gate-title"></h2>
-          <p id="gateNarrator" class="gate-narrator"></p>
+          <!-- 語り手名は独立した列に置かず、タイトルの列の中で題に続けて置く（「語り・」は付けない） -->
+          <h2 class="gate-title"><span id="gateTitle"></span><span id="gateNarrator" class="gate-narrator"></span></h2>
         </div>
         <p class="gate-hint">タップで本文へ</p>
+      </div>
+    </section>
+
+    <!-- ============ TOC VIEW（目次ページ：モーダルではなく、表紙〜本文と同じ枠・紙の体裁の「本の1ページ」） ============ -->
+    <section id="tocView" class="view view-toc" hidden>
+      <div class="toc-sheet">
+        <h2 class="toc-heading">目次</h2>
+        <ul id="tocList" class="toc-list"></ul>
+        <button id="tocBackBtn" type="button" class="toc-back">戻る</button>
       </div>
     </section>
 
@@ -65,32 +78,27 @@
           <span id="pageChapterPos" class="folio-chapter"></span>
         </div>
 
-        <div id="endView" class="page end-page" hidden>
-          <div class="end-inner">
-            <p class="end-mark">おわり</p>
-            <p class="end-sub">『空の郵便が届くまで』をお聴きいただき、<br />ありがとうございました。</p>
-            <button id="endToCoverBtn" class="btn btn-primary">表紙に戻る</button>
-          </div>
+        <!-- 最終ページだけに出る下部の帯：奥付（小さな文字）と、表紙への控えめな導線。
+             「おわり」自体は本文の流れの末尾に置く（reader.ts が最終ページに差し込む） -->
+        <div id="finalPageFoot" class="final-foot" hidden>
+          <p class="final-colophon">『空の郵便が届くまで』　著者：水瀬 葵<br />朗読：AI音声（女性パート「Lily」・男性パート「MAI」）／音楽：アプリ内で生成・再生される自作曲／形式：サウンド単行本／2026年10月 電子版</p>
+          <button id="finalToCoverBtn" type="button" class="final-cover-link">表紙に戻る</button>
         </div>
       </div>
 
+      <!-- 読書画面の操作は最小限に：入口は「メニュー」だけ、章題は情報表示として残す。
+           表紙へ戻る・章移動は、メニュー（目次・表紙に戻る）とページめくりが担う -->
       <header class="reader-header chrome chrome-top">
-        <button id="toCoverBtn" class="btn btn-small">表紙へ</button>
         <span id="readerChapterLabel" class="reader-chapter-label"></span>
         <button id="menuBtn" class="btn btn-small">メニュー</button>
       </header>
 
+      <!-- プレイヤーは再生／停止だけ。シークバーと前章／次章ボタンは置かない
+           （位置はノンブルと下端の進捗ライン、細かなシークはロック画面等の Media Session が担う） -->
       <footer class="player chrome chrome-bottom">
         <p id="audioError" class="audio-error" hidden></p>
-        <div class="progress-row">
-          <span id="currentTime" class="time-label">0:00</span>
-          <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1" aria-label="再生位置" />
-          <span id="durationTime" class="time-label">0:00</span>
-        </div>
         <div class="controls-row">
-          <button id="prevChapterBtn" class="btn" aria-label="前章">⏮ 前章</button>
           <button id="playPauseBtn" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
-          <button id="nextChapterBtn" class="btn" aria-label="次章">次章 ⏭</button>
         </div>
       </footer>
 
@@ -108,45 +116,29 @@
         </div>
 
         <div class="menu-section">
-          <button id="resumeFromMenuBtn" class="btn menu-wide" hidden>しおりから再開</button>
           <button id="tocFromMenuBtn" class="btn menu-wide">目次を開く</button>
+          <button id="toCoverFromMenuBtn" class="btn menu-wide" hidden>表紙に戻る</button>
           <div class="menu-row">
             <span>再生速度</span>
             <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
           </div>
-          <label class="menu-row toggle-label"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
+          <!-- トグルは「音」「表示」で軽く括る（煩雑にならない範囲のグループ化） -->
+          <h4 class="setting-group">音</h4>
           <label class="menu-row toggle-label"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
           <label class="menu-row toggle-label"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
+          <h4 class="setting-group">表示</h4>
+          <label class="menu-row toggle-label"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
+          <label class="menu-row toggle-label"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
+          <label class="menu-row toggle-label"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
           <label class="menu-row toggle-label"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>
         </div>
 
         <div class="menu-section">
           <h4>設定</h4>
-          <details class="backup">
-            <summary>記録のバックアップ</summary>
-            <p class="muted">しおりや設定は、このブラウザの中にだけ保存されています。ファイルに残しておくと、消えたときに戻せます。</p>
-            <button id="backup-export" type="button">ファイルに書き出す</button>
-            <label class="file-button">ファイルから読み込む<input id="backup-import" type="file" accept="application/json,.json" hidden /></label>
-            <p id="backup-message" class="muted" role="status"></p>
-          </details>
-
+          <!-- 記録のバックアップ（ファイルへの持ち出し）は、このアプリには置かない
+               （納品される単行本には不要というユーザー判断。保存自体は localStorage に残る） -->
           <button id="install-open" type="button" class="link">📲 アプリとしてインストールする方法</button>
-
-          <p class="muted version" id="version-line">v<span id="version"></span></p>
         </div>
-      </div>
-    </div>
-
-    <!-- ============ TOC MODAL ============ -->
-    <div id="tocModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="章一覧">
-      <div class="modal-backdrop" id="tocBackdrop"></div>
-      <div class="modal-panel">
-        <div class="modal-head">
-          <h3>章一覧</h3>
-          <button id="tocCloseBtn" class="btn btn-small">閉じる</button>
-        </div>
-        <ul id="tocList" class="toc-list"></ul>
       </div>
     </div>
 
