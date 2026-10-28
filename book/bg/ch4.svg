@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第四章の背景：手紙と感想のメモ">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.30">
+    <!-- メモ用紙（下部・右寄り） -->
+    <g transform="translate(252,1026) rotate(2)">
+      <rect x="0" y="0" width="236" height="212" rx="4"/>
+      <g stroke-width="1.7">
+        <line x1="26" y1="46" x2="210" y2="46"/><line x1="26" y1="80" x2="210" y2="80"/>
+        <line x1="26" y1="114" x2="186" y2="114"/><line x1="26" y1="148" x2="210" y2="148"/>
+        <line x1="26" y1="182" x2="150" y2="182"/>
+      </g>
+      <circle cx="118" cy="14" r="4"/>
+    </g>
+    <!-- 封筒（下部・左寄り、メモに重ねる） -->
+    <g transform="translate(84,1106) rotate(-7)">
+      <rect x="0" y="0" width="216" height="140" rx="4" fill="#1b2a4a" fill-opacity="0.05"/>
+      <path d="M 0 4 L 108 84 L 216 4"/>
+      <path d="M 0 140 L 84 66 M 216 140 L 132 66" stroke-width="1.7"/>
+    </g>
+    <!-- 鉛筆 -->
+    <g transform="translate(452,968) rotate(38)" stroke-width="2">
+      <rect x="-7" y="0" width="14" height="86"/>
+      <path d="M -7 86 L 0 108 L 7 86 Z"/>
+    </g>
+  </g>
+</svg>
