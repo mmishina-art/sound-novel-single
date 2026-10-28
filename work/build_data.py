@@ -90,6 +90,8 @@ for idx, ch in enumerate(chapters, 1):
 data = {
     'title': '空の郵便が届くまで',
     'author': '水瀬 葵',
+    # 本ごとの方向設定：'vertical'＝縦書き・右綴じ（既定）／'horizontal'＝横書き・左綴じ（アプリ側は将来対応）
+    'direction': 'vertical',
     'totalChars': total,
     'chapters': chapters,
 }
