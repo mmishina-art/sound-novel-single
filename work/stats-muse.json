@@ -1,5 +1,5 @@
 {
- "tts_calls": 464,
+ "tts_calls": 568,
  "tts_failures": 0,
  "chapters": {
   "ch1": {
@@ -8,7 +8,7 @@
    "voice": "avocado_v2:Lily",
    "speed": 112,
    "post_processing": "none",
-   "final_sec": 324.16,
+   "final_sec": 321.01,
    "done": true
   },
   "ch2": {
@@ -17,7 +17,7 @@
    "voice": "avocado_v2:qvd_02415",
    "speed": 104,
    "post_processing": "none",
-   "final_sec": 356.87,
+   "final_sec": 353.29,
    "done": true
   },
   "ch3": {
@@ -26,7 +26,7 @@
    "voice": "avocado_v2:Lily",
    "speed": 112,
    "post_processing": "none",
-   "final_sec": 288.26,
+   "final_sec": 292.92,
    "done": true
   },
   "ch4": {
@@ -35,7 +35,7 @@
    "voice": "avocado_v2:qvd_02415",
    "speed": 104,
    "post_processing": "none",
-   "final_sec": 356.09,
+   "final_sec": 346.51,
    "done": true
   },
   "ch5": {
@@ -44,7 +44,7 @@
    "voice": "avocado_v2:Lily",
    "speed": 112,
    "post_processing": "none",
-   "final_sec": 277.82,
+   "final_sec": 278.9,
    "done": true
   },
   "ch6": {
@@ -53,7 +53,7 @@
    "voice": "avocado_v2:qvd_02415",
    "speed": 104,
    "post_processing": "none",
-   "final_sec": 342.59,
+   "final_sec": 342.49,
    "done": true
   },
   "ch7": {
@@ -62,7 +62,7 @@
    "voice": "avocado_v2:Lily",
    "speed": 112,
    "post_processing": "none",
-   "final_sec": 269.03,
+   "final_sec": 268.33,
    "done": true
   }
  },
@@ -78,5 +78,5 @@
    "extra_tts_calls_note": "7 extra calls total in regen investigation (3 identical regens incl. ch2-41/ch5-14 which medium-model ASR cleared, 2 ch7-45 variants, 2 variant tests for ch2-50/ch6-18 which ASR cleared); adopted replacement: 1 sentence (ch7-45)"
   }
  ],
- "finished_at": 1793174395.6999545
+ "finished_at": 1793176790.801686
 }
