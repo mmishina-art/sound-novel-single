@@ -39,12 +39,18 @@ export function beep(frequency = 660, seconds = 0.08): void {
 }
 
 // ---- BGM：書き下ろしの静かなピアノバラード（src/bgm-song.ts）をループ再生する ----
-// 朗読の邪魔にならないよう、マスター音量は朗読の平均音量より約21dB下に置く。
-// 根拠（どちらも ffmpeg の mean_volume 実測）：朗読は ch1 -26.2dB / ch2 -24.7dB。
-// BGM単体を OfflineAudioContext で描画すると平均 -31.0dB で、下の
-// BGM_MASTER_GAIN(0.17 = -15.4dB) を掛けた再生時の平均は約 -46.4dB になる
-// （朗読比 約-21dB。work/measure-bgm.mjs で再測定できる）。
-const BGM_MASTER_GAIN = 0.17;
+// マスター音量は、姉妹アプリ『サウンドノベル』と同じ聞こえ方にそろえる
+// （2026-10-28 ユーザー指定。当初は朗読比 約-21dB に置いていたが小さすぎた）。
+// 根拠（どちらも ffmpeg の mean_volume 実測）：
+// ・サウンドノベルの朗読は平均 約-25.2dB。生成型BGM（master 0.9、朗読は素通し）を
+//   OfflineAudioContext で再現描画すると、literary -32.9dB（朗読比 約-7.7dB）、
+//   romance -31.6dB（約-6.4dB）、horror -27.7dB（約-2.5dB）。
+//   再現描画は work/measure-soundnovel-bgm.mjs。
+// ・この本の朗読は ch1 -26.2dB / ch2 -24.7dB（平均 約-25.5dB）。BGM単体を
+//   描画すると平均 -31.0dB なので、上の literary〜romance 並みの朗読比 約-7dB に
+//   合わせると実効平均は約 -32.5dB となり、下の BGM_MASTER_GAIN(0.84 = -1.5dB)
+//   が要る（ピークは -15.8dB で余裕あり。work/measure-bgm.mjs で再測定できる）。
+const BGM_MASTER_GAIN = 0.84;
 
 let bgmOn = load('bgm', true);
 let bgmNodes: { master: GainNode; timer: ReturnType<typeof setInterval> } | undefined;
