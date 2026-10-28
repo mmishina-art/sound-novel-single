@@ -30,9 +30,9 @@ async function openMenuInReader(page: import('@playwright/test').Page): Promise<
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
-/** 表紙からメニュー（設定）を開く */
+/** 表紙からメニュー（入口は「メニュー」ボタン1つだけ）を開く */
 async function openMenuOnCover(page: import('@playwright/test').Page): Promise<void> {
-  await page.locator('#settingsFromCoverBtn').click();
+  await page.locator('#coverMenuBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
@@ -41,6 +41,22 @@ test('表紙が開き、タイトルと著者が見える', async ({ page }) => 
   await expect(page.locator('#coverView')).toBeVisible();
   await expect(page.locator('.cover-vtitle')).toContainText('空の郵便が');
   await expect(page).toHaveTitle(/空の郵便が届くまで/);
+});
+
+test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だけで、読み始めると出なくなる', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
+  await expect(page.locator('#coverMenuBtn')).toBeVisible(); // 入口は1つ
+  await expect(page.locator('#coverBookmarkNote')).toBeHidden(); // しおりはまだない
+  // 読み始めて表紙に戻ると、ヒントは消え、しおりの手がかりだけが残る
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await ensureChrome(page);
+  await page.locator('#toCoverBtn').click();
+  await expect(page.locator('#coverView')).toBeVisible();
+  await expect(page.locator('#coverHint')).toBeHidden();
+  await expect(page.locator('#coverBookmarkNote')).toBeVisible();
 });
 
 test('表紙タップで章扉が出て、本文へ進む', async ({ page }) => {
@@ -67,10 +83,45 @@ test('ページめくり: 左側タップで次ページ（右綴じ）へ進み
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
 });
 
+test('ページめくりで章をまたぐときも、必ず章扉に止まる（行きも帰りも）', async ({ page }) => {
+  await openReader(page);
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  // 第一章の最後のページまでめくり、もう1回めくると第二章の扉に止まるはず
+  for (let i = 0; i < 20 && (await page.locator('#gateView').isHidden()); i++) {
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.waitForTimeout(120);
+  }
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第二章');
+  await page.locator('#gateView').click(); // 扉タップで本文へ
+  await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
+  // 第二章の先頭ページで前へめくると、第一章の扉に止まるはず
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+});
+
+test('章扉の枠と本文ページの枠の大きさ・位置が一致する', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  const gate = await page.locator('.gate-sheet').boundingBox();
+  await page.locator('#gateView').click();
+  await expect(page.locator('#readerView')).toBeVisible();
+  const paper = await page.locator('#pageEl').boundingBox();
+  if (!gate || !paper) throw new Error('bounding box not found');
+  for (const k of ['x', 'y', 'width', 'height'] as const) {
+    expect(Math.abs(gate[k] - paper[k])).toBeLessThanOrEqual(2);
+  }
+});
+
 test('目次から章を選べる', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#tocFromCoverBtn').click();
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
   await expect(page.locator('#tocModal')).toBeVisible();
   await expect(page.locator('.toc-item')).toHaveCount(7);
   await page.locator('.toc-item').nth(2).click();
@@ -86,10 +137,17 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await ensureChrome(page);
   await page.locator('#toCoverBtn').click();
   await expect(page.locator('#coverView')).toBeVisible();
-  await expect(page.locator('#resumeBtn')).toBeVisible();
-  await expect(page.locator('#bookmarkInfo')).toContainText('ページ');
+  // 表紙の常時表示は入口だけ。しおりの手がかりは入口の下に小さく出る
+  await expect(page.locator('#coverBookmarkNote')).toBeVisible();
+  await expect(page.locator('#coverBookmarkNote')).toContainText('ページ');
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
+  // 再開はメニューの中から
+  await openMenuOnCover(page);
+  await expect(page.locator('#resumeFromMenuBtn')).toBeVisible();
+  await page.locator('#resumeFromMenuBtn').click();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
 });
 
 test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
@@ -213,11 +271,11 @@ test('記録をファイルに書き出し、消えたあとに読み込んで�
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#resumeBtn')).toBeHidden();
+  await expect(page.locator('#coverBookmarkNote')).toBeHidden();
   await openMenuOnCover(page);
   await page.getByText('記録のバックアップ').click();
   await page.locator('#backup-import').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(text) });
-  await expect(page.locator('#resumeBtn')).toBeVisible();
+  await expect(page.locator('#resumeFromMenuBtn')).toBeVisible();
   await expect(page.locator('#backup-message')).toContainText('読み込みました');
 });
 
@@ -251,7 +309,7 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#resumeBtn')).toBeVisible(); // しおりが残っている
+  await expect(page.locator('#coverBookmarkNote')).toBeVisible(); // しおりが残っている
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });

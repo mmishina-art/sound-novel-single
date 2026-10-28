@@ -47,8 +47,8 @@ const SCREENS = [
     },
   },
   // 管理系はメニュー（表紙の「設定」）の中に集約した
-  { name: 'install', open: async (page) => { await page.click('#settingsFromCoverBtn'); await page.click('#install-open'); } },
-  { name: 'backup', open: async (page) => { await page.click('#settingsFromCoverBtn'); await page.click('.backup summary'); } },
+  { name: 'install', open: async (page) => { await page.click('#coverMenuBtn'); await page.click('#install-open'); } },
+  { name: 'backup', open: async (page) => { await page.click('#coverMenuBtn'); await page.click('.backup summary'); } },
 ];
 
 /** 撮る大きさ。このアプリは暗い固定配色なので、ダークモードの撮り分けはしない。 */

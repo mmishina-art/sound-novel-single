@@ -68,6 +68,7 @@ export function createReader(book: BookData): Reader {
   let current = 0;
   let speedIdx = speedIndexOf(load<number>('speed', 1.0));
   let gateTimer: ReturnType<typeof setTimeout> | undefined;
+  let gateOpen = false; // 章扉を表示中かどうか（旧章の音声の 'ended' で二重に進まないための番兵）
   let pendingSeek = 0;
   const UNITS: Unit[][] = chapters.map((ch) => buildUnits(ch));
   const CH_CHARS: number[] = UNITS.map((us) => us.reduce((a, u) => a + u.len, 0));
@@ -281,7 +282,8 @@ export function createReader(book: BookData): Reader {
         curPage++;
         renderPage(1);
       } else if (current < chapters.length - 1) {
-        enterChapter(current + 1, { autoplay: !audio.paused });
+        // 章をまたぐときも必ず章扉に止まる（扉を素通りして本文に入らない）
+        showGate(current + 1, { autoplay: !audio.paused });
         return;
       } else {
         showEndPage();
@@ -297,7 +299,8 @@ export function createReader(book: BookData): Reader {
         curPage--;
         renderPage(-1);
       } else if (current > 0) {
-        enterChapter(current - 1, { page: 'last', autoplay: !audio.paused });
+        // 前章へ戻るときも章扉に止まる
+        showGate(current - 1, { page: 'last', autoplay: !audio.paused });
         return;
       } else return;
     }
@@ -344,26 +347,28 @@ export function createReader(book: BookData): Reader {
   function loadBookmark(): Bookmark | null {
     return load<Bookmark | null>('bookmark', null);
   }
+  /* 表紙は「表紙だけが静かに出ている」状態が原則。常時出すのは入口の「メニュー」だけで、
+     しおりがあるときは入口の下に最小限の手がかりを小さく出す。再開そのものはメニューの中。
+     ヒント文は初回（しおりがなく、まだ読み始めた記録もないとき）だけの控えめな案内 */
   function refreshResume(): void {
     const bm = loadBookmark();
-    const btn = $('resumeBtn');
-    const info = $('bookmarkInfo');
-    if (bm && chapters[bm.chapter]) {
-      btn.hidden = false;
-      info.hidden = false;
-      info.textContent =
-        'しおり：' +
-        chapters[bm.chapter].num +
-        ' ' +
-        chapters[bm.chapter].title +
-        (bm.page ? ' ／ ' + bm.page + 'ページ' : '') +
-        ' ／ ' +
-        fmt(bm.time || 0);
-      btn.textContent = 'しおりから再開（' + chapters[bm.chapter].num + '）';
-    } else {
-      btn.hidden = true;
-      info.hidden = true;
+    const has = !!(bm && chapters[bm.chapter]);
+    const note = $('coverBookmarkNote');
+    const resumeBtn = $('resumeFromMenuBtn');
+    note.hidden = !has;
+    resumeBtn.hidden = !has;
+    if (has && bm) {
+      note.textContent =
+        'しおり：' + chapters[bm.chapter].num + (bm.page ? ' ／ ' + bm.page + 'ページ' : '');
+      resumeBtn.textContent = 'しおりから再開（' + chapters[bm.chapter].num + '）';
     }
+    $('coverHint').hidden = has || load<boolean>('seen', false);
+  }
+
+  function resumeFromBookmark(): void {
+    const bm = loadBookmark();
+    if (!bm || !chapters[bm.chapter]) return;
+    showGate(bm.chapter, { seek: bm.time || 0, anchor: bm.anchor != null ? bm.anchor : null });
   }
 
   /* ---------- 章背景のアニメーション ----------
@@ -468,12 +473,15 @@ export function createReader(book: BookData): Reader {
     $('gateNarrator').textContent = '語り・' + ch.narratorName;
   }
   function showGate(idx: number, opts: EnterOptions = {}): void {
+    save('seen', true); // 一度読み始めたら、表紙のヒント文は二度と出さない
     current = idx;
+    gateOpen = true;
     fillGate(chapters[idx]);
     showView('gate');
     if (gateTimer !== undefined) clearTimeout(gateTimer);
     const start = (): void => {
       if (gateTimer !== undefined) clearTimeout(gateTimer);
+      gateOpen = false;
       enterChapter(idx, opts);
     };
     gateView.onclick = start;
@@ -498,6 +506,8 @@ export function createReader(book: BookData): Reader {
     tocItems.forEach((el, i) => el.classList.toggle('current', i === current));
   }
   function enterChapter(idx: number, opts: EnterOptions = {}): void {
+    if (gateTimer !== undefined) clearTimeout(gateTimer);
+    gateOpen = false;
     current = idx;
     enterStamp = Date.now();
     showView('reader');
@@ -706,17 +716,14 @@ export function createReader(book: BookData): Reader {
   /* ---------- events ---------- */
   function bind(): void {
     $('coverTap').addEventListener('click', () => showGate(0));
-    $('resumeBtn').addEventListener('click', () => {
-      const bm = loadBookmark();
-      if (!bm) return;
-      showGate(bm.chapter, { seek: bm.time || 0, anchor: bm.anchor != null ? bm.anchor : null });
-    });
-    $('tocFromCoverBtn').addEventListener('click', () => {
-      $('tocModal').hidden = false;
-    });
-    /* メニュー（入口は読書画面の「メニュー」と表紙の「設定」の2か所、中身は1つ） */
+    /* メニュー（入口は読書画面の「メニュー」と表紙の「メニュー」の2か所、中身は1つ。
+       再開・目次・設定はすべてこの中にある） */
     $('menuBtn').addEventListener('click', openMenu);
-    $('settingsFromCoverBtn').addEventListener('click', openMenu);
+    $('coverMenuBtn').addEventListener('click', openMenu);
+    $('resumeFromMenuBtn').addEventListener('click', () => {
+      closeMenu();
+      resumeFromBookmark();
+    });
     $('menuCloseBtn').addEventListener('click', closeMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
     $('tocFromMenuBtn').addEventListener('click', () => {
@@ -879,6 +886,8 @@ export function createReader(book: BookData): Reader {
       true,
     );
     audio.addEventListener('ended', () => {
+      // 章扉を表示中なら、旧章の音声の終了では進まない（扉の先へ二重に飛んでしまうため）
+      if (gateOpen) return;
       if (current < chapters.length - 1) {
         showGate(current + 1);
       } else {

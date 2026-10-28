@@ -24,7 +24,8 @@ try {
   await page.waitForSelector('#tocList li', { state: 'attached', timeout: 10000 });
 
   const openChapter = async (n) => {
-    await page.click('#tocFromCoverBtn');
+    await page.click('#coverMenuBtn');
+    await page.click('#tocFromMenuBtn');
     await page.locator('.toc-item').nth(n).click();
     await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
     // 操作UIが自動で消えるのを待ち、アニメーションが行き渡ってから撮る

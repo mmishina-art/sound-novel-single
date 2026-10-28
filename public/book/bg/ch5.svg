@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第五章の背景：閉店の知らせと夕方の店">
-  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.30">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.20">
     <!-- 夕日（下部右、地平線に沈む） -->
     <g transform="translate(0,540)">
       <path d="M 356 690 A 92 92 0 0 1 540 690"/>

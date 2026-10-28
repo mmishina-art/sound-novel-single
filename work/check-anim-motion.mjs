@@ -27,7 +27,8 @@ try {
 
   let allOk = true;
   for (let n = 0; n < 7; n++) {
-    await page.click('#tocFromCoverBtn');
+    await page.click('#coverMenuBtn');
+    await page.click('#tocFromMenuBtn');
     await page.locator('.toc-item').nth(n).click();
     await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
     await page.waitForSelector('#readerView:not(.chrome-on)', { timeout: 10000 });

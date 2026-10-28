@@ -24,6 +24,9 @@
   --ink: #262019;
   --desk: #17130e;
   --desk2: #2a2115;
+  /* タイトル画面専用の深い藍色。表紙の紺（#10182b）と同系で地続きになるようにする */
+  --indigo: #0a1220;
+  --indigo2: #1e2d52;
   --desk-text: #c9bda0;
   --serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "YuMincho", "Noto Serif JP", "MS PMincho", serif;
 }
@@ -253,7 +256,7 @@ button.link {
 .btn-play { min-width: 7.5em; font-size: 1.05rem; padding: .65em 1.2em; }
 
 /* ============ Cover — a right-bound book lying on a desk ============ */
-.view-cover { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: max(20px, var(--safe-top)) 16px 28px; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); }
+.view-cover { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: max(20px, var(--safe-top)) 16px 28px; background: radial-gradient(ellipse at 50% 30%, var(--indigo2), var(--indigo) 75%); }
 .cover-tap { background: none; border: none; padding: 0; line-height: 1.5; text-align: inherit; }
 /* 綴じ側は body.bound-* で切り替える（right＝右綴じ／left＝左綴じ）。
    姉妹アプリ『サウンドノベル』本棚の表紙と同言語：綴じ側に背の陰影、
@@ -261,8 +264,8 @@ button.link {
 .book-cover {
   /* 縦横比は四六判（127mm × 188mm）と同じ 127:188。
      幅の3つ目は高さの上限ガード：表紙の高さが 100dvh - 190px を超えない幅
-     （(100dvh - 190px) × 127/188 = 67.55dvh - 128px）で、ヒント文や
-     操作ボタンまで含めて画面内に収める */
+     （(100dvh - 190px) × 127/188 = 67.55dvh - 128px）で、入口のボタンまで
+     含めて画面内に収める（表紙の下に常時出すのは入口だけなので余裕がある） */
   position: relative; display: block;
   width: min(88vw, 420px, calc(67.55dvh - 128px)); aspect-ratio: 127/188;
   overflow: hidden; background: #10182b;
@@ -308,14 +311,18 @@ body.dir-vertical .cover-vtitle { writing-mode: vertical-rl; -webkit-writing-mod
 body.bound-right .cover-vtitle { right: 10.5%; }
 body.bound-left .cover-vtitle { left: 10.5%; }
 .cover-vtitle .vt-line { display: block; }
-.cover-hint { color: var(--desk-text); font-size: .9rem; margin: 4px 0 0; text-align: center; }
-.cover-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.bookmark-info { color: #e8c86a; font-size: .85rem; margin: 0; text-align: center; }
+.cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }
+/* 表紙の入口は1つだけ（小さな「メニュー」）。再開・目次・設定はすべてメニューの中。
+   しおりがあるときだけ、その真下に最小限の手がかりを小さく出す */
+.cover-entry { display: flex; flex-direction: column; align-items: center; gap: 7px; margin-top: 2px; }
+.cover-bookmark-note { color: var(--desk-text); font-size: .78rem; letter-spacing: .1em; margin: 0; text-align: center; opacity: .75; }
 
 /* ============ Gate — 中扉（紙の扉ページ） ============ */
-.view-gate { min-height: 100dvh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); cursor: pointer; padding: max(20px, var(--safe-top)) 14px 20px; }
+.view-gate { min-height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); cursor: pointer; padding: 12px 14px 14px; }
 .gate-sheet {
-  position: relative; width: min(92vw, 430px); height: min(76dvh, 620px);
+  /* 枠の寸法・位置は本文ページ（.page-wrap の余白 12px/14px/14px）と完全にそろえる。
+     扉も本文も「同じ本のページ」として見えるようにするため */
+  position: relative; flex: 1; min-width: 0;
   background: linear-gradient(160deg, #fffdf6, var(--paper) 55%, #f7f0da);
   overflow: hidden;
 }
@@ -412,7 +419,7 @@ body.bound-left .page::after {
    背景オフ（body.bg-off）のときと、端末の「視覚効果を減らす」設定のときは層ごと出さない。
    濃さ・速さの基準（v1.2.1〜）: あくまで雰囲気であり、本文より主張してはいけない。
    意識して見れば動いているのが分かるが、読んでいる間は視界に入ってこない水準に抑え、
-   迷ったら弱める側に倒す。各要素の実効最大不透明度は線画本体（0.30）以下を目安にする */
+   迷ったら弱める側に倒す。各要素の実効最大不透明度は線画本体（0.20、v1.3.0で 0.30 から引き下げ）以下を目安にする */
 .page-anim { position: absolute; top: 0; left: 0; right: 0; bottom: var(--folio-band, 44px); z-index: 0; overflow: hidden; pointer-events: none; }
 body.bg-off .page-anim { display: none; }
 @media (prefers-reduced-motion: reduce) {
@@ -470,7 +477,7 @@ body.bg-off .page-anim { display: none; }
 /* 貼り紙のかすかな揺れ（上端を留め具にして） */
 .anim-sway {
   position: absolute; width: 15px; height: 19px; border-radius: 2px;
-  border: 1.5px solid rgba(107,90,51,.3); background: rgba(255,253,246,.25);
+  border: 1.5px solid rgba(107,90,51,.2); background: rgba(255,253,246,.18);
   transform-origin: 50% 0;
   animation: animSway 10s ease-in-out infinite alternate;
 }
