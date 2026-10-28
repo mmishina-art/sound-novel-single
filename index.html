@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-7KKQmTbx.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CF9o1uJL.css">
+    <script type="module" crossorigin src="./assets/index-BFwSUYX3.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-0dPCWaXD.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -59,6 +59,8 @@
     <section id="readerView" class="view view-reader" hidden>
       <div id="pageWrap" class="page-wrap">
         <div id="pageEl" class="page">
+          <!-- 章背景のアニメーション層（線画の上に小さな動きだけを重ねる。reader.ts が章ごとに中身を作る） -->
+          <div id="pageAnim" class="page-anim" aria-hidden="true"></div>
           <article id="pageContent" class="page-content" aria-label="本文"></article>
           <div class="page-footer"><span id="pageFolio" class="folio"></span></div>
           <span id="pageChapterPos" class="folio-chapter"></span>
@@ -115,6 +117,7 @@
           <label class="menu-row toggle-label"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
           <label class="menu-row toggle-label"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
           <label class="menu-row toggle-label"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
+          <label class="menu-row toggle-label"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
         </div>
 
         <div class="menu-section">
