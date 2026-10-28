@@ -1,98 +1,175 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>空の郵便が届くまで — 水瀬 葵</title>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <!-- ピンチ拡大は許可する（user-scalable=no / maximum-scale は入れない） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#17130e" />
+    <meta name="app-id" content="sound-novel-single" />
+    <meta name="description" content="サウンド単行本：朗読つき電子書籍『空の郵便が届くまで』（著・水瀬 葵）" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- iPhone のホーム画面アプリ: ステータスバーは不透明にする（暗い固定・端末設定に従う: black / 明るい固定: default）。
+         black-translucent にすると、ステータスバーの下に入った内容を iOS がぼかして、画面の上端の文字が読みにくくなる -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="空の郵便" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <title>空の郵便が届くまで — 水瀬 葵</title>
+    <script type="module" crossorigin src="./assets/index-DysIQnrn.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DGV9XKa6.css">
+  <link rel="manifest" href="./manifest.webmanifest"></head>
+  <body>
+    <!-- ============ COVER VIEW ============ -->
+    <section id="coverView" class="view view-cover">
+      <button id="coverTap" class="cover-tap" aria-label="表紙をタップして第1章から読む">
+        <span class="book-cover">
+          <img src="book/cover.svg" alt="空の郵便が届くまで — 水瀬 葵" class="cover-img" />
+          <span class="cover-colophon">サウンド単行本</span>
+          <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
+        </span>
+      </button>
+      <p class="cover-hint">表紙をタップすると 第1章の朗読が始まります</p>
+      <div class="cover-actions">
+        <button id="resumeBtn" class="btn btn-primary" hidden>しおりから再開</button>
+        <button id="tocFromCoverBtn" class="btn btn-ghost">目次</button>
+      </div>
+      <p id="bookmarkInfo" class="bookmark-info" hidden></p>
 
-<!-- ============ COVER VIEW ============ -->
-<section id="coverView" class="view view-cover">
-  <button id="coverTap" class="cover-tap" aria-label="表紙をタップして第1章から読む">
-    <span class="book-cover">
-      <img src="cover.svg" alt="空の郵便が届くまで — 水瀬 葵" class="cover-img">
-      <span class="cover-colophon">サウンド単行本</span>
-      <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
-    </span>
-  </button>
-  <p class="cover-hint">表紙をタップすると 第1章の朗読が始まります</p>
-  <div class="cover-actions">
-    <button id="resumeBtn" class="btn btn-primary" hidden>しおりから再開</button>
-    <button id="tocFromCoverBtn" class="btn btn-ghost">目次</button>
-  </div>
-  <p id="bookmarkInfo" class="bookmark-info" hidden></p>
-</section>
+      <details class="backup">
+        <summary>記録のバックアップ</summary>
+        <p class="muted">しおりや設定は、このブラウザの中にだけ保存されています。ファイルに残しておくと、消えたときに戻せます。</p>
+        <button id="backup-export" type="button">ファイルに書き出す</button>
+        <label class="file-button">ファイルから読み込む<input id="backup-import" type="file" accept="application/json,.json" hidden /></label>
+        <p id="backup-message" class="muted" role="status"></p>
+      </details>
 
-<!-- ============ GATE / CHAPTER TITLE VIEW （中扉） ============ -->
-<section id="gateView" class="view view-gate" hidden>
-  <div class="gate-sheet">
-    <div class="gate-text">
-      <p id="gateNum" class="gate-num"></p>
-      <h2 id="gateTitle" class="gate-title"></h2>
-      <p id="gateNarrator" class="gate-narrator"></p>
-    </div>
-    <p class="gate-hint">タップで本文へ</p>
-  </div>
-</section>
+      <button id="install-open" type="button" class="link">📲 アプリとしてインストールする方法</button>
 
-<!-- ============ READER VIEW ============ -->
-<section id="readerView" class="view view-reader" hidden>
-  <header class="reader-header">
-    <button id="toCoverBtn" class="btn btn-small">表紙へ</button>
-    <span id="readerChapterLabel" class="reader-chapter-label"></span>
-    <button id="tocBtn" class="btn btn-small">章一覧</button>
-    <label class="toggle-label"><input type="checkbox" id="rubyToggle" checked> フリガナ</label>
-  </header>
+      <p class="muted version" id="version-line">v<span id="version"></span></p>
+    </section>
 
-  <div id="pageWrap" class="page-wrap">
-    <div id="pageEl" class="page">
-      <article id="pageContent" class="page-content" aria-label="本文"></article>
-      <div class="page-footer"><span id="pageFolio" class="folio"></span></div>
-      <span id="pageChapterPos" class="folio-chapter"></span>
-      <span class="turn-hint hint-next" aria-hidden="true">◀</span>
-      <span class="turn-hint hint-prev" aria-hidden="true">▶</span>
-    </div>
+    <!-- ============ GATE / CHAPTER TITLE VIEW （中扉） ============ -->
+    <section id="gateView" class="view view-gate" hidden>
+      <div class="gate-sheet">
+        <div class="gate-text">
+          <p id="gateNum" class="gate-num"></p>
+          <h2 id="gateTitle" class="gate-title"></h2>
+          <p id="gateNarrator" class="gate-narrator"></p>
+        </div>
+        <p class="gate-hint">タップで本文へ</p>
+      </div>
+    </section>
 
-    <div id="endView" class="page end-page" hidden>
-      <div class="end-inner">
-        <p class="end-mark">おわり</p>
-        <p class="end-sub">『空の郵便が届くまで』をお聴きいただき、<br>ありがとうございました。</p>
-        <button id="endToCoverBtn" class="btn btn-primary">表紙に戻る</button>
+    <!-- ============ READER VIEW ============ -->
+    <section id="readerView" class="view view-reader" hidden>
+      <header class="reader-header">
+        <button id="toCoverBtn" class="btn btn-small">表紙へ</button>
+        <span id="readerChapterLabel" class="reader-chapter-label"></span>
+        <button id="tocBtn" class="btn btn-small">章一覧</button>
+        <label class="toggle-label"><input type="checkbox" id="rubyToggle" checked /> フリガナ</label>
+      </header>
+
+      <div id="pageWrap" class="page-wrap">
+        <div id="pageEl" class="page">
+          <article id="pageContent" class="page-content" aria-label="本文"></article>
+          <div class="page-footer"><span id="pageFolio" class="folio"></span></div>
+          <span id="pageChapterPos" class="folio-chapter"></span>
+          <span class="turn-hint hint-next" aria-hidden="true">◀</span>
+          <span class="turn-hint hint-prev" aria-hidden="true">▶</span>
+        </div>
+
+        <div id="endView" class="page end-page" hidden>
+          <div class="end-inner">
+            <p class="end-mark">おわり</p>
+            <p class="end-sub">『空の郵便が届くまで』をお聴きいただき、<br />ありがとうございました。</p>
+            <button id="endToCoverBtn" class="btn btn-primary">表紙に戻る</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="player">
+        <p id="audioError" class="audio-error" hidden></p>
+        <div class="progress-row">
+          <span id="currentTime" class="time-label">0:00</span>
+          <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1" aria-label="再生位置" />
+          <span id="durationTime" class="time-label">0:00</span>
+        </div>
+        <div class="controls-row">
+          <button id="prevChapterBtn" class="btn" aria-label="前章">⏮ 前章</button>
+          <button id="playPauseBtn" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
+          <button id="nextChapterBtn" class="btn" aria-label="次章">次章 ⏭</button>
+          <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
+        </div>
+      </footer>
+    </section>
+
+    <!-- ============ TOC MODAL ============ -->
+    <div id="tocModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="章一覧">
+      <div class="modal-backdrop" id="tocBackdrop"></div>
+      <div class="modal-panel">
+        <div class="modal-head">
+          <h3>章一覧</h3>
+          <button id="tocCloseBtn" class="btn btn-small">閉じる</button>
+        </div>
+        <ul id="tocList" class="toc-list"></ul>
       </div>
     </div>
-  </div>
 
-  <footer class="player">
-    <p id="audioError" class="audio-error" hidden></p>
-    <div class="progress-row">
-      <span id="currentTime" class="time-label">0:00</span>
-      <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1" aria-label="再生位置">
-      <span id="durationTime" class="time-label">0:00</span>
-    </div>
-    <div class="controls-row">
-      <button id="prevChapterBtn" class="btn" aria-label="前章">⏮ 前章</button>
-      <button id="playPauseBtn" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
-      <button id="nextChapterBtn" class="btn" aria-label="次章">次章 ⏭</button>
-      <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
-    </div>
-  </footer>
-</section>
+    <!-- インストール方法（最初の画面から開く） -->
+    <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">
+      <h2 id="install-title">ホーム画面に追加して使う</h2>
+      <p class="muted">インストールすると、ホーム画面から開けて、オフラインでも使えます。</p>
+      <button id="install-now" type="button" class="primary" hidden>今すぐインストール</button>
 
-<!-- ============ TOC MODAL ============ -->
-<div id="tocModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="章一覧">
-  <div class="modal-backdrop" id="tocBackdrop"></div>
-  <div class="modal-panel">
-    <div class="modal-head">
-      <h3>章一覧</h3>
-      <button id="tocCloseBtn" class="btn btn-small">閉じる</button>
-    </div>
-    <ul id="tocList" class="toc-list"></ul>
-  </div>
-</div>
+      <details data-platform="ios">
+        <summary>iPhone / iPad</summary>
+        <ol>
+          <li><strong>Safari</strong> でこのページを開く</li>
+          <li>共有ボタン(□から↑が出ているマーク)をタップ</li>
+          <li>「<strong>ホーム画面に追加</strong>」を選ぶ</li>
+          <li>右上の「追加」をタップ</li>
+        </ol>
+      </details>
+      <details data-platform="android">
+        <summary>Android</summary>
+        <ol>
+          <li><strong>Chrome</strong> でこのページを開く</li>
+          <li>右上のメニュー(⋮)をタップ</li>
+          <li>「<strong>アプリをインストール</strong>」または「ホーム画面に追加」を選ぶ</li>
+          <li>「インストール」をタップ</li>
+        </ol>
+      </details>
+      <details data-platform="pc">
+        <summary>パソコン(Chrome / Edge)</summary>
+        <ol>
+          <li>アドレスバーの右端にあるインストールのマークをクリック</li>
+          <li>「<strong>インストール</strong>」を選ぶ</li>
+        </ol>
+      </details>
 
-<audio id="audioEl" preload="metadata"></audio>
-<script src="app.js"></script>
-</body>
+      <button type="button" data-close>とじる</button>
+    </dialog>
+
+    <!-- デバッグモードのときだけ出る操作（src/debug.ts。バージョンの表示を続けて 5 回タップで切り替え） -->
+    <div id="debug-panel" class="debug-panel" hidden></div>
+
+    <!-- 新しい版があるときに出る。「更新」で切り替わる。「あとで」で閉じる（次に開いたとき、また出る） -->
+    <div id="update-banner" class="banner" role="status" hidden>
+      <span>更新があります</span>
+      <div class="banner__actions">
+        <button id="update-later" type="button">あとで</button>
+        <button id="update-button" type="button" class="primary">更新</button>
+      </div>
+    </div>
+
+    <!-- 起動できなかったときの復旧（main.ts が読み込めなくても動く、別のふつうのスクリプト） -->
+    <div id="boot-error" class="banner boot-error" hidden>
+      <span>うまく読み込めませんでした。<small>記録は消えません</small></span>
+      <button id="boot-repair" type="button" class="primary">なおす</button>
+    </div>
+
+    <audio id="audioEl" preload="metadata"></audio>
+    <script src="boot.js"></script>
+  </body>
 </html>
