@@ -17,7 +17,7 @@ import {
   type Page,
   type Unit,
 } from './logic';
-import { isBgmOn, setBgmOn, startBgm } from './sound';
+import { isBgmOn, resumeBgmContext, setBgmOn, startBgm, stopBgm } from './sound';
 import { load, remove, save } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -25,6 +25,10 @@ const $ = <T extends HTMLElement>(id: string): T => {
   if (!el) throw new Error(`#${id} not found`);
   return el as T;
 };
+
+/** 第七章の背景で、ときおり横切る鳥（線画の鳥の形を塗ったもの） */
+const BIRD_SVG =
+  '<svg viewBox="-90 -60 180 110" aria-hidden="true"><path d="M -78 18 Q -30 -38 28 -22 Q 62 -52 88 -30 Q 48 -18 38 2 Q 70 8 78 28 Q 38 22 10 34 Q -28 52 -58 40 Q -30 28 -78 18 Z" fill="rgba(107,90,51,.5)"/></svg>';
 
 /** 本文の HTML は、自作の原稿データ（data.json）を rubyToHtml でエスケープしながら組み立てた固定のものだけを入れる */
 function setHtml(el: HTMLElement, html: string): void {
@@ -52,6 +56,7 @@ export function createReader(book: BookData): Reader {
   const readerView = $('readerView');
   const pageWrap = $('pageWrap');
   const pageEl = $('pageEl');
+  const pageAnim = $<HTMLDivElement>('pageAnim');
   const pageContent = $('pageContent');
   const endView = $('endView');
   const audio = $<HTMLAudioElement>('audioEl');
@@ -361,6 +366,90 @@ export function createReader(book: BookData): Reader {
     }
   }
 
+  /* ---------- 章背景のアニメーション ----------
+     線画（--chapter-bg）の上に、章に合う小さな動きだけを重ねる（CSS の .page-anim 配下）。
+     要素は章ごとに作り直す。配置は章番号で種をまいた決定的な乱数で決め、
+     開くたびに同じ景色になるようにしている */
+  function buildPageAnim(idx: number): void {
+    pageAnim.replaceChildren();
+    pageAnim.dataset.chapter = String(idx + 1);
+    let seed = 1234567 + idx * 7919;
+    const rand = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const put = (cls: string, styles: Record<string, string>): void => {
+      const el = document.createElement('span');
+      el.className = cls;
+      for (const [k, v] of Object.entries(styles)) el.style.setProperty(k, v);
+      pageAnim.appendChild(el);
+    };
+    const rain = (count: number, dim: boolean, slow: boolean): void => {
+      for (let i = 0; i < count; i++) {
+        put('anim-rain' + (dim ? ' dim' : ''), {
+          left: (3 + rand() * 93).toFixed(1) + '%',
+          '--d': (slow ? 2.1 + rand() * 1.1 : 1.5 + rand() * 0.9).toFixed(2) + 's',
+          '--dl': (-rand() * 3).toFixed(2) + 's',
+        });
+      }
+    };
+    const motes = (count: number): void => {
+      for (let i = 0; i < count; i++) {
+        put('anim-mote', {
+          left: (6 + rand() * 88).toFixed(1) + '%',
+          top: (8 + rand() * 80).toFixed(1) + '%',
+          '--d': (7 + rand() * 5).toFixed(1) + 's',
+          '--dl': (-rand() * 6).toFixed(1) + 's',
+          '--dx': (rand() * 24 - 12).toFixed(0) + 'px',
+          '--dy': (-(10 + rand() * 16)).toFixed(0) + 'px',
+        });
+      }
+    };
+    switch (idx) {
+      case 0: // 第一章：雨の日の古本屋。細い雨が静かに落ち続ける
+        rain(14, false, false);
+        break;
+      case 1: // 第二章：雨上がり。雨はまばらで弱く、水たまりがかすかにきらめく
+        rain(6, true, true);
+        for (let i = 0; i < 3; i++) {
+          put('anim-glint', {
+            left: (18 + rand() * 60).toFixed(1) + '%',
+            bottom: (4 + rand() * 4).toFixed(1) + '%',
+            '--d': (3.8 + rand() * 2).toFixed(1) + 's',
+            '--dl': (-rand() * 4).toFixed(1) + 's',
+          });
+        }
+        break;
+      case 2: // 第三章：本棚の埃のような粒が、ごくゆっくり漂う
+        motes(9);
+        break;
+      case 3: // 第四章：封筒とメモのあたりで、光が静かにゆらぐ
+        put('anim-glow', { right: '4%', bottom: '3%', width: '58%', height: '27%', '--d': '8s' });
+        motes(3);
+        break;
+      case 4: // 第五章：夕日の光がゆっくり明滅し、貼り紙がかすかに揺れる
+        put('anim-glow sunset', { right: '2%', bottom: '15%', width: '48%', height: '23%', '--d': '9.5s' });
+        put('anim-sway', { left: '21%', bottom: '12.5%' });
+        break;
+      case 5: // 第六章：窓の光の帯がゆっくり揺れる
+        put('anim-band', { bottom: '1%' });
+        motes(2);
+        break;
+      case 6: {
+        // 第七章：雲がゆっくり流れ、鳥がときおり上部を横切る
+        put('anim-cloud', { left: '6%', top: '5%', width: '36%', '--d': '26s' });
+        put('anim-cloud', { right: '5%', top: '34%', width: '27%', '--d': '33s', '--dl': '-12s' });
+        const bird = document.createElement('span');
+        bird.className = 'anim-bird';
+        setHtml(bird, BIRD_SVG);
+        pageAnim.appendChild(bird);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   /* ---------- chapter flow ---------- */
   interface EnterOptions {
     seek?: number;
@@ -391,6 +480,7 @@ export function createReader(book: BookData): Reader {
     // 解決されてしまい、dist の assets/ から見た相対パスでは画像に届かないため）
     const bgUrl = new URL('book/bg/ch' + (current + 1) + '.svg', document.baseURI).href;
     pageWrap.style.setProperty('--chapter-bg', 'url("' + bgUrl + '")');
+    buildPageAnim(current);
     // リーダーが表示された状態でページ割りをする
     if (!PAGES.length || sizeKeyNow() !== pageSizeKey) paginateAll();
     if (!PAGES.length) return;
@@ -453,6 +543,8 @@ export function createReader(book: BookData): Reader {
     }
     updatePlayBtn();
     updateNav();
+    updateMediaMetadata();
+    syncMediaState();
   }
   function playAudio(): void {
     audio.playbackRate = SPEEDS[speedIdx];
@@ -481,6 +573,99 @@ export function createReader(book: BookData): Reader {
     hideChrome();
     showView('cover');
     refreshResume();
+  }
+
+  /* ---------- Media Session（ロック画面・コントロールセンターの操作に乗る） ----------
+     章ごとに「いま読んでいる章・著者・本の題」を OS に伝え、端末側の
+     再生／停止・前後の章・シークを、このアプリの操作に割り当てる。
+     バックグラウンド再生の後押しにもなる（OS がメディア再生として扱うため） */
+  const mediaSession: MediaSession | undefined = 'mediaSession' in navigator ? navigator.mediaSession : undefined;
+  function updateMediaMetadata(): void {
+    if (!mediaSession) return;
+    const ch = chapters[current];
+    if (!ch) return;
+    mediaSession.metadata = new MediaMetadata({
+      title: ch.num + ' ' + ch.title,
+      artist: book.author,
+      album: book.title,
+      artwork: [
+        { src: new URL('icons/icon-192.png', document.baseURI).href, sizes: '192x192', type: 'image/png' },
+        { src: new URL('icons/icon-512.png', document.baseURI).href, sizes: '512x512', type: 'image/png' },
+      ],
+    });
+  }
+  function syncMediaState(): void {
+    if (!mediaSession) return;
+    mediaSession.playbackState = audio.paused || audio.ended ? 'paused' : 'playing';
+  }
+  function syncMediaPosition(): void {
+    if (!mediaSession || typeof mediaSession.setPositionState !== 'function') return;
+    if (!isFinite(audio.duration) || audio.duration <= 0) return;
+    try {
+      mediaSession.setPositionState({
+        duration: audio.duration,
+        position: Math.min(Math.max(audio.currentTime || 0, 0), audio.duration),
+        playbackRate: audio.playbackRate || 1,
+      });
+    } catch {
+      // 位置を伝えられなくても続行する
+    }
+  }
+  function setupMediaSession(): void {
+    if (!mediaSession) return;
+    const set = (action: MediaSessionAction, handler: MediaSessionActionHandler): void => {
+      try {
+        mediaSession.setActionHandler(action, handler);
+      } catch {
+        // 対応していない操作は割り当てない
+      }
+    };
+    set('play', () => playAudio());
+    set('pause', () => audio.pause());
+    set('previoustrack', () => {
+      if (current > 0) showGate(current - 1);
+    });
+    set('nexttrack', () => {
+      if (current < chapters.length - 1) showGate(current + 1);
+    });
+    set('seekbackward', (d) => {
+      audio.currentTime = Math.max(0, audio.currentTime - (d.seekOffset || 10));
+    });
+    set('seekforward', (d) => {
+      if (isFinite(audio.duration)) audio.currentTime = Math.min(audio.duration, audio.currentTime + (d.seekOffset || 10));
+    });
+    set('seekto', (d) => {
+      if (typeof d.seekTime === 'number') audio.currentTime = d.seekTime;
+    });
+  }
+
+  /* ---------- バックグラウンド再生 ----------
+     設定オン（既定）: 画面を消しても・他アプリに切り替えても、朗読と BGM を止めない。
+     朗読は <audio> 要素なので元々バックグラウンドでも鳴り続ける作りで、止める処理は
+     入れていない。ここでやる後押しは、(1) Media Session で OS のメディア扱いに乗せる、
+     (2) BGM の AudioContext がブラウザに止められていたら開け直す、の2つ。
+     設定オフ: バックグラウンドに入ったら一時停止し、戻ってきたら（止める前が再生中
+     だった場合だけ）再開する、従来型の挙動にする */
+  let bgPlay = load<boolean>('bgplay', true);
+  let hiddenPausedAudio = false;
+  let hiddenStoppedBgm = false;
+  function onVisibilityChange(): void {
+    if (document.hidden) {
+      if (bgPlay) {
+        resumeBgmContext();
+        return;
+      }
+      hiddenPausedAudio = !audio.paused && !audio.ended;
+      if (hiddenPausedAudio) audio.pause();
+      hiddenStoppedBgm = document.body.dataset.bgm === 'on';
+      if (hiddenStoppedBgm) stopBgm();
+    } else {
+      if (hiddenPausedAudio) playAudio();
+      if (hiddenStoppedBgm && isBgmOn()) startBgm();
+      hiddenPausedAudio = false;
+      hiddenStoppedBgm = false;
+      if (bgPlay) resumeBgmContext();
+    }
   }
 
   /* ---------- TOC ---------- */
@@ -580,6 +765,11 @@ export function createReader(book: BookData): Reader {
       setBgmOn(checked);
       if (checked) startBgm();
     });
+    $<HTMLInputElement>('bgPlayToggle').addEventListener('change', (e) => {
+      bgPlay = (e.target as HTMLInputElement).checked;
+      save('bgplay', bgPlay);
+    });
+    document.addEventListener('visibilitychange', onVisibilityChange);
     /* BGM は最初のタップ以降に鳴らせる（ブラウザの自動再生の制約）。
        表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く */
     document.addEventListener('pointerdown', () => {
@@ -651,14 +841,23 @@ export function createReader(book: BookData): Reader {
       if (isFinite(audio.duration) && audio.duration > 0) {
         $<HTMLInputElement>('progressBar').value = String((audio.currentTime / audio.duration) * 100);
       }
-      if (Math.floor(audio.currentTime) % 5 === 0) saveBookmark();
+      if (Math.floor(audio.currentTime) % 5 === 0) {
+        saveBookmark();
+        syncMediaPosition();
+      }
       syncPageToAudio(false);
     });
-    audio.addEventListener('seeked', () => syncPageToAudio(true));
+    audio.addEventListener('seeked', () => {
+      syncPageToAudio(true);
+      syncMediaPosition();
+    });
     audio.addEventListener('loadedmetadata', () => {
       $('durationTime').textContent = fmt(audio.duration);
+      syncMediaPosition();
     });
     audio.addEventListener('play', updatePlayBtn);
+    audio.addEventListener('play', syncMediaState);
+    audio.addEventListener('pause', syncMediaState);
     audio.addEventListener('pause', () => {
       updatePlayBtn();
       saveBookmark();
@@ -694,6 +893,8 @@ export function createReader(book: BookData): Reader {
   $<HTMLInputElement>('bgToggle').checked = bgOn;
   document.body.classList.toggle('bg-off', !bgOn);
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
+  $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
+  setupMediaSession();
   buildToc();
   bind();
   refreshResume();
@@ -713,6 +914,8 @@ export function createReader(book: BookData): Reader {
       const bgm = load<boolean>('bgm', true);
       $<HTMLInputElement>('bgmToggle').checked = bgm;
       setBgmOn(bgm);
+      bgPlay = load<boolean>('bgplay', true);
+      $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
       updateNav();
       refreshResume();
     },

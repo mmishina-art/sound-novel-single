@@ -58,6 +58,12 @@ let bgmWanted = false;
 
 export const isBgmOn = (): boolean => bgmOn;
 
+/** BGM の出口（AudioContext）がブラウザに止められていたら開け直す。
+    バックグラウンドから戻ってきたときなどに呼ぶ（鳴っていないときは何もしない） */
+export function resumeBgmContext(): void {
+  if (bgmNodes) ac();
+}
+
 export function setBgmOn(on: boolean): void {
   bgmOn = on;
   save('bgm', on);
@@ -139,7 +145,9 @@ export function startBgm(): void {
     let loopStart = c.currentTime + 0.15;
     const timer = setInterval(() => {
       if (c.state === 'suspended') void c.resume();
-      const horizon = c.currentTime + 0.9;
+      // 先読みは広めに取る：バックグラウンドではタイマーが絞られ（数秒〜分単位に
+      // 間引かれる）ても、予約済みの音が続くようにするため
+      const horizon = c.currentTime + 30;
       for (;;) {
         const ev = events[idx];
         const at = loopStart + ev.beat * beatSec;

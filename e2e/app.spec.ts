@@ -268,3 +268,110 @@ test('デバッグモード: バージョンを 5 回タップで操作パネル
   await page.getByRole('button', { name: 'デバッグモードを終える' }).click();
   await expect(panel).toBeHidden();
 });
+
+/* 背景アニメーションは「視覚効果を減らす」設定では層自体を出さない作りなので、
+   この一連のテストだけ reducedMotion を解除して、表示の切り替えまで確かめる */
+test.describe('背景アニメーション・ノンブル・バックグラウンド再生', () => {
+  test.use({ reducedMotion: 'no-preference' });
+
+  test('背景アニメーションの層が章ごとに切り替わる', async ({ page }) => {
+    await openReader(page);
+    const anim = page.locator('#pageAnim');
+    await expect(anim).toHaveAttribute('data-chapter', '1');
+    await expect(anim.locator('.anim-rain')).toHaveCount(14); // 第一章は雨
+    await openMenuInReader(page);
+    await page.locator('#tocFromMenuBtn').click();
+    await page.locator('.toc-item').nth(1).click();
+    await expect(page.locator('#gateNum')).toHaveText('第二章');
+    await page.locator('#gateView').click();
+    await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
+    await expect(anim).toHaveAttribute('data-chapter', '2');
+    await expect(anim.locator('.anim-rain')).toHaveCount(6); // 第二章は雨上がりでまばら
+    await expect(anim.locator('.anim-glint')).toHaveCount(3);
+  });
+
+  test('背景をオフにするとアニメーションの層も消える', async ({ page }) => {
+    await openReader(page);
+    await expect(page.locator('#pageAnim')).toBeVisible();
+    await openMenuInReader(page);
+    await page.locator('#bgToggle').click();
+    await expect(page.locator('body')).toHaveClass(/bg-off/);
+    await expect(page.locator('#pageAnim')).toBeHidden();
+    await page.locator('#bgToggle').click();
+    await expect(page.locator('#pageAnim')).toBeVisible();
+  });
+
+  test('ノンブル（ページ数）は操作UIが消えていても常時表示される', async ({ page }) => {
+    await openReader(page);
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5); // 中央タップで操作UIを消す
+    await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+    await expect(page.locator('#pageFolio')).toBeVisible();
+    await expect(page.locator('#pageFolio')).toHaveText(/― \d+ ―/);
+    await expect(page.locator('#pageFolio')).toHaveCSS('opacity', '1');
+    // 章内位置は操作の目安なので、操作表示中だけ出す
+    await expect(page.locator('#pageChapterPos')).toHaveCSS('opacity', '0');
+  });
+
+  test('Media Session に章・著者・本の題と表紙画像が載る', async ({ page }) => {
+    await openReader(page);
+    const meta = await page.evaluate(() => {
+      const m = navigator.mediaSession?.metadata;
+      return m ? { title: m.title, artist: m.artist, album: m.album, artwork: m.artwork?.length ?? 0 } : null;
+    });
+    expect(meta).not.toBeNull();
+    expect(meta?.title).toContain('第一章');
+    expect(meta?.title).toContain('雨の日の客');
+    expect(meta?.artist).toBe('水瀬 葵');
+    expect(meta?.album).toBe('空の郵便が届くまで');
+    expect(meta?.artwork).toBeGreaterThan(0);
+  });
+
+  test('バックグラウンド再生: 既定オンでは隠れても止めず、オフでは一時停止して戻ると再開する', async ({ page }) => {
+    await openReader(page);
+    // 音声の再生状態は端末・コーデックで変わるので、要素の play/pause を観察用の物に差し替えて確かめる
+    await page.evaluate(() => {
+      const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const state = { paused: false, calls: [] as string[] };
+      (window as unknown as { __bgTest: typeof state }).__bgTest = state;
+      a.pause = () => {
+        state.calls.push('pause');
+        state.paused = true;
+        a.dispatchEvent(new Event('pause'));
+      };
+      a.play = () => {
+        state.calls.push('play');
+        state.paused = false;
+        a.dispatchEvent(new Event('play'));
+        return Promise.resolve();
+      };
+      Object.defineProperty(a, 'paused', { configurable: true, get: () => state.paused });
+    });
+    const calls = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { __bgTest: { calls: string[] } }).__bgTest.calls);
+    const setHidden = (hidden: boolean): Promise<void> =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+
+    // 既定はオン: 隠れても止めない
+    await setHidden(true);
+    expect(await calls()).not.toContain('pause');
+    await setHidden(false);
+
+    // オフに切り替える（切り替えは即座に効く）
+    await openMenuInReader(page);
+    await expect(page.locator('#bgPlayToggle')).toBeChecked();
+    await page.locator('#bgPlayToggle').click();
+    await expect(page.locator('#bgPlayToggle')).not.toBeChecked();
+    await page.locator('#menuCloseBtn').click();
+
+    await setHidden(true);
+    expect(await calls()).toContain('pause'); // バックグラウンドで一時停止
+    await setHidden(false);
+    expect((await calls()).at(-1)).toBe('play'); // 戻ったら再開
+  });
+});
