@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-Dr1ewpzV.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Cvz1_6RI.css">
+    <script type="module" crossorigin src="./assets/index-F2Dt8cxL.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BR04-pH0.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -32,15 +32,15 @@
       <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
       <p id="coverHint" class="cover-hint" hidden>表紙をタップすると 第1章の朗読が始まります</p>
 
-      <!-- 表紙に出すのは、しおりがあるときだけの「再開」ボタンと、入口の「目次」「メニュー」だけ。
-           再開は表紙に置く（メニューの中には入れない）。目次はモーダルではなく本の目次ページとして開く -->
+      <!-- 表紙に出すのは、しおりがあるときだけの「再開」ボタンと、入口の「メニュー」だけ。
+           再開は表紙に置く（メニューの中には入れない）。
+           目次ページへの入口はメニューの「目次を開く」に一本化する（表紙に目次ボタンは置かない）。
+           しおりの案内行（章／ページ数）は再開ボタンと情報が重なるので置かない -->
       <div class="cover-entry">
         <button id="resumeBtn" type="button" class="cover-resume" hidden>しおりから再開</button>
-        <p id="coverBookmarkNote" class="cover-bookmark-note" hidden></p>
-        <button id="coverTocBtn" type="button" class="cover-settings">目次</button>
         <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
       </div>
-      <!-- バージョン表記は表紙の隅に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
+      <!-- バージョン表記は表紙画面の下部中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
       <p id="version-line" class="cover-version">v<span id="version"></span></p>
     </section>
 
@@ -52,7 +52,7 @@
           <!-- 語り手名は独立した列に置かず、タイトルの列の中で題に続けて置く（「語り・」は付けない） -->
           <h2 class="gate-title"><span id="gateTitle"></span><span id="gateNarrator" class="gate-narrator"></span></h2>
         </div>
-        <p class="gate-hint">タップで本文へ</p>
+        <p id="gateHint" class="gate-hint">タップで本文へ</p>
       </div>
     </section>
 
@@ -78,11 +78,14 @@
           <span id="pageChapterPos" class="folio-chapter"></span>
         </div>
 
-        <!-- 最終ページだけに出る下部の帯：奥付（小さな文字）と、表紙への控えめな導線。
-             「おわり」自体は本文の流れの末尾に置く（reader.ts が最終ページに差し込む） -->
-        <div id="finalPageFoot" class="final-foot" hidden>
-          <p class="final-colophon">『空の郵便が届くまで』　著者：水瀬 葵<br />朗読：AI音声（女性パート「Lily」・男性パート「MAI」）／音楽：アプリ内で生成・再生される自作曲／形式：サウンド単行本／2026年10月 電子版</p>
-          <button id="finalToCoverBtn" type="button" class="final-cover-link">表紙に戻る</button>
+        <!-- 独立した奥付ページ（本文の最終ページの次に来る、本のいちばん最後のページ）。
+             奥付と表紙への導線だけをゆったり収める。ノンブルは付けない
+             （扉など他の非本文ページと同じ作法）。「おわり」は本文の最終ページの中にある -->
+        <div id="endPage" class="end-page" hidden>
+          <div class="end-foot">
+            <p class="end-colophon">『空の郵便が届くまで』　著者：水瀬 葵<br />朗読：AI音声（女性パート「Lily」・男性パート「MAI」）／音楽：アプリ内で生成・再生される自作曲／形式：サウンド単行本／2026年10月 電子版</p>
+            <button id="finalToCoverBtn" type="button" class="final-cover-link">表紙に戻る</button>
+          </div>
         </div>
       </div>
 
