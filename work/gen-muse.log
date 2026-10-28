@@ -1,0 +1,19 @@
+total sentences to check: 457
+progress 50/457 ok=50 skipped=0 failed=0 calls=53 failures=0
+progress 100/457 ok=100 skipped=0 failed=0 calls=103 failures=0
+progress 150/457 ok=150 skipped=0 failed=0 calls=154 failures=0
+progress 200/457 ok=200 skipped=0 failed=0 calls=203 failures=0
+progress 250/457 ok=250 skipped=0 failed=0 calls=253 failures=0
+progress 300/457 ok=300 skipped=0 failed=0 calls=303 failures=0
+progress 350/457 ok=350 skipped=0 failed=0 calls=353 failures=0
+progress 400/457 ok=400 skipped=0 failed=0 calls=403 failures=0
+progress 450/457 ok=450 skipped=0 failed=0 calls=453 failures=0
+generation done ok=457 skipped=0 failed=[] calls=457 failures=0
+  built ch1: 324.2s
+  built ch2: 356.9s
+  built ch3: 288.3s
+  built ch4: 356.1s
+  built ch5: 277.8s
+  built ch6: 342.6s
+  built ch7: 269.1s
+ALL BUILT

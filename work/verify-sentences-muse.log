@@ -1,0 +1,83 @@
+ch1-19 CHECK sim=0.79 len=1.05
+  T:ゆうがたごじをかいったころ、戸のすずが鳴った。
+  H:夕方5時を帰った頃、この鈴が鳴った。
+ch1-23 CHECK sim=0.35 len=0.70
+  T:さんじゅっさいくらい。
+  H:30歳くらい
+ch1-31 CHECK sim=0.20 len=0.33
+  T:ひゃくえん、ひゃくえん、ひゃくえん。
+  H:100円
+ch1-54 CHECK sim=0.57 len=1.00
+  T:「ひゃくえんです。
+  H:100円です
+ch1 done, CHECK sentences: ['19', '23', '31', '54']
+ch2-41 CHECK sim=0.67 len=1.04
+  T:てんこうのまえ、としょしつでいちどだけ見せてもらった。
+  H:10コールの目、2ショーシーツで1度だけ見せてもらった。
+ch2-50 CHECK sim=0.63 len=1.11
+  T:「悠真、あんた傘は？
+  H:有針。あんたかさは
+ch2-63 CHECK sim=0.67 len=1.00
+  T:しめきりはみっかご。
+  H:締め切りは3日後
+ch2-64 CHECK sim=0.76 len=0.89
+  T:さんびゃくページのぶんこのさいこうだ。
+  H:300ページの文庫の最高だ。
+ch2 done, CHECK sentences: ['41', '50', '63', '64']
+ch3-3 CHECK sim=0.79 len=1.00
+  T:母からおくられてきた荷ものはみっかめに届いた。
+  H:母から送られてきた荷物は3日目に届いた
+ch3-18 CHECK sim=0.69 len=0.96
+  T:あいてはよっかまえ、この店でししゅうを買っていった。
+  H:相手は4日前、この店で指習を買っていた。
+ch3-47 CHECK sim=0.55 len=0.83
+  T:にしのゆうま。
+  H:西の雲
+ch3-63 CHECK sim=0.75 len=0.91
+  T:じゅうよねんのちんもくは、ふたりのあいだではずいぶんおおきく育っていた。
+  H:14年の沈黙は、2人の間ではずいぶん大きく育っていた。
+ch3 done, CHECK sentences: ['3', '18', '47', '63']
+ch4-17 CHECK sim=0.00 len=1.55
+  T:てんしゅのえがおだった。
+  H:Tenshu no Egao Datta
+ch4-55 CHECK sim=0.00 len=1.50
+  T:「はるかちゃん、いいてんしゅになったわよ。
+  H:HARUKA-CHAN, ITEN SHUNI NATAWOYO
+ch4 done, CHECK sentences: ['17', '55']
+ch5-0 CHECK sim=0.72 len=0.95
+  T:そのしらせは、いっつうのふうしょで届いた。
+  H:その知らせは、いつの風所で届いた。
+ch5-14 CHECK sim=0.74 len=0.93
+  T:夜、しさんひょうとむき合った。
+  H:ヤシー3票と向き合った
+ch5-37 CHECK sim=0.46 len=1.36
+  T:『しょうてんがいのきろく』。
+  H:show 10 ガイノー キーロック
+ch5 done, CHECK sentences: ['0', '14', '37']
+ch6-9 CHECK sim=0.74 len=0.87
+  T:くがつまつのたいきょ、たいしょうはながやさんげん。
+  H:9月末の太郷 太称花が屋さんげ
+ch6-18 CHECK sim=0.50 len=1.67
+  T:「空きぶっけん？
+  H:アッキーブーキャンプ
+ch6-34 CHECK sim=0.57 len=1.00
+  T:ほこりっぽいゆかに、ふたりのあしあとが付いた。
+  H:誇りっぽい床に2人の足跡がついた
+ch6 done, CHECK sentences: ['9', '18', '34']
+ch7-15 CHECK sim=0.77 len=1.05
+  T:ごごくじ、さいごのひとはこが空になった。
+  H:午後9時、最後の人は子が空になった。
+ch7-18 CHECK sim=0.74 len=0.90
+  T:『そらのゆうびん』だった。
+  H:空の湯瓶だった?
+ch7-43 CHECK sim=0.59 len=0.93
+  T:「じゅうよねん、ながかったですね」。
+  H:14年長かったですね
+ch7-45 CHECK sim=0.11 len=1.31
+  T:でも、むだじゃなかったと思います。
+  H:しかし、このように失敗することは無理です。
+ch7-53 CHECK sim=0.79 len=1.05
+  T:ふたりは笑って、あたらしい店の戸を閉めた。
+  H:2人は笑って、新しい店の塔を閉めた。
+ch7 done, CHECK sentences: ['15', '18', '43', '45', '53']
+saved /home/hatch/workspace/sound-novel-single/work/verify-sentences-muse.json
