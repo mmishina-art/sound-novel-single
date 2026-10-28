@@ -233,8 +233,8 @@ button.link {
 
 /* ============ Cover — a right-bound book lying on a desk ============ */
 .view-cover { position: relative; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: max(20px, var(--safe-top)) max(16px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(16px, env(safe-area-inset-left)); background: radial-gradient(ellipse at 50% 30%, var(--indigo2), var(--indigo) 75%); }
-/* バージョン表記は表紙の右下の隅に小さく（デバッグモードの入口を兼ねるので、タップは受ける） */
-.cover-version { position: absolute; right: max(14px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); margin: 0; font-size: .72rem; letter-spacing: .08em; color: var(--desk-text); opacity: .55; cursor: pointer; }
+/* バージョン表記は表紙画面の下部中央に小さく（デバッグモードの入口を兼ねるので、タップは受ける） */
+.cover-version { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); margin: 0; font-size: .72rem; letter-spacing: .08em; color: var(--desk-text); opacity: .55; cursor: pointer; }
 .cover-tap { background: none; border: none; padding: 0; line-height: 1.5; text-align: inherit; }
 /* 綴じ側は body.bound-* で切り替える（right＝右綴じ／left＝左綴じ）。
    姉妹アプリ『サウンドノベル』本棚の表紙と同言語：綴じ側に背の陰影、
@@ -290,10 +290,10 @@ body.bound-right .cover-vtitle { right: 10.5%; }
 body.bound-left .cover-vtitle { left: 10.5%; }
 .cover-vtitle .vt-line { display: block; }
 .cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }
-/* 表紙の入口は1つだけ（小さな「メニュー」）。再開・目次・設定はすべてメニューの中。
-   しおりがあるときだけ、その真下に最小限の手がかりを小さく出す */
+/* 表紙の入口は1つだけ（小さな「メニュー」）。目次・設定はすべてメニューの中。
+   しおりがあるときだけ、その上に再開ボタンが出る（案内行は置かない：章の情報は
+   再開ボタンの文言と重なるため） */
 .cover-entry { display: flex; flex-direction: column; align-items: center; gap: 7px; margin-top: 2px; }
-.cover-bookmark-note { color: var(--desk-text); font-size: .78rem; letter-spacing: .1em; margin: 0; text-align: center; opacity: .75; }
 
 /* ============ Gate — 中扉（紙の扉ページ） ============ */
 .view-gate { min-height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); cursor: pointer; padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); }
@@ -321,12 +321,13 @@ body.bound-right .gate-sheet::after {
 body.bound-left .gate-sheet::after {
   left: 0; background: linear-gradient(to right, rgba(101,84,52,.26), rgba(101,84,52,.08) 55%, transparent);
 }
-.gate-text { /* 章番号・題・語り手を、綴じ側寄りに組む（縦書きでは右の列から） */
+.gate-text { /* 章番号・題・語り手をひとかたまりとして、ページの中央に組む。
+     列の並び（縦書きでは右から 章番号・題・名前）はそのままに、かたまり全体を
+     水平中央へ（綴じ側に寄せると、反対側に空白が偏ってしまうため） */
   position: absolute; top: 11%; bottom: 16%;
+  left: 50%; transform: translateX(-50%);
 }
 body.dir-vertical .gate-text { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
-body.bound-right .gate-text { right: 17%; }
-body.bound-left .gate-text { left: 17%; }
 .gate-num { font-size: .98rem; letter-spacing: .32em; color: #8a6d2f; margin: 0; padding-top: .15em; }
 .gate-title { font-size: 2rem; letter-spacing: .1em; margin: 0 1.1em; font-weight: 600; color: #1b2a4a; }
 /* 語り手名は題と同じ列の中で、題に続けて置く（独立した列にはしない）。
@@ -540,19 +541,31 @@ body.bound-left .folio-chapter { right: 38px; }
 /* ページ送りの合図（常設の矢印）は置かない。送りはタップ／スワイプ、操作は中央タップで出す */
 
 /* 最終ページ（おわり） */
-/* 「おわり」は最終ページの本文の流れの末尾に置く（独立したページは作らない）。
-   最後の文の同じ列に、少し間を空けて控えめに続ける */
-.story-end { margin-inline-start: 2.4em; letter-spacing: .35em; font-size: .92em; color: #6a6252; }
+/* 「おわり」は本文の流れに混ぜず、最後の文のあとで改列した独立の列に、
+   列の中央へ置く（独立したページは作らない）。流れの中に置くと列をまたいで
+   割れてしまうための組版。縦書きでは text-align: center が列の上下中央になる。
+   列の間隔は本文段落のマージンに任せ、字下げだけを消す（詳細度を本文段落
+   ルールより高くしてある） */
+body.dir-vertical .page-content p.story-end { text-indent: 0; text-align: center; letter-spacing: .35em; font-size: .92em; color: #6a6252; }
+body.dir-horizontal .page-content p.story-end { text-indent: 0; text-align: center; letter-spacing: .35em; font-size: .92em; color: #6a6252; }
 /* 朗読中の文の強調：本らしさを壊さないよう、ごく薄い背景とわずかな濃さだけ */
 .unit.now { background: rgba(163, 130, 62, .13); border-radius: 3px; color: #17130c; }
 body.hl-off .unit.now { background: none; color: inherit; }
-/* 最終ページの下部の帯（奥付＋表紙への導線）。ノンブルの帯（44px）の内側に収める。
-   最終ページではノンブルと重なるため、そのページだけノンブルを出さず帯に場所を譲る
-   （進み具合は下端のラインが100%になることで分かる） */
-.page.is-final .page-footer { display: none; }
-.final-foot { position: absolute; left: 0; right: 0; bottom: 0; height: var(--folio-band, 44px); z-index: 3; display: flex; align-items: center; gap: 10px; padding: 0 14px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; }
-.final-colophon { margin: 0; flex: 1; min-width: 0; font-size: .56rem; line-height: 1.45; color: #96876a; }
-.final-cover-link { flex: 0 0 auto; background: none; border: none; padding: 4px 2px; font-size: .68rem; letter-spacing: .08em; color: #8a6d2f; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* カラオケ方式：まだ読まれていない文は完全に見えない（文字の姿は出さない）。
+   場所だけは確保する（visibility）ことで、文が現れるたびに組版が揺れない。
+   「おわり」も、最後の文が読まれるまで同じく隠す */
+body.mode-karaoke .unit.k-hide, body.mode-karaoke .story-end.k-hide { visibility: hidden; }
+/* 独立した奥付ページ（本のいちばん最後のページ）。本文ページと同じ紙の体裁で、
+   枠いっぱいに広がる。奥付と表紙への導線だけを、下部にゆったり置く。
+   ノンブルは付けない（扉など他の非本文ページと同じ作法。本文ページを不透明に
+   覆うので、下のノンブルも見えなくなる） */
+/* z-index は操作UI（プレイヤー帯・ヘッダー）より上にする：奥付ページは扉と
+   同じ非本文ページで、開いている間は本文側の操作帯に覆われてはいけない
+   （特に「表紙に戻る」がプレイヤー帯の下に隠れて押せなくなるため） */
+.end-page { position: absolute; inset: 0; z-index: 11; background-image: repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px), linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc); }
+.end-foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 30px 30px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.end-colophon { margin: 0; font-size: .72rem; line-height: 1.9; letter-spacing: .06em; color: #7d7260; text-align: center; }
+.final-cover-link { background: none; border: none; padding: 6px 4px; font-size: .8rem; letter-spacing: .1em; color: #8a6d2f; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
 /* Player（下部オーバーレイ） */
 .player { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255,253,246,.96); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-top: 1px solid #ddd6c2; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }

@@ -55,13 +55,15 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
   await expect(page.locator('#coverMenuBtn')).toBeVisible(); // 入口は1つ
-  await expect(page.locator('#coverBookmarkNote')).toBeHidden(); // しおりはまだない
-  // 読み始めて表紙に戻ると、ヒントは消え、しおりの手がかりだけが残る
+  await expect(page.locator('#resumeBtn')).toBeHidden(); // しおりはまだない
+  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // しおりの案内行は置かない（廃止）
+  await expect(page.locator('#coverTocBtn')).toHaveCount(0); // 表紙に目次ボタンは置かない（メニューに一本化）
+  // 読み始めて表紙に戻ると、ヒントは消え、再開ボタンだけが出る
   await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await backToCover(page);
   await expect(page.locator('#coverHint')).toBeHidden();
-  await expect(page.locator('#coverBookmarkNote')).toBeVisible();
+  await expect(page.locator('#resumeBtn')).toBeVisible();
 });
 
 test('表紙タップで章扉が出て、本文へ進む', async ({ page }) => {
@@ -90,6 +92,31 @@ test('章扉では語り手名が「語り・」なしで、タイトルと同�
   expect(titleCx).toBeGreaterThanOrEqual(nameBox.x - 2);
   expect(titleCx).toBeLessThanOrEqual(nameBox.x + nameBox.width + 2);
   expect(nameBox.y).toBeGreaterThan(titleBox.y + titleBox.height - 2);
+});
+
+test('章扉の要素（章番号・題・語り手）は、かたまりとしてページの中央に置かれる', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  const expectCentered = async (): Promise<void> => {
+    const sheet = await page.locator('.gate-sheet').boundingBox();
+    const text = await page.locator('.gate-text').boundingBox();
+    if (!sheet || !text) throw new Error('bounding box not found');
+    const sheetCx = sheet.x + sheet.width / 2;
+    const textCx = text.x + text.width / 2;
+    expect(Math.abs(textCx - sheetCx)).toBeLessThanOrEqual(4);
+  };
+  // 短い題（第一章）
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expectCentered();
+  // 長い題（第七章）：目次ページから開く
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await page.locator('.toc-item').nth(6).click();
+  await expect(page.locator('#gateNum')).toHaveText('第七章');
+  await expectCentered();
 });
 
 test('ページめくり: 左側タップで次ページ（右綴じ）へ進み、ノンブルが増える', async ({ page }) => {
@@ -142,8 +169,9 @@ test('目次はモーダルではなく本の目次ページとして開き、�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#tocModal')).toHaveCount(0); // モーダルは廃止
-  // 表紙の「目次」から目次ページへ
-  await page.locator('#coverTocBtn').click();
+  // 表紙のメニュー「目次を開く」から目次ページへ（入口はメニューに一本化）
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await expect(page.locator('.toc-item')).toHaveCount(7);
   await page.locator('.toc-item').nth(2).click();
@@ -208,9 +236,8 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   await backToCover(page);
-  // 表紙の常時表示は入口だけ。しおりの手がかりは入口の下に小さく出る
-  await expect(page.locator('#coverBookmarkNote')).toBeVisible();
-  await expect(page.locator('#coverBookmarkNote')).toContainText('ページ');
+  // 表紙の常時表示は入口と再開ボタンだけ。しおりの案内行は置かない
+  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
   // 再開は表紙のボタンから（メニューの中には入れない）
@@ -230,30 +257,57 @@ test('しおりがないときは表紙に再開ボタンが出ず、メニュ�
   await expect(page.locator('#menuModal #version-line')).toHaveCount(0); // バージョン表記はメニューではなく表紙にある
 });
 
-test('最終ページの本文末尾に「おわり」があり、下部の帯に奥付と表紙への導線がある', async ({ page }) => {
+test('本文の最終ページには改列・中央の「おわり」があり、その次に独立した奥付ページが来る', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#endView')).toHaveCount(0); // 独立した「おわり」ページは作らない
-  await expect(page.locator('#colophonView')).toHaveCount(0); // 独立した奥付ページも作らない
-  // 目次ページから最終章（第七章）へ
-  await page.locator('#coverTocBtn').click();
+  // 目次ページから最終章（第七章）へ（入口は表紙のメニュー）
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
   await page.locator('.toc-item').nth(6).click();
   await expect(page.locator('#gateNum')).toHaveText('第七章');
   await page.locator('#gateView').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
   // 最終ページまで送る
   for (let i = 0; i < 80; i++) {
     const pos = await page.locator('#pageChapterPos').textContent();
     const m = /(\d+) \/ (\d+)/.exec(pos || '');
     if (m && m[1] === m[2]) break;
-    await page.mouse.click(78, 400);
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
     await page.waitForTimeout(50);
   }
-  await expect(page.locator('#pageContent .story-end')).toHaveText('おわり');
-  await expect(page.locator('#finalPageFoot')).toBeVisible();
-  await expect(page.locator('.final-colophon')).toContainText('水瀬 葵');
-  await expect(page.locator('.final-colophon')).toContainText('サウンド単行本');
-  await expect(page.locator('.final-colophon')).toContainText('Lily');
+  // 「おわり」は本文の最終ページの中に、最後の文とは別の列（左隣の列）で、列の中央に置かれる
+  const endMark = page.locator('#pageContent .story-end');
+  await expect(endMark).toHaveText('おわり');
+  await expect(page.locator('#endPage')).toBeHidden(); // 奥付ページはまだ先
+  const units = page.locator('#pageContent .unit');
+  const lastUnitBox = await units.nth((await units.count()) - 1).boundingBox();
+  const markBox = await endMark.boundingBox();
+  const contentBox = await page.locator('#pageContent').boundingBox();
+  if (!lastUnitBox || !markBox || !contentBox) throw new Error('bounding box not found');
+  expect(markBox.x).toBeLessThan(lastUnitBox.x); // 縦書きで別の列＝左隣に改列している
+  const markCy = markBox.y + markBox.height / 2;
+  const contentCy = contentBox.y + contentBox.height / 2;
+  expect(Math.abs(markCy - contentCy)).toBeLessThanOrEqual(90); // 列の中央付近
+  // もう1つ送ると、独立した奥付ページ（ノンブルなし・奥付と表紙への導線）が開く
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await expect(page.locator('#endPage')).toBeVisible();
+  await expect(page.locator('.end-colophon')).toContainText('水瀬 葵');
+  await expect(page.locator('.end-colophon')).toContainText('サウンド単行本');
+  await expect(page.locator('.end-colophon')).toContainText('Lily');
+  // 奥付は枠の中に完全に収まる（はみ出し・見切れがない）
+  const endBox = await page.locator('#endPage').boundingBox();
+  const colophonBox = await page.locator('.end-colophon').boundingBox();
+  if (!endBox || !colophonBox) throw new Error('bounding box not found');
+  expect(colophonBox.y).toBeGreaterThanOrEqual(endBox.y);
+  expect(colophonBox.y + colophonBox.height).toBeLessThanOrEqual(endBox.y + endBox.height + 1);
+  // 前へ戻ると本文の最終ページへ帰り、そこから表紙へも行ける
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
+  await expect(page.locator('#endPage')).toBeHidden();
+  await expect(endMark).toBeVisible();
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await expect(page.locator('#endPage')).toBeVisible();
   await page.locator('#finalToCoverBtn').click();
   await expect(page.locator('#coverView')).toBeVisible();
 });
@@ -292,33 +346,118 @@ test('朗読中の文が1つだけ強調される', async ({ page }) => {
   await expect(page.locator('.unit.now')).toHaveCount(1, { timeout: 8000 });
 });
 
-test('表示方式をセンテンス形式に切り替えると2〜3文の塊になり、位置が保たれる', async ({ page }) => {
+test('表示方式をカラオケ方式に切り替えると、まだ読まれていない文が見えなくなり、文単位で送れる', async ({ page }) => {
   await openReader(page);
-  const pageUnits = await page.locator('#pageContent .unit').count();
-  expect(pageUnits).toBeGreaterThan(3); // ページ形式は1ページに多数の文
+  // 止めてから確かめる（再生の進行で frontier が動くと数が定まらないため）
+  await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).pause());
+  await expect(page.locator('.unit.k-hide')).toHaveCount(0); // ページ形式では隠さない
   await openMenuInReader(page);
   const btn = page.locator('#displayModeBtn');
   await expect(btn).toHaveText('ページ形式');
   await btn.click();
-  await expect(btn).toHaveText('センテンス形式');
+  await expect(btn).toHaveText('カラオケ方式');
   await page.locator('#menuCloseBtn').click();
-  const blockUnits = await page.locator('#pageContent .unit').count();
-  expect(blockUnits).toBeGreaterThanOrEqual(1);
-  expect(blockUnits).toBeLessThanOrEqual(3); // センテンス形式は1画面に2〜3文
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
-  // 塊単位の送りでも、音声がその塊へ追従する（ページ主導の仕様と同型）
-  await page.mouse.click(78, 400);
-  await page.waitForTimeout(700);
-  const t = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
-  expect(t).toBeGreaterThan(1);
-  // ページ形式へ戻しても、読んでいる章・位置は失われない
+  // まだ読まれていない文は見えない（.k-hide が付く）。読んでいる文は見えて強調される
+  const hiddenBefore = await page.locator('.unit.k-hide').count();
+  expect(hiddenBefore).toBeGreaterThan(0);
+  await expect(page.locator('.unit.now')).toHaveCount(1);
+  await expect(page.locator('.unit.now')).not.toHaveClass(/k-hide/);
+  const nowIndex = (): Promise<number> =>
+    page.evaluate(() => [...document.querySelectorAll('#pageContent .unit')].findIndex((e) => e.classList.contains('now')));
+  const nowBefore = await nowIndex();
+  expect(nowBefore).toBeGreaterThanOrEqual(0);
+  const tBefore = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  // 次側タップで1文送る：強調が次の文へ移り、隠れている文が1つ減り、音声もその文へ移る
+  // （音声シークは260msデバウンスのあと。固定待ちではなく条件で待つ）
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore + 1);
+  expect(await page.locator('.unit.k-hide').count()).toBe(hiddenBefore - 1);
+  const tAfter = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  expect(tAfter).toBeGreaterThan(tBefore);
+  // 前側タップで1文戻る：強調が戻り、隠れている文が1つ増える
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
+  await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore);
+  expect(await page.locator('.unit.k-hide').count()).toBe(hiddenBefore);
+  // ページ形式へ戻すと、隠れている文はなくなり、読んでいる章は失われない
   await openMenuInReader(page);
   await page.locator('#displayModeBtn').click();
   await expect(page.locator('#displayModeBtn')).toHaveText('ページ形式');
   await page.locator('#menuCloseBtn').click();
+  await expect(page.locator('.unit.k-hide')).toHaveCount(0);
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
-  const backUnits = await page.locator('#pageContent .unit').count();
-  expect(backUnits).toBeGreaterThan(3);
+});
+
+test('カラオケ方式で連打して送っても、手動ステップが音声位置に上書きされず進み続ける', async ({ page }) => {
+  await openReader(page);
+  await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).pause());
+  await openMenuInReader(page);
+  await page.locator('#displayModeBtn').click();
+  await expect(page.locator('#displayModeBtn')).toHaveText('カラオケ方式');
+  await page.locator('#menuCloseBtn').click();
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  const t0 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
+  // 間隔を空けずに6回送る（シークのデバウンスが切れる前に押し続ける）
+  for (let i = 0; i < 6; i++) {
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.waitForTimeout(60);
+  }
+  // 6文ぶん先の位置へ音声が移っている（止めたままなので、自然な進行では増えない）
+  await expect
+    .poll(() => page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime), { timeout: 8000 })
+    .toBeGreaterThan(t0 + 8);
+  await expect(page.locator('.unit.now')).toHaveCount(1);
+});
+
+test('ページを戻っていくと、第一章の扉→目次→表紙まで辿り着ける', async ({ page }) => {
+  await openReader(page);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  // 第一章の先頭ページで前へめくる → 第一章の扉（前へ辿るモード：自動では本文へ進まない）
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  await page.waitForTimeout(2200); // 通常の扉の自動送り（1.8秒）を過ぎても、扉に留まる
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#readerView')).toBeHidden();
+  const gateBox = await page.locator('#gateView').boundingBox();
+  if (!gateBox) throw new Error('gateView not found');
+  // 扉で前へめくる → 目次ページ
+  await page.mouse.click(gateBox.x + gateBox.width * 0.8, gateBox.y + gateBox.height * 0.5);
+  await expect(page.locator('#tocView')).toBeVisible();
+  // 目次の「戻る」は扉へ帰る
+  await page.locator('#tocBackBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  // 再び前へ：扉 → 目次 →（目次で前へ）→ 表紙
+  await page.mouse.click(gateBox.x + gateBox.width * 0.8, gateBox.y + gateBox.height * 0.5);
+  await expect(page.locator('#tocView')).toBeVisible();
+  const tocBox = await page.locator('#tocView').boundingBox();
+  if (!tocBox) throw new Error('tocView not found');
+  await page.mouse.click(tocBox.x + tocBox.width * 0.85, tocBox.y + tocBox.height * 0.1);
+  await expect(page.locator('#coverView')).toBeVisible();
+});
+
+test('前へ辿る連鎖の目次から、次側タップで扉→本文へ進める', async ({ page }) => {
+  await openReader(page);
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5); // → 扉（前へ辿るモード）
+  await expect(page.locator('#gateView')).toBeVisible();
+  const gateBox = await page.locator('#gateView').boundingBox();
+  if (!gateBox) throw new Error('gateView not found');
+  await page.mouse.click(gateBox.x + gateBox.width * 0.8, gateBox.y + gateBox.height * 0.5); // → 目次
+  await expect(page.locator('#tocView')).toBeVisible();
+  const tocBox = await page.locator('#tocView').boundingBox();
+  if (!tocBox) throw new Error('tocView not found');
+  // 目次で次側タップ → 第一章の扉（通常モード）→ 自動で本文へ
+  await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.1);
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#readerChapterLabel')).toHaveText(/第一章/);
 });
 
 test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
@@ -466,7 +605,7 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverBookmarkNote')).toBeVisible(); // しおりが残っている
+  await expect(page.locator('#resumeBtn')).toBeVisible(); // しおりが残っている（再開ボタンが出る）
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
@@ -475,8 +614,13 @@ test('デバッグモード: 表紙のバージョン表記を 5 回タップで
   await page.goto('/');
   const panel = page.locator('#debug-panel');
   await expect(panel).toBeHidden();
-  // バージョン表記は表紙の隅にある（メニューは開かない）
+  // バージョン表記は表紙画面の下部中央にある（メニューは開かない）
   await expect(page.locator('#version-line')).toBeVisible();
+  const verBox = await page.locator('#version-line').boundingBox();
+  const viewport = page.viewportSize();
+  if (!verBox || !viewport) throw new Error('bounding box / viewport not found');
+  const verCx = verBox.x + verBox.width / 2;
+  expect(Math.abs(verCx - viewport.width / 2)).toBeLessThanOrEqual(3); // 画面中央
   for (let i = 0; i < 5; i++) await page.locator('#version-line').click();
   await expect(panel).toBeVisible();
   await page.getByRole('button', { name: '最終章の扉へ飛ぶ' }).click();

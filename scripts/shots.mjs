@@ -9,6 +9,23 @@ import { mkdirSync, rmSync } from 'node:fs';
 /** 撮る画面。open は、ページを開いたあと、その画面を出すための操作。 */
 // 本のデータ（book/data.json）が届いて目次が組み上がると、表紙の操作が効くようになる
 const waitBook = async (page) => page.waitForSelector('#tocList li', { state: 'attached', timeout: 10000 });
+// 表示方式は画面間で localStorage に残るため、ページ形式で撮りたい画面は先に固定する
+const forcePageMode = async (page) => {
+  await page.evaluate(() => {
+    const appId = globalThis.document.querySelector('meta[name="app-id"]')?.content || '';
+    globalThis.localStorage.setItem(`${appId}-display`, 'page');
+  });
+  await page.reload();
+  await page.waitForFunction(() => globalThis.__appStarted === true);
+  await waitBook(page);
+};
+// 目次ページへの入口はメニューの「目次を開く」に一本化されている（表紙に目次ボタンはない）
+const openToc = async (page) => {
+  await waitBook(page);
+  await page.click('#coverMenuBtn');
+  await page.click('#tocFromMenuBtn');
+  await page.waitForSelector('#tocView:not([hidden])');
+};
 const openReader = async (page) => {
   await waitBook(page);
   await page.click('#coverTap');
@@ -18,13 +35,26 @@ const openReader = async (page) => {
 };
 const SCREENS = [
   { name: 'cover' },
-  { name: 'toc-page', open: async (page) => { await waitBook(page); await page.click('#coverTocBtn'); await page.waitForSelector('#tocView:not([hidden])'); } },
+  {
+    // しおりがあるときの表紙（再開ボタンが出る状態）。しおりを置いて読み込み直す
+    name: 'cover-resume',
+    open: async (page) => {
+      await page.evaluate(() => {
+        const appId = globalThis.document.querySelector('meta[name="app-id"]')?.content || '';
+        globalThis.localStorage.setItem(`${appId}-bookmark`, JSON.stringify({ chapter: 0, time: 33, title: '第一章 雨の日の客', savedAt: Date.now(), anchor: 0, page: 1 }));
+      });
+      await page.reload();
+      await page.waitForFunction(() => globalThis.__appStarted === true);
+      await waitBook(page);
+      await page.waitForSelector('#resumeBtn:not([hidden])');
+    },
+  },
+  { name: 'toc-page', open: openToc },
   { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#coverTap'); } },
   {
     name: 'gate2',
     open: async (page) => {
-      await waitBook(page);
-      await page.click('#coverTocBtn');
+      await openToc(page);
       await page.locator('.toc-item').nth(1).click();
       await page.waitForSelector('#gateView:not([hidden])');
     },
@@ -79,14 +109,14 @@ const SCREENS = [
     },
   },
   {
-    name: 'sentence',
+    name: 'karaoke',
     open: async (page) => {
       await openReader(page);
       const box = await page.locator('#pageWrap').boundingBox();
       await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
       await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
       await page.click('#menuBtn');
-      await page.click('#displayModeBtn');
+      await page.click('#displayModeBtn'); // ページ形式 → カラオケ方式
       await page.click('#menuCloseBtn');
       await page.waitForSelector('.unit.now', { timeout: 10000 });
       await page.waitForTimeout(200);
@@ -95,19 +125,41 @@ const SCREENS = [
   {
     name: 'final-page',
     open: async (page) => {
-      await waitBook(page);
-      await page.click('#coverTocBtn');
+      await forcePageMode(page);
+      await openToc(page);
       await page.locator('.toc-item').nth(6).click();
       await page.click('#gateView');
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 300; i++) {
         const pos = await page.locator('#pageChapterPos').textContent();
         const m = /(\d+) \/ (\d+)/.exec(pos || '');
         if (m && m[1] === m[2]) break;
         await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
         await page.waitForTimeout(40);
       }
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    // 奥付ページ（本文の最終ページから、もう1つ送った先）
+    name: 'end-page',
+    open: async (page) => {
+      await forcePageMode(page);
+      await openToc(page);
+      await page.locator('.toc-item').nth(6).click();
+      await page.click('#gateView');
+      await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
+      const box = await page.locator('#pageWrap').boundingBox();
+      for (let i = 0; i < 300; i++) {
+        const pos = await page.locator('#pageChapterPos').textContent();
+        const m = /(\d+) \/ (\d+)/.exec(pos || '');
+        if (m && m[1] === m[2]) break;
+        await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+        await page.waitForTimeout(40);
+      }
+      await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+      await page.waitForSelector('#endPage:not([hidden])', { timeout: 5000 });
       await page.waitForTimeout(300);
     },
   },
