@@ -65,6 +65,15 @@ export function createReader(book: BookData): Reader {
   const pageAnim = $<HTMLDivElement>('pageAnim');
   const pageContent = $('pageContent');
   const audio = $<HTMLAudioElement>('audioEl');
+  /* 章題コール専用の要素（扉で「第N章・題・語り手名」を読む短い音声）。
+     本文音声とは別要素で鳴らすため、本文の文字位置⇔時刻の対応やしおりの時刻には
+     一切影響しない。音声ファイルは事前生成（work/gen_title_calls.py） */
+  const gateAudio = $<HTMLAudioElement>('gateAudio');
+  function stopGateCall(): void {
+    gateAudio.onended = null;
+    gateAudio.onerror = null;
+    if (!gateAudio.paused) gateAudio.pause();
+  }
   const audioError = $('audioError');
   const headerEl = document.querySelector<HTMLElement>('.reader-header');
   const playerEl = document.querySelector<HTMLElement>('.player');
@@ -118,7 +127,7 @@ export function createReader(book: BookData): Reader {
       curPage = pageForChar(PAGES[current], anchor);
       if (mode === 'karaoke') karaokeIdx = unitIndexForChar(current, anchor);
       renderPage(0);
-      tocItems.forEach((el, i) => el.classList.toggle('current', i === current));
+      refreshTocCurrent();
       saveBookmark();
     }
   }
@@ -194,7 +203,6 @@ export function createReader(book: BookData): Reader {
   }
   let enterStamp = 0;
   let measurer: HTMLDivElement | null = null;
-  const tocItems: HTMLButtonElement[] = [];
 
   function setPreservesPitch(): void {
     audio.preservesPitch = true;
@@ -713,19 +721,48 @@ export function createReader(book: BookData): Reader {
   }
   function showGate(idx: number, opts: EnterOptions = {}): void {
     save('seen', true); // 一度読み始めたら、表紙のヒント文は二度と出さない
+    stopGateCall(); // 前の扉のコールが残っていたら止める
     current = idx;
     gateOpen = true;
     $('gateHint').textContent = 'タップで本文へ';
     fillGate(chapters[idx]);
     showView('gate');
     if (gateTimer !== undefined) clearTimeout(gateTimer);
+    let started = false;
     const start = (): void => {
+      if (started) return;
+      started = true;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
+      stopGateCall();
       gateOpen = false;
       enterChapter(idx, opts);
     };
     gateView.onclick = start;
-    gateTimer = setTimeout(start, 1800);
+    if (opts.autoplay === false) {
+      // 朗読を自動で始めない入り方（停止中にページ送りで章をまたいだ等）は、
+      // コールも鳴らさず、従来どおり少し置いて本文へ進む
+      gateTimer = setTimeout(start, 1800);
+      return;
+    }
+    /* 章題コール：扉の内容（第N章・題・語り手名）を、その章の語り手の声で読む
+       短い音声（book/audio/ch{N}-title.mp3）を鳴らし、読み終わってから本文を始める。
+       鳴らせない・読み込めない場合は従来の待ち時間で進み、長くても上限で打ち切る。
+       扉をタップすればコールを止めてすぐ本文へ進む */
+    gateTimer = setTimeout(start, 10000);
+    gateAudio.src = 'book/audio/ch' + (idx + 1) + '-title.mp3';
+    gateAudio.playbackRate = SPEEDS[speedIdx];
+    const gp = gateAudio as HTMLAudioElement & { mozPreservesPitch?: boolean; webkitPreservesPitch?: boolean };
+    gp.preservesPitch = true;
+    if ('mozPreservesPitch' in gp) gp.mozPreservesPitch = true;
+    if ('webkitPreservesPitch' in gp) gp.webkitPreservesPitch = true;
+    gateAudio.onended = start;
+    const fallback = (): void => {
+      if (gateTimer !== undefined) clearTimeout(gateTimer);
+      gateTimer = setTimeout(start, 1800);
+    };
+    gateAudio.onerror = fallback;
+    const p = gateAudio.play();
+    if (p && p.catch) p.catch(fallback);
   }
   /* 第一章の先頭ページから「前へ」を続けたときの扉（本の前側へ辿る連鎖の入口）。
      通常の扉と違い、自動でもタップでもすぐ本文へは進まない：
@@ -734,6 +771,7 @@ export function createReader(book: BookData): Reader {
      位置はしおりに残っているので、表紙の再開から元の場所へ戻れる */
   function showGateBack(): void {
     save('seen', true);
+    stopGateCall(); // 前へ辿る扉は無音が原則（コールは鳴らさない）
     audio.pause();
     updatePlayBtn();
     saveBookmark();
@@ -775,10 +813,11 @@ export function createReader(book: BookData): Reader {
       karaokeIdx = unitIndexForChar(current, opts.anchor != null ? opts.anchor : PAGES[current][curPage].startChar);
     }
     renderPage(0);
-    tocItems.forEach((el, i) => el.classList.toggle('current', i === current));
+    refreshTocCurrent();
   }
   function enterChapter(idx: number, opts: EnterOptions = {}): void {
     if (gateTimer !== undefined) clearTimeout(gateTimer);
+    stopGateCall(); // 本文に入るときはコールを必ず止める（二重に鳴らさない）
     gateOpen = false;
     closeEndPage(); // 章へ入るときは奥付ページを閉じる
     current = idx;
@@ -858,6 +897,7 @@ export function createReader(book: BookData): Reader {
     $('speedBtn').textContent = speedLabel(SPEEDS[speedIdx]);
   }
   function goCover(): void {
+    stopGateCall();
     audio.pause();
     closeEndPage();
     saveBookmark();
@@ -1038,13 +1078,124 @@ export function createReader(book: BookData): Reader {
     }
   }
 
-  /* ---------- 目次ページ（モーダルではなく本の1ページとして独立させる） ---------- */
+  /* ---------- 目次ページ（モーダルではなく本の1ページとして独立させる） ----------
+     目次は本文ページとは別画面のままにしているが、組み方は本文に寄せてある：
+     列を実測して収まる分だけを1ページにし、章が増えたら次の目次ページへ送る
+     （本文の「文単位で測ってページに分ける」に対する「列単位で測って分ける」）。
+     ページ送りは本文と同じ作法（次側タップで次ページ／前側タップで前ページ、スワイプも同じ向き）。
+     項目は「章と題」だけにする（語り手名は各章の扉で分かるため、目次には載せない） */
   let tocReturn: 'cover' | 'reader' | 'gate' = 'cover';
+  let tocPages: number[][] = [];
+  let tocPage = 0;
+  let tocMeasurer: HTMLDivElement | null = null;
+
+  function makeTocItem(i: number): HTMLLIElement {
+    const c = chapters[i];
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'toc-item';
+    btn.dataset.idx = String(i);
+    const num = document.createElement('span');
+    num.className = 'toc-num';
+    num.textContent = c.num;
+    const ttl = document.createElement('span');
+    ttl.className = 'toc-title';
+    ttl.textContent = c.title;
+    btn.append(num, ttl);
+    btn.addEventListener('click', () => {
+      showGate(i);
+    });
+    li.appendChild(btn);
+    return li;
+  }
+  function refreshTocCurrent(): void {
+    document.querySelectorAll<HTMLElement>('#tocList .toc-item').forEach((el) => {
+      el.classList.toggle('current', Number(el.dataset.idx) === current);
+    });
+  }
+  /* 列を実測して目次ページに分ける。本文の paginateChapter と同じく、隠し
+     measurer に実際の列を流し込み、はみ出した分を次のページへ送る。
+     見出し（目次）は先頭ページにだけ付ける */
+  function paginateToc(): void {
+    const all = chapters.map((_, i) => i);
+    const sheet = document.querySelector<HTMLElement>('.toc-sheet');
+    if (!sheet || !sheet.clientWidth) {
+      tocPages = [all];
+      return;
+    }
+    if (!tocMeasurer) {
+      tocMeasurer = document.createElement('div');
+      tocMeasurer.className = 'toc-measurer';
+      tocMeasurer.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(tocMeasurer);
+    }
+    const cs = getComputedStyle(sheet);
+    const innerW = sheet.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    tocMeasurer.style.width = sheet.clientWidth + 'px';
+    tocMeasurer.style.height = sheet.clientHeight + 'px';
+    tocMeasurer.replaceChildren();
+    const inner = document.createElement('div');
+    inner.className = 'toc-inner';
+    inner.style.width = innerW + 'px';
+    const head = document.createElement('h2');
+    head.className = 'toc-heading';
+    head.textContent = '目次';
+    const ul = document.createElement('ul');
+    ul.className = 'toc-list';
+    inner.append(head, ul);
+    tocMeasurer.appendChild(inner);
+    // はみ出しの測る軸は本文と同じ（縦書き＝幅）
+    const fits = (): boolean => inner.scrollWidth <= inner.clientWidth + 1;
+    const groups: number[][] = [];
+    let group: number[] = [];
+    for (const i of all) {
+      const li = makeTocItem(i);
+      ul.appendChild(li);
+      if (!fits() && group.length) {
+        li.remove();
+        groups.push(group);
+        group = [];
+        head.hidden = true; // 2ページ目以降は見出しを付けない
+        ul.style.marginBlockStart = '0px'; // 見出しとの間の余白も消す（描画側の .no-head と一致させる）
+        ul.replaceChildren();
+        ul.appendChild(li);
+      }
+      group.push(i);
+    }
+    if (group.length) groups.push(group);
+    tocPages = groups.length ? groups : [all];
+  }
+  function renderTocPage(): void {
+    const list = $('tocList');
+    list.replaceChildren();
+    (tocPages[tocPage] || []).forEach((i) => list.appendChild(makeTocItem(i)));
+    $('tocHeading').hidden = tocPage !== 0;
+    document.querySelector('.toc-sheet .toc-inner')?.classList.toggle('no-head', tocPage !== 0);
+    const pager = $('tocPager');
+    pager.hidden = tocPages.length <= 1;
+    pager.textContent = tocPages.length > 1 ? String(tocPage + 1) + ' / ' + String(tocPages.length) : '';
+    refreshTocCurrent();
+  }
+  function tocPageIndexOf(chIdx: number): number {
+    const p = tocPages.findIndex((g) => g.includes(chIdx));
+    return p >= 0 ? p : 0;
+  }
+  function turnTocPage(dir: number): boolean {
+    const next = tocPage + dir;
+    if (next < 0 || next >= tocPages.length) return false;
+    tocPage = next;
+    renderTocPage();
+    return true;
+  }
   function openTocPage(from?: 'cover' | 'reader' | 'gate'): void {
     /* 開いた元の画面を覚えておき、「戻る」でそこへ帰る。
        'gate' は、第一章から前へ辿る連鎖（扉→目次→表紙）で開いた場合 */
     tocReturn = from ?? (readerView.hidden ? 'cover' : 'reader');
     showView('toc');
+    // 開くたびに実測し直し、今読んでいる章のあるページから出す
+    paginateToc();
+    tocPage = tocPageIndexOf(current);
+    renderTocPage();
   }
   function closeTocPage(): void {
     if (tocReturn === 'gate') {
@@ -1052,33 +1203,6 @@ export function createReader(book: BookData): Reader {
       return;
     }
     showView(tocReturn);
-  }
-  function buildToc(): void {
-    const list = $('tocList');
-    list.replaceChildren();
-    tocItems.length = 0;
-    chapters.forEach((c, i) => {
-      const li = document.createElement('li');
-      const btn = document.createElement('button');
-      btn.className = 'toc-item';
-      btn.dataset.idx = String(i);
-      const num = document.createElement('span');
-      num.className = 'toc-num';
-      num.textContent = c.num;
-      const ttl = document.createElement('span');
-      ttl.className = 'toc-title';
-      ttl.textContent = c.title;
-      const narr = document.createElement('span');
-      narr.className = 'toc-narr';
-      narr.textContent = c.narratorName;
-      btn.append(num, ttl, narr);
-      btn.addEventListener('click', () => {
-        showGate(i);
-      });
-      li.appendChild(btn);
-      list.appendChild(li);
-      tocItems.push(btn);
-    });
   }
 
   /* ---------- events ---------- */
@@ -1098,18 +1222,39 @@ export function createReader(book: BookData): Reader {
       openTocPage();
     });
     $('tocBackBtn').addEventListener('click', closeTocPage);
-    /* 前へ辿る連鎖で目次にいるときは、ページ送りと同じ側タップで前後へ進める：
-       前側タップで表紙へ、次側タップで第一章の扉へ（扉は通常モードで開き、本文へ続く）。
-       メニューから開いた目次では連鎖タップは効かせない（章リストの誤タップ防止も兼ねる） */
-    tocView.addEventListener('click', (e) => {
+    /* 目次のページ送りは本文と同じ作法：次側タップで次の目次ページ、前側タップで
+       前の目次ページ（スワイプも同じ向き）。目次ページの端では、前へ辿る連鎖
+       （扉→目次→表紙）で開いた場合に限り、その先へつなぐ：先頭ページの前側で表紙へ、
+       末尾ページの次側で第一章の扉へ（扉は通常モードで開き、本文へ続く） */
+    const tocTapNav = (dir: number): void => {
+      if (turnTocPage(dir)) return;
       if (tocReturn !== 'gate') return;
+      if (dir < 0) goCover();
+      else showGate(0);
+    };
+    let tocSwipedAt = 0;
+    tocView.addEventListener('click', (e) => {
+      if (Date.now() - tocSwipedAt < 350) return; // スワイプ直後のクリックでは送らない（本文側と同じ）
       if ((e.target as HTMLElement).closest('button')) return;
       const r = tocView.getBoundingClientRect();
       const ratio = (e.clientX - r.left) / r.width;
       const onPrevSide = DIR.nextSide === 'left' ? ratio > 0.58 : ratio < 0.42;
       const onNextSide = DIR.nextSide === 'left' ? ratio < 0.42 : ratio > 0.58;
-      if (onPrevSide) goCover();
-      else if (onNextSide) showGate(0);
+      if (onPrevSide) tocTapNav(-1);
+      else if (onNextSide) tocTapNav(1);
+    });
+    let tocSwipeX: number | null = null;
+    tocView.addEventListener('pointerdown', (e) => {
+      tocSwipeX = e.clientX;
+    });
+    tocView.addEventListener('pointerup', (e) => {
+      if (tocSwipeX === null) return;
+      const dx = e.clientX - tocSwipeX;
+      tocSwipeX = null;
+      if (Math.abs(dx) <= 48) return;
+      tocSwipedAt = Date.now();
+      const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
+      tocTapNav(towardNext ? 1 : -1);
     });
     /* 操作UIに触れている間は、自動消去のタイマーを仕切り直す */
     if (headerEl) headerEl.addEventListener('pointerdown', () => showChrome());
@@ -1214,6 +1359,13 @@ export function createReader(book: BookData): Reader {
     window.addEventListener('resize', () => {
       if (resizeT !== undefined) clearTimeout(resizeT);
       resizeT = setTimeout(() => {
+        if (!tocView.hidden) {
+          // 目次を開いたまま画面が変わったら、実測し直して同じ章が見えるページに戻す
+          const first = (tocPages[tocPage] || [])[0] ?? current;
+          paginateToc();
+          tocPage = tocPageIndexOf(first);
+          renderTocPage();
+        }
         if (readerView.hidden) {
           pageSizeKey = '';
           return;
@@ -1298,7 +1450,9 @@ export function createReader(book: BookData): Reader {
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
   setupMediaSession();
-  buildToc();
+  // 初期表示用に全章を1ページとして描いておく（開くときに実測して分け直す）
+  tocPages = [chapters.map((_, i) => i)];
+  renderTocPage();
   bind();
   refreshResume();
   showView('cover');

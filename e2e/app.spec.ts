@@ -36,6 +36,19 @@ async function openMenuOnCover(page: import('@playwright/test').Page): Promise<v
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
+/** 目次ページで目的の章を選ぶ。目次が複数ページに分かれている場合は、
+    目的の章が出るまで次側タップで目次ページを送る */
+async function clickTocChapter(page: import('@playwright/test').Page, idx: number): Promise<void> {
+  const item = page.locator(`#tocList .toc-item[data-idx="${idx}"]`);
+  const tocBox = await page.locator('#tocView').boundingBox();
+  if (!tocBox) throw new Error('tocView not found');
+  for (let i = 0; i < 6 && (await item.count()) === 0; i++) {
+    await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.08);
+    await page.waitForTimeout(200);
+  }
+  await item.click();
+}
+
 /** 読書画面から表紙へ戻る（画面上のボタンはなく、メニューの「表紙に戻る」から） */
 async function backToCover(page: import('@playwright/test').Page): Promise<void> {
   await openMenuInReader(page);
@@ -114,7 +127,7 @@ test('章扉の要素（章番号・題・語り手）は、かたまりとし�
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await openMenuOnCover(page);
   await page.locator('#tocFromMenuBtn').click();
-  await page.locator('.toc-item').nth(6).click();
+  await clickTocChapter(page, 6);
   await expect(page.locator('#gateNum')).toHaveText('第七章');
   await expectCentered();
 });
@@ -173,8 +186,8 @@ test('目次はモーダルではなく本の目次ページとして開き、�
   await openMenuOnCover(page);
   await page.locator('#tocFromMenuBtn').click();
   await expect(page.locator('#tocView')).toBeVisible();
-  await expect(page.locator('.toc-item')).toHaveCount(7);
-  await page.locator('.toc-item').nth(2).click();
+  await expect(page.locator('#tocList .toc-item').first()).toBeVisible();
+  await clickTocChapter(page, 2);
   await expect(page.locator('#gateNum')).toHaveText('第三章');
 });
 
@@ -263,7 +276,7 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   // 目次ページから最終章（第七章）へ（入口は表紙のメニュー）
   await openMenuOnCover(page);
   await page.locator('#tocFromMenuBtn').click();
-  await page.locator('.toc-item').nth(6).click();
+  await clickTocChapter(page, 6);
   await expect(page.locator('#gateNum')).toHaveText('第七章');
   await page.locator('#gateView').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
@@ -453,8 +466,11 @@ test('前へ辿る連鎖の目次から、次側タップで扉→本文へ進�
   await expect(page.locator('#tocView')).toBeVisible();
   const tocBox = await page.locator('#tocView').boundingBox();
   if (!tocBox) throw new Error('tocView not found');
-  // 目次で次側タップ → 第一章の扉（通常モード）→ 自動で本文へ
-  await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.1);
+  // 目次で次側タップを続ける →（目次ページを送り切ると）第一章の扉（通常モード）→ 自動で本文へ
+  for (let i = 0; i < 5 && (await page.locator('#gateView').isHidden()); i++) {
+    await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.1);
+    await page.waitForTimeout(250);
+  }
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#readerChapterLabel')).toHaveText(/第一章/);
@@ -641,7 +657,7 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await expect(anim.locator('.anim-rain')).toHaveCount(7); // 第一章は雨（v1.2.1で静か側に半減）
     await openMenuInReader(page);
     await page.locator('#tocFromMenuBtn').click();
-    await page.locator('.toc-item').nth(1).click();
+    await page.locator('#tocList .toc-item').nth(1).click();
     await expect(page.locator('#gateNum')).toHaveText('第二章');
     await page.locator('#gateView').click();
     await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
@@ -885,4 +901,150 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   await page.waitForTimeout(600);
   expect(await wlHeld()).toBe(false);
   expect(await wlState()).toBe('off');
+});
+
+/* ===== v1.8.0：目次の再配置（窮屈さの改善＋複数ページ化）と章題コール ===== */
+
+test.describe('目次ページの体裁（390px）', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  async function openTocFromCover(page: import('@playwright/test').Page): Promise<void> {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await openMenuOnCover(page);
+    await page.locator('#tocFromMenuBtn').click();
+    await expect(page.locator('#tocView')).toBeVisible();
+  }
+
+  test('目次に語り手名はなく、現在章の帯は文字の範囲だけ、列の塊はページ中央にある', async ({ page }) => {
+    await openTocFromCover(page);
+    await expect(page.locator('.toc-narr')).toHaveCount(0); // 語り手名は目次に載せない（扉で分かる）
+    const m = await page.evaluate(() => {
+      const sheet = document.querySelector('.toc-sheet')!.getBoundingClientRect();
+      const inner = document.querySelector('.toc-inner')!.getBoundingClientRect();
+      const cur = document.querySelector('#tocList .toc-item.current')!.getBoundingClientRect();
+      return {
+        sheet: { left: sheet.left, right: sheet.right, height: sheet.height },
+        inner: { left: inner.left, right: inner.right },
+        bandHeight: cur.height,
+      };
+    });
+    // 現在章の帯はページ下端まで伸びない（文字のある範囲だけ）
+    expect(m.bandHeight).toBeLessThan(m.sheet.height * 0.4);
+    // 列の塊（見出し含む）は左右中央：両側の余白差はわずか
+    const leftMargin = m.inner.left - m.sheet.left;
+    const rightMargin = m.sheet.right - m.inner.right;
+    expect(Math.abs(leftMargin - rightMargin)).toBeLessThanOrEqual(6);
+    expect(leftMargin).toBeGreaterThan(20); // 左端ギリギリまで使わない
+  });
+
+  test('目次ページを送ると全章に辿り着け、列がシートからはみ出さない', async ({ page }) => {
+    await openTocFromCover(page);
+    const seen = new Set<string>();
+    let prevPager = '';
+    for (let i = 0; i < 6; i++) {
+      const state = await page.evaluate(() => {
+        const sheet = document.querySelector('.toc-sheet')!.getBoundingClientRect();
+        const lis = [...document.querySelectorAll('#tocList li')];
+        return {
+          pager: document.querySelector('#tocPager')!.textContent || '',
+          idxs: [...document.querySelectorAll('#tocList .toc-item')].map((el) => (el as HTMLElement).dataset.idx!),
+          minLeft: Math.min(...lis.map((li) => li.getBoundingClientRect().left)),
+          maxRight: Math.max(...lis.map((li) => li.getBoundingClientRect().right)),
+          sheetLeft: sheet.left,
+          sheetRight: sheet.right,
+        };
+      });
+      state.idxs.forEach((x) => seen.add(x));
+      expect(state.minLeft).toBeGreaterThanOrEqual(state.sheetLeft - 1);
+      expect(state.maxRight).toBeLessThanOrEqual(state.sheetRight + 1);
+      if (state.pager === prevPager) break;
+      prevPager = state.pager;
+      const tocBox = await page.locator('#tocView').boundingBox();
+      if (!tocBox) throw new Error('tocView not found');
+      await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.08);
+      await page.waitForTimeout(250);
+    }
+    expect(seen.size).toBe(7);
+  });
+
+  test('章を増やす（12章）と目次は複数ページに分かれ、崩れない', async ({ page }) => {
+    await page.route('**/book/data.json', async (route) => {
+      const res = await route.fetch();
+      const data = (await res.json()) as { chapters: Record<string, unknown>[] };
+      const nums = ['第一章', '第二章', '第三章', '第四章', '第五章', '第六章', '第七章', '第八章', '第九章', '第十章', '第十一章', '第十二章'];
+      const extra: Record<string, unknown>[] = [];
+      for (let i = 7; i < 12; i++) {
+        const c = JSON.parse(JSON.stringify(data.chapters[i % 7])) as Record<string, unknown>;
+        c.num = nums[i];
+        c.title = 'ダミーの章その' + (i - 6);
+        extra.push(c);
+      }
+      data.chapters = data.chapters.concat(extra);
+      await route.fulfill({ response: res, json: data });
+    });
+    await openTocFromCover(page);
+    await expect(page.locator('#tocPager')).toBeVisible();
+    await expect(page.locator('#tocPager')).toHaveText(/1 \/ [2-9]/);
+    const seen = new Set<string>();
+    let prevPager = '';
+    for (let i = 0; i < 8; i++) {
+      const state = await page.evaluate(() => {
+        const sheet = document.querySelector('.toc-sheet')!.getBoundingClientRect();
+        const lis = [...document.querySelectorAll('#tocList li')];
+        return {
+          pager: document.querySelector('#tocPager')!.textContent || '',
+          idxs: [...document.querySelectorAll('#tocList .toc-item')].map((el) => (el as HTMLElement).dataset.idx!),
+          minLeft: Math.min(...lis.map((li) => li.getBoundingClientRect().left)),
+          maxRight: Math.max(...lis.map((li) => li.getBoundingClientRect().right)),
+          sheetLeft: sheet.left,
+          sheetRight: sheet.right,
+        };
+      });
+      state.idxs.forEach((x) => seen.add(x));
+      expect(state.minLeft).toBeGreaterThanOrEqual(state.sheetLeft - 1);
+      expect(state.maxRight).toBeLessThanOrEqual(state.sheetRight + 1);
+      if (state.pager === prevPager) break;
+      prevPager = state.pager;
+      const tocBox = await page.locator('#tocView').boundingBox();
+      if (!tocBox) throw new Error('tocView not found');
+      await page.mouse.click(tocBox.x + tocBox.width * 0.15, tocBox.y + tocBox.height * 0.08);
+      await page.waitForTimeout(250);
+    }
+    expect(seen.size).toBe(12);
+  });
+});
+
+test.describe('章題コール（扉の朗読）', () => {
+  test('扉では章題コールが鳴り、読み終わってから本文が始まる', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#coverTap').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await expect(page.locator('#gateAudio')).toHaveAttribute('src', /ch1-title\.mp3$/);
+    // コール（約5秒）の途中では、まだ本文へ進んでいない
+    await page.waitForTimeout(1500);
+    await expect(page.locator('#readerView')).toBeHidden();
+    // 読み終わると本文へ
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 12000 });
+  });
+
+  test('扉をタップするとコールを止めてすぐ本文へ進む', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#coverTap').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.locator('#gateView').click();
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('コール音声が読み込めなくても、従来の待ち時間で本文へ進む', async ({ page }) => {
+    await page.route('**/book/audio/*-title.mp3', (route) => route.abort());
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#coverTap').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 8000 });
+  });
 });

@@ -586,7 +586,13 @@ body.mode-karaoke .unit.k-hide, body.mode-karaoke .story-end.k-hide { visibility
   background: linear-gradient(160deg, #fffdf6, var(--paper) 55%, #f7f0da);
   writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;
   padding: 34px 30px;
+  /* 列の塊（.toc-inner）をページの左右中央に置く。縦書きでは flex の主軸
+     （flex-direction: column）がブロック方向＝右→左になるので、
+     justify-content: center で塊を横方向の中央に寄せられる */
+  display: flex; flex-direction: column; justify-content: center;
 }
+/* 目次の本体（見出し＋列の並び）。幅は中身の列ぶんだけに絞り、シート側で中央に置く */
+.toc-inner { height: 100%; min-width: 0; }
 body.bound-right .toc-sheet {
   border-radius: 6px 2px 2px 6px;
   box-shadow: 0 16px 40px rgba(0,0,0,.55), -3px 3px 0 -1px #e7dec6, -6px 6px 0 -2px #d9cfb0;
@@ -595,14 +601,27 @@ body.bound-left .toc-sheet {
   border-radius: 2px 6px 6px 2px;
   box-shadow: 0 16px 40px rgba(0,0,0,.55), 3px 3px 0 -1px #e7dec6, 6px 6px 0 -2px #d9cfb0;
 }
-.toc-heading { font-size: 1.45rem; letter-spacing: .35em; font-weight: 600; color: #1b2a4a; margin: 0; }
-.toc-list { list-style: none; margin: 0; padding: 0; margin-inline-start: 2.6em; }
-.toc-list li { margin-inline-start: 1.5em; }
-.toc-item { height: 100%; text-align: start; background: none; border: none; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: #2e2a24; font: inherit; }
+/* 見出しも項目と同じく列の縦中央に置き、塊としての一体感を出す */
+.toc-heading { font-size: 1.45rem; letter-spacing: .35em; font-weight: 600; color: #1b2a4a; margin: 0; height: 100%; display: flex; flex-direction: row; justify-content: center; }
+/* 見出しとの間はブロック方向（横）の余白で取る。列どうしの間隔も同じ軸で広めに空ける */
+.toc-list { list-style: none; margin: 0; padding: 0; margin-block-start: 2.8em; }
+/* 見出しのない続きページでは、見出しとの間を取る余白を消す（塊の中央寄せがずれないように） */
+.toc-inner.no-head .toc-list { margin-block-start: 0; }
+/* 各列は紙の高さいっぱいに伸ばし、中の項目は縦の中央に置く（上部に密集させない）。
+   縦書きでは flex の主軸（row）がインライン方向＝上下になるので、
+   justify-content: center で項目が列の中央に来る */
+.toc-list li { display: flex; flex-direction: row; justify-content: center; align-items: flex-start; }
+.toc-list li + li { margin-block-start: 2em; }
+/* 項目の高さは文字のある範囲だけ（現在章の帯がページ下端まで伸びないように） */
+.toc-item { text-align: start; background: none; border: none; border-radius: 8px; padding: 10px 9px; cursor: pointer; color: #2e2a24; font: inherit; }
 .toc-item .toc-num { color: #8a6d2f; font-size: .85rem; letter-spacing: .15em; }
 .toc-item .toc-title { font-size: 1.08rem; margin-inline-start: .55em; }
-.toc-item .toc-narr { font-size: .82rem; color: #6a6252; margin-inline-start: 1.1em; }
 .toc-item.current { background: rgba(160, 128, 60, .12); }
+/* 目次が複数ページに分かれたときのページ番号（右下に控えめに） */
+.toc-pager { position: absolute; bottom: 16px; right: 18px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; font-size: .8rem; letter-spacing: .18em; color: #8a7c5f; }
+/* 目次ページ割りの計測用（画面外に隠す。本文の .page-content.measurer と同じ流儀） */
+.toc-measurer { position: fixed; left: 0; top: 0; transform: translateX(-110%); visibility: hidden; pointer-events: none; z-index: -1; writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
+.toc-measurer .toc-inner { height: 100%; }
 .toc-back { position: absolute; bottom: 14px; left: 14px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; background: rgba(255,253,246,.85); border: 1px solid #d8cdb2; color: #6a5c33; border-radius: 999px; padding: 6px 16px; font-size: .85rem; cursor: pointer; }
 
 /* ============ 奥付ページ（「おわり」の次の1ページ。紙の体裁は本文とそろえる） ============ */
