@@ -17,6 +17,7 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "build:preview": "node scripts/build-preview.mjs",
+    "check:content": "node scripts/check-content.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "dev": "vite",
     "icons": "node scripts/make-icons.mjs",
@@ -26,8 +27,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm test && npm run build && npm run check:dist"
+    "verify": "npm run lint && npm test && npm run build && npm run check:dist && npm run check:content"
   },
   "type": "module",
-  "version": "1.12.0"
+  "version": "1.12.1"
 }

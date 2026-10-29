@@ -1,6 +1,6 @@
 // ビルド成果物（dist/）が PWA として成立しているかを確認する: npm run build のあとに実行
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 const dist = new URL('../dist/', import.meta.url).pathname;
 const errors = [];
@@ -56,6 +56,24 @@ const css = existsSync(join(dist, 'assets')) ? readdirSync(join(dist, 'assets'))
 need(/--safe-top/.test(css), '上端の余白（--safe-top）が CSS にありません（src/style.css の --top-gap / --safe-top を残してください）');
 need(!/user-scalable=no|maximum-scale/.test(html), 'viewport で拡大を禁止しないでください（user-scalable=no / maximum-scale）');
 need(!/(?:src|href)="\/(?!\/)/.test(html), 'index.html に絶対パス（/ から始まる参照）があります。相対パスにしてください');
+
+// 外部の URL（CDN・Web フォントなど）が成果物に入っていないか。外部に頼るとオフラインで動かなくなる。
+// 許すのは、通信しない文字列だけ（XML の名前空間、Workbox のエラーの説明文の URL）。
+// アプリの公開 URL など、アプリごとに許すものがあれば、ここに正規表現を足す。
+const ALLOWED_URL = [/^https?:\/\/www\.w3\.org\//, /^https:\/\/bit\.ly\/wb-precache$/];
+const TEXT_FILE = /\.(?:html|js|css|webmanifest|json)$/;
+const walk = (dir) =>
+  readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walk(p) : [p];
+  });
+if (existsSync(dist)) {
+  for (const file of walk(dist).filter((p) => TEXT_FILE.test(p))) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/https?:\/\/[^\s"'`)<>\\]+/g)) {
+      if (!ALLOWED_URL.some((re) => re.test(m[0]))) errors.push(`${relative(dist, file)} に外部の URL があります: ${m[0]}`);
+    }
+  }
+}
 
 if (errors.length) {
   console.error(errors.map((e) => `✗ ${e}`).join('\n'));

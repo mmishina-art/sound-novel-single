@@ -48,8 +48,9 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
 | Lint | `npm run lint` |
 | 単体テスト | `npm test` |
 | 画面テスト | `npm run test:e2e`(初回は `npx playwright install chromium`) |
-| PWA 成立チェック | `npm run check:dist`(build のあと) |
-| まとめて確認 | `npm run verify`(lint → test → build → check:dist) |
+| PWA 成立チェック | `npm run check:dist`(build のあと。外部 URL の混入も見る) |
+| 内容の整合チェック | `npm run check:content`(正本 `data/chapters.json` と派生物=配信コピー・音声・unitTimes・ルビ・読み辞書の食い違い。検査は `scripts/content-checks.mjs` に足す) |
+| まとめて確認 | `npm run verify`(lint → test → build → check:dist → check:content) |
 | アイコン再生成 | `npm run icons`(色・形は `scripts/make-icons.mjs` を編集) |
 | 画面の一括撮影 | `npm run shots`(`shots/` に、スマホの幅・iPhone SE・ダークモードで撮る。一覧は `shots/all.png`) |
 | プレビュー(1 つの HTML) | `npm run build:preview`(`dist-preview/preview.html`。作業中の状態を Artifact に置くとき) |
