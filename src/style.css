@@ -313,7 +313,13 @@ body.bound-left .cover-vtitle { left: 10.5%; }
 .cover-entry { display: flex; flex-direction: column; align-items: center; gap: 7px; margin-top: 2px; }
 
 /* ============ Gate — 中扉（紙の扉ページ） ============ */
-.view-gate { height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); cursor: pointer; padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); }
+/* touch-action は本文（.page-wrap）と同じ契約にする：横の払いはアプリ側で受け、
+   縦パンとピンチだけをブラウザに渡す。これがないと、選択済みテキストの上からの
+   ドラッグがネイティブドラッグに化けて pointercancel になり、2回目以降の
+   スワイプが効かなくなる（実機相当の検証で確認） */
+.view-gate { height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); cursor: pointer; padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); touch-action: pan-y pinch-zoom; }
+/* 扉をドラッグしている間はテキスト選択を止める（.page.dragging と同じ作法） */
+.view-gate.gate-dragging, .view-gate.gate-dragging .gate-sheet { user-select: none; -webkit-user-select: none; }
 .gate-sheet {
   /* 枠の寸法・位置は本文ページ（.page-wrap）と完全にそろえる。余白は共通変数
      （--frame-m*、安全領域込み）を使う。扉も本文も「同じ本のページ」に見せるため */
@@ -355,15 +361,15 @@ body.dir-vertical .gate-text { writing-mode: vertical-rl; -webkit-writing-mode: 
 /* ============ Reader — 机の上に開いた右綴じの本 ============ */
 /* 操作は「出す／隠す」をやめ、ページの備品として常時置く。本文タップはページ
    めくり専用（進む／戻るの2択）で、メニューや再生はボタンからしか触れない。
-   上の帯（柱）に章題と章内位置、下の帯にノンブルと両端のボタンを置く。
+   上の帯（柱）に章題だけ、下の帯にノンブルと両端のボタンを置く。
    常時見えるのは他に、下端の進み具合ラインだけ。本文ページは画面いっぱいに取る */
 .view-reader { position: relative; height: 100dvh; background: radial-gradient(ellipse at 50% 20%, var(--desk2), var(--desk) 78%); display: flex; flex-direction: column; }
 .toggle-label { font-size: .85rem; display: flex; align-items: center; gap: 4px; white-space: nowrap; min-height: 44px; }
-/* 柱：ページの上の余白（本文の上パディング30pxの内側）に、章題と章内位置を
-   小さく組む。紙の本の柱と同じく、本文の邪魔をしない情報表示だけを置く */
+/* 柱：ページの上の余白（本文の上パディング46pxの内側）に、章題だけを
+   小さく組む。紙の本の柱と同じく、本文の邪魔をしない情報表示だけを置く。
+   章内のページ位置（〇/〇）は 2026-10-29 の実機指摘で削除し、柱は章題のみ */
 .page-head { position: absolute; top: 7px; left: 44px; right: 44px; z-index: 2; display: flex; justify-content: center; align-items: baseline; gap: 1em; pointer-events: none; }
 .page-head-title { font-size: .72rem; letter-spacing: .14em; color: #8d7c55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.page-head-pos { font-size: .68rem; letter-spacing: .1em; color: #b0a077; white-space: nowrap; }
 /* 進み具合：画面下端の極細ライン（本全体のページ位置）。
    ホームインジケータに重なって見切れないよう、安全領域の内側（下端の余白の中）に置く。
    伸びる向きは本の綴じ＝direction 設定と連動：縦書き（右綴じ）は右から左へ、
@@ -528,8 +534,11 @@ body.font-large { --font-scale: 1.2; }
 }
 body.dir-vertical .page-content { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
 body.dir-horizontal .page-content { writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; }
-body.bound-right .page-content { padding: 30px 42px 42px 30px; }
-body.bound-left .page-content { padding: 30px 30px 42px 42px; }
+/* 上下の余白：柱（上の帯）と本文の間、本文下端とノンブルの帯の間に、はっきりした
+   「間」を取る（2026-10-29 実機指摘「上下が詰まっている」への対応で上下とも +16px。
+   左右は従来どおりノド側を広く） */
+body.bound-right .page-content { padding: 46px 42px 58px 30px; }
+body.bound-left .page-content { padding: 46px 30px 58px 42px; }
 body.dir-vertical .page-content p { margin: 0 0 0 1.4em; text-indent: 1em; }
 body.dir-horizontal .page-content p { margin: 0 0 1em; text-indent: 1em; }
 .page-content p.cont { text-indent: 0; }
@@ -553,10 +562,23 @@ body.bound-left .page.turn-prev { animation: turnFromLeft .18s ease-out; }
 /* 左綴じでは並びを鏡写しにする（再生＝小口側、メニュー＝綴じ側を保つ） */
 body.bound-left .page-footer { flex-direction: row-reverse; }
 .folio { font-size: .78rem; letter-spacing: .32em; color: #9a8a64; }
-/* 下の帯に収まる大きさの再生ボタン（ピル型はそのままに、帯の高さ44pxへ） */
-.page-footer .btn-play { min-width: 6.6em; font-size: .92rem; padding: .5em 1.1em; }
-/* メニューは紙の上の静かなボタンに（枠線と生成りの地で、本文の邪魔をしない） */
-.page-menu-btn { background: rgba(255,253,246,.85); border-color: #c9bb96; color: #5c5138; }
+/* 下の帯のボタン（再生／メニュー）は、紙になじむアイコンだけにする
+   （2026-10-29 実機指摘：紺の大きなピルが主張しすぎる）。文字ラベルは置かず、
+   地の生成りに近い薄いトーンで「一見は背景かと思うぐらい」に落とす。押せると
+   分かる手がかりは、うっすらした輪郭（縁取り）と僅かな陰影だけに留める。
+   見た目は小さく静かでも、タップ領域は 44px を確保する */
+.page-icon-btn {
+  pointer-events: auto;
+  width: 44px; height: 44px; min-width: 44px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; cursor: pointer;
+  background: transparent;
+  border: 1px solid rgba(146, 128, 84, .30);
+  color: rgba(146, 124, 78, .62);
+  box-shadow: 0 1px 2px rgba(90, 74, 40, .10), inset 0 0 0 1px rgba(255, 255, 255, .25);
+}
+.page-icon-btn svg { width: 19px; height: 19px; display: block; }
+.page-icon-btn:active { background: rgba(120, 100, 55, .10); transform: scale(.96); }
 /* ページ送りの合図（常設の矢印）は置かない。送りはタップ（左右の半分）／スワイプだけ、
    操作ボタンは下の帯の両端に常時置く */
 /* スワイプで指に追随している間は、トランジションを切り、文字選択も止める */

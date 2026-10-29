@@ -271,11 +271,9 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
-  // 最終ページまで送る
+  // 最終ページまで送る（「おわり」の列が出るページが最終ページ）
   for (let i = 0; i < 80; i++) {
-    const pos = await page.locator('#pageChapterPos').textContent();
-    const m = /(\d+) \/ (\d+)/.exec(pos || '');
-    if (m && m[1] === m[2]) break;
+    if ((await page.locator('#pageContent .story-end').count()) > 0) break;
     await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
     await page.waitForTimeout(50);
   }
@@ -473,7 +471,9 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   const fontPx = (): Promise<number> =>
     page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('pageContent') as HTMLElement).fontSize));
   const stdPx = await fontPx();
-  const posBefore = await page.locator('#pageChapterPos').textContent();
+  const pageTextLen = (): Promise<number> =>
+    page.evaluate(() => (document.getElementById('pageContent') as HTMLElement).textContent?.length ?? 0);
+  const lenBefore = await pageTextLen();
   // メニュー → 文字サイズを「大」へ
   await openMenuInReader(page);
   const btn = page.locator('#fontSizeBtn');
@@ -485,10 +485,9 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   const largePx = await fontPx();
   expect(largePx / stdPx).toBeGreaterThanOrEqual(1.15);
   expect(largePx / stdPx).toBeLessThanOrEqual(1.25);
-  // ページ組みが追随している（章内位置の表示が組み直され、本文がはみ出していない）
-  const posAfter = await page.locator('#pageChapterPos').textContent();
-  expect(posAfter).toMatch(/^\d+ \/ \d+$/);
-  expect(posAfter).not.toBe(posBefore); // 1ページの分量が変わるので総ページ数が増える
+  // ページ組みが追随している（1ページに収まる文字数が減り、本文がはみ出していない）
+  const lenAfter = await pageTextLen();
+  expect(lenAfter).toBeLessThan(lenBefore);
   const overflow = await page.evaluate(() => {
     const el = document.getElementById('pageContent') as HTMLElement;
     return el.scrollWidth - el.clientWidth;
@@ -625,21 +624,115 @@ test('スワイプでめくれる：大きく払うと進み、小さい払い�
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
   const cy = box.y + box.height * 0.5;
-  const swipe = async (fromRatio: number, toRatio: number): Promise<void> => {
+  const swipe = async (fromRatio: number, toRatio: number, slow = false, steps = 6): Promise<void> => {
     await page.mouse.move(box.x + box.width * fromRatio, cy);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * ((fromRatio + toRatio) / 2), cy, { steps: 6 });
-    await page.mouse.move(box.x + box.width * toRatio, cy, { steps: 6 });
+    if (slow) {
+      // ゆっくり払う（フリックにならないよう、ステップ間に待ちを入れる）
+      for (let i = 1; i <= steps; i++) {
+        await page.mouse.move(box.x + box.width * (fromRatio + ((toRatio - fromRatio) * i) / steps), cy);
+        await page.waitForTimeout(70);
+      }
+    } else {
+      // 速い払いは1回の move にまとめて送る。呼び出しを分けると往復の遅延が
+      // 入り、合成イベントの速度が実ジェスチャより遅く測れて不安定になる
+      await page.mouse.move(box.x + box.width * toRatio, cy, { steps });
+    }
     await page.mouse.up();
   };
+  // ページめくり音の発音フック（app:sound イベント）を数える
+  await page.evaluate(() => {
+    const w = window as unknown as { __pageSounds: number };
+    w.__pageSounds = 0;
+    document.addEventListener('app:sound', (e) => {
+      if ((e as CustomEvent).detail?.kind === 'page-turn') w.__pageSounds++;
+    });
+  });
+  const pageSounds = (): Promise<number> =>
+    page.evaluate(() => (window as unknown as { __pageSounds: number }).__pageSounds);
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
-  await swipe(0.7, 0.25); // 左へ大きく払う → 次ページ
+  await swipe(0.3, 0.75); // 右へ大きく払う → 次ページ（スワイプはタップと逆向き）
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   await expect(page.locator('#menuModal')).toBeHidden();
-  await swipe(0.3, 0.75); // 右へ大きく払う → 前ページ
+  expect(await pageSounds()).toBeGreaterThanOrEqual(1); // 確定で1回鳴る
+  await swipe(0.7, 0.25); // 左へ大きく払う → 前ページ
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
-  await swipe(0.55, 0.47); // 小さく払う → めくれない（元の位置に戻る）
+  // 速いフリックは、確定量に届かない短い移動でもめくれる（粗いステップで速く払う）
+  await swipe(0.46, 0.54, false, 3);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await swipe(0.54, 0.46, false, 3);
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  // ゆっくり小さい払いは確定量未満 → めくれず、音も鳴らない
+  const before = await pageSounds();
+  await swipe(0.54, 0.48, true);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  expect(await pageSounds()).toBe(before);
+});
+
+test('扉でもスワイプで遷移できる：左で後方へ（後方扉→目次）、右で本文へ', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  const box = await page.locator('#gateView').boundingBox();
+  if (!box) throw new Error('gateView not found');
+  const cy = box.y + box.height * 0.5;
+  const gateSwipe = async (fromRatio: number, toRatio: number): Promise<void> => {
+    await page.mouse.move(box.x + box.width * fromRatio, cy);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * ((fromRatio + toRatio) / 2), cy, { steps: 4 });
+    await page.mouse.move(box.x + box.width * toRatio, cy, { steps: 4 });
+    await page.mouse.up();
+  };
+  // 左へ払う → 後方モードの扉へ（ヒントが切り替わる）
+  await gateSwipe(0.7, 0.25);
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateHint')).toHaveText('タップで本文へ ／ 前へめくると目次へ');
+  // もう一度左へ払う → 目次ページへ
+  await gateSwipe(0.7, 0.25);
+  await expect(page.locator('#tocView')).toBeVisible();
+  // 目次から戻ると後方扉に帰る
+  await page.locator('#tocBackBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  // 右へ払う → 第一章の本文へ入る
+  await gateSwipe(0.3, 0.75);
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+});
+
+test('章の扉でスワイプ：左で前の章の扉へ、右でその章へ入る', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await clickTocChapter(page, 1); // 第二章の扉
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第二章');
+  const box = await page.locator('#gateView').boundingBox();
+  if (!box) throw new Error('gateView not found');
+  const cy = box.y + box.height * 0.5;
+  const gateSwipe = async (fromRatio: number, toRatio: number): Promise<void> => {
+    await page.mouse.move(box.x + box.width * fromRatio, cy);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * ((fromRatio + toRatio) / 2), cy, { steps: 4 });
+    await page.mouse.move(box.x + box.width * toRatio, cy, { steps: 4 });
+    await page.mouse.up();
+  };
+  // 左へ払う → 第一章の扉（最終ページ指定）へ戻り、やがて本文（最終ページ）へ入る
+  await gateSwipe(0.7, 0.25);
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  // 戻って、第二章の扉で右へ払う → 第二章へ入る
+  await backToCover(page);
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await clickTocChapter(page, 1);
+  await expect(page.locator('#gateNum')).toHaveText('第二章');
+  await gateSwipe(0.3, 0.75);
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第二章 忘れ物の傘');
 });
 
 test('画面は上下に引っ張れない：ドキュメントがスクロールしない', async ({ page }) => {
@@ -838,14 +931,13 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await expect(page.locator('#pageAnim')).toBeVisible();
   });
 
-  test('ノンブルと章内位置は、ページの備品として常時表示される', async ({ page }) => {
+  test('ノンブルと章題は、ページの備品として常時表示される', async ({ page }) => {
     await openReader(page);
     await expect(page.locator('#pageFolio')).toBeVisible();
     await expect(page.locator('#pageFolio')).toHaveText(/― \d+ ―/);
     await expect(page.locator('#pageFolio')).toHaveCSS('opacity', '1');
-    // 章内位置も柱（上の帯）に常時出す
-    await expect(page.locator('#pageChapterPos')).toBeVisible();
-    await expect(page.locator('#pageChapterPos')).toHaveCSS('opacity', '1');
+    // 柱（上の帯）には章題だけを常時出す（章内位置 〇/〇 は置かない）
+    await expect(page.locator('#pageChapterPos')).toHaveCount(0);
     await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
   });
 

@@ -41,6 +41,54 @@ export function beep(frequency = 660, seconds = 0.08): void {
   }
 }
 
+/* ページめくり音：紙が擦れる音を、ノイズ＋帯域掃引でその場で合成する（実ファイルは持たない）。
+   短く（約0.3秒）柔らかく、朗読の邪魔をしない音量に抑える。オン/オフは効果音の
+   設定（保存キー 'sound'）に従い、BGM とは独立に切れる。連打・高速めくりでも
+   音が重なって破綻しないよう、前回から 120ms 以内の再発音はしない */
+let lastPageTurnAt = 0;
+
+export function playPageTurn(): void {
+  if (!enabled) return;
+  const nowMs = performance.now();
+  if (nowMs - lastPageTurnAt < 120) return;
+  lastPageTurnAt = nowMs;
+  try {
+    const c = ac();
+    const t = c.currentTime;
+    const dur = 0.3;
+    const len = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, len, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    // 紙擦れの「シュッ」という動き：バンドパスの中心を時間で掃引する
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.8;
+    bp.frequency.setValueAtTime(850, t);
+    bp.frequency.exponentialRampToValueAtTime(2500, t + dur * 0.5);
+    bp.frequency.exponentialRampToValueAtTime(1100, t + dur);
+    // 角を取るローパスで柔らかくする
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.13, t + 0.045); // 立ち上がり
+    g.gain.linearRampToValueAtTime(0.055, t + 0.13); // 紙が離れかける谷
+    g.gain.linearRampToValueAtTime(0.1, t + 0.19); // めくり終わりの小さな盛り上がり
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp).connect(lp).connect(g).connect(c.destination);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+    // テストが発音を確認できるようにイベントを出す（beep と同じ作法）
+    document.dispatchEvent(new CustomEvent('app:sound', { detail: { kind: 'page-turn' } }));
+  } catch {
+    // 音が出せなくても続行する
+  }
+}
+
 // ---- BGM：書き下ろしの静かなピアノバラード（src/bgm-song.ts）をループ再生する ----
 // マスター音量は、姉妹アプリ『サウンドノベル』と同じ聞こえ方にそろえる
 // （2026-10-28 ユーザー指定。当初は朗読比 約-21dB に置いていたが小さすぎた）。

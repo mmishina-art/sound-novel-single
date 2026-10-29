@@ -17,7 +17,7 @@ import {
   type Page,
   type Unit,
 } from './logic';
-import { isBgmOn, resumeBgmContext, setBgmOn, startBgm, stopBgm } from './sound';
+import { isBgmOn, isSoundOn, playPageTurn, resumeBgmContext, setBgmOn, setSound, startBgm, stopBgm } from './sound';
 import { load, remove, save } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -90,6 +90,8 @@ export function createReader(book: BookData): Reader {
   let speedIdx = speedIndexOf(load<number>('speed', 1.0));
   let gateTimer: ReturnType<typeof setTimeout> | undefined;
   let gateOpen = false; // 章扉を表示中かどうか（旧章の音声の 'ended' で二重に進まないための番兵）
+  // 扉でのスワイプ遷移先（showGate／showGateBack が表示のたびに差し替える）
+  let gateNav: { next: () => void; prev: () => void } | null = null;
   // 「前へ辿る」モードの扉（showGateBack）は専用フラグを持たず、自動タイマーを
   // 張らないことと、専用の onclick で通常の扉と区別する
   let pendingSeek = 0;
@@ -440,7 +442,6 @@ export function createReader(book: BookData): Reader {
     setHtml(pageContent, html);
     updateNowHighlight();
     $('pageFolio').textContent = '― ' + bookPageOf(current, curPage) + ' ―';
-    $('pageChapterPos').textContent = curPage + 1 + ' / ' + pages.length;
     $('readerChapterLabel').textContent = ch.num + ' ' + ch.title;
     $('readProgressFill').style.width = TOTAL_PAGES ? (bookPageOf(current, curPage) / TOTAL_PAGES) * 100 + '%' : '0%';
     if (animDir) {
@@ -721,6 +722,15 @@ export function createReader(book: BookData): Reader {
       enterChapter(idx, opts);
     };
     gateView.onclick = start;
+    // スワイプ：右へ払う＝入章（タップと同じ start）、左へ払う＝後方遷移の規則で
+    // 戻る（前の章の扉を最終ページ指定で開く。第一章の扉では後方モードの扉へ）
+    gateNav = {
+      next: start,
+      prev: () => {
+        if (idx > 0) showGate(idx - 1, { page: 'last', autoplay: false });
+        else showGateBack();
+      },
+    };
     if (opts.autoplay === false) {
       // 朗読を自動で始めない入り方（停止中にページ送りで章をまたいだ等）は、
       // コールも鳴らさず、従来どおり少し置いて本文へ進む
@@ -777,6 +787,14 @@ export function createReader(book: BookData): Reader {
         gateOpen = false;
         enterChapter(0, { autoplay: false });
       }
+    };
+    // スワイプ：右へ払う＝第一章の本文へ、左へ払う＝目次へ（タップの作法と同じ）
+    gateNav = {
+      next: () => {
+        gateOpen = false;
+        enterChapter(0, { autoplay: false });
+      },
+      prev: () => openTocPage('gate'),
     };
   }
   function layoutChapter(opts: EnterOptions): void {
@@ -870,8 +888,22 @@ export function createReader(book: BookData): Reader {
       });
     }
   }
+  /* 再生ボタンはアイコンだけ（文字ラベルは置かない）。図柄は updatePlayBtn が
+     再生／一時停止で差し替える（innerHTML は使わず DOM で組み立てる） */
+  const iconSvg = (paths: string): SVGSVGElement => {
+    const doc = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">' + paths + '</svg>',
+      'image/svg+xml',
+    );
+    return document.importNode(doc.documentElement, true) as unknown as SVGSVGElement;
+  };
+  const ICON_PLAY_PATHS = '<path d="M8 5.5v13l11-6.5z" fill="currentColor"/>';
+  const ICON_PAUSE_PATHS = '<path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/>';
   function updatePlayBtn(): void {
-    $('playPauseBtn').textContent = !audio.paused && !audio.ended ? '⏸ 停止' : '▶ 再生';
+    const playing = !audio.paused && !audio.ended;
+    const btn = $('playPauseBtn');
+    btn.replaceChildren(iconSvg(playing ? ICON_PAUSE_PATHS : ICON_PLAY_PATHS));
+    btn.setAttribute('aria-label', playing ? '一時停止' : '再生');
   }
   function updateNav(): void {
     $('speedBtn').textContent = speedLabel(SPEEDS[speedIdx]);
@@ -1195,6 +1227,13 @@ export function createReader(book: BookData): Reader {
     $('resumeBtn').addEventListener('click', resumeFromBookmark);
     $('menuCloseBtn').addEventListener('click', closeMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
+    /* スワイプ確定の判定（本文・目次で共通。定数はここに集約する）。
+       距離は「幅の9%か28pxの大きい方」まで下げ、速いフリックは短い移動でも拾う */
+    const SWIPE_COMMIT_RATIO = 0.09;
+    const SWIPE_COMMIT_MIN_PX = 28;
+    const SWIPE_FLICK_VELOCITY = 0.4; // px/ms（直近の指の速度）
+    const SWIPE_FLICK_MIN_PX = 14; // フリックでも最低これだけは動いていること
+    const swipeCommitPx = (w: number): number => Math.max(SWIPE_COMMIT_MIN_PX, w * SWIPE_COMMIT_RATIO);
     /* 目次ページへの入口はメニューの「目次を開く」に一本化（表紙にも読書中にも共通） */
     $('tocFromMenuBtn').addEventListener('click', () => {
       closeMenu();
@@ -1230,9 +1269,9 @@ export function createReader(book: BookData): Reader {
       if (tocSwipeX === null) return;
       const dx = e.clientX - tocSwipeX;
       tocSwipeX = null;
-      if (Math.abs(dx) <= 48) return;
+      if (Math.abs(dx) < swipeCommitPx(tocView.clientWidth || 1)) return;
       tocSwipedAt = Date.now();
-      const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
+      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
       tocTapNav(towardNext ? 1 : -1);
     });
     $('finalToCoverBtn').addEventListener('click', goCover);
@@ -1274,6 +1313,10 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('hl-off', !checked);
       save('hl', checked);
     });
+    $<HTMLInputElement>('pageSoundToggle').addEventListener('change', (e) => {
+      // ページめくり音のオン/オフ（効果音の設定。BGM とは独立）
+      setSound((e.target as HTMLInputElement).checked);
+    });
     $<HTMLInputElement>('bgmToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       // オフは即停止、オンは（この操作自体がジェスチャなので）すぐ鳴らし始める
@@ -1300,14 +1343,25 @@ export function createReader(book: BookData): Reader {
        メニューや操作UIが出ることはない）。
        - タップ：左右の半分で判定（小口側＝次／綴じ側＝前）。中央の無反応帯は置かない。
          画面の端ぎわ（持つ手の指が触れやすい左右12px）は誤爆防止の無反応帯にする。
-       - スワイプ：ページが指に追随して滑り、閾値（幅の18%・最低48px）を超えたら
+       - スワイプ：ページが指に追随して滑り、確定量（幅の9%・最低28px）を超えたら
          めくり確定（旧ページが滑り出し、新ページが反対側から滑り込む）、
-         未満なら元の位置へ滑り戻る。
-       「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右） */
+         未満ならバネで元の位置へ戻る。速いフリックは短い移動でも確定する。
+         追随はゴムのように非線形（引っ張るほど鈍くなる）にし、手応えを持たせる。
+       タップの「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右）。
+       スワイプはタップと逆向き：次側と反対へ払うと次ページになる（右綴じなら
+       右へ払う＝次／左へ払う＝前）。2026-10-29 の実機フィードバック（スワイプの
+       向きが直観と逆）を受けて反転した。目次のスワイプも本文に合わせる。
+       めくりが確定した瞬間に、ページめくり音を1回鳴らす（タップも同じ） */
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let swipedAt = 0;
     let dragSeq = 0;
-    let drag: { id: number; x: number; y: number; active: boolean } | null = null;
+    let drag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
+    /* ゴムのような追随：指の移動量を、引っ張るほど鈍くなる関数で減衰させる
+       （iOS のラバーバンドと同じ形。初動から少し遅れ、限界ではページ幅に漸近する） */
+    const rubberDx = (d: number, w: number): number => {
+      const a = Math.abs(d);
+      return Math.sign(d) * w * (1 - 1 / ((a / w) * 0.55 + 1));
+    };
     const dragReset = (): void => {
       pageEl.classList.remove('dragging');
       pageEl.style.transition = '';
@@ -1320,7 +1374,7 @@ export function createReader(book: BookData): Reader {
         drag = null;
         return;
       }
-      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false };
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false, lastX: e.clientX, lastT: performance.now(), vx: 0 };
       try {
         pageWrap.setPointerCapture(e.pointerId);
       } catch {
@@ -1329,6 +1383,15 @@ export function createReader(book: BookData): Reader {
     });
     pageWrap.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
+      // フリック判定用に、直近の指の速度（px/ms）を平滑化して持つ
+      const nowT = performance.now();
+      const dt = nowT - drag.lastT;
+      if (dt > 0) {
+        const inst = (e.clientX - drag.lastX) / dt;
+        drag.vx = drag.vx * 0.35 + inst * 0.65;
+        drag.lastX = e.clientX;
+        drag.lastT = nowT;
+      }
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
       if (!drag.active) {
@@ -1343,38 +1406,44 @@ export function createReader(book: BookData): Reader {
           return;
         }
       }
-      if (!reduceMotion.matches) pageEl.style.transform = 'translateX(' + dx + 'px)';
+      if (!reduceMotion.matches) pageEl.style.transform = 'translateX(' + rubberDx(dx, pageWrap.clientWidth || 1) + 'px)';
     });
     const finishDrag = (e: PointerEvent, cancelled: boolean): void => {
       if (!drag || e.pointerId !== drag.id) return;
       const wasActive = drag.active;
       const dx = e.clientX - drag.x;
+      // 離す直前に指が止まっていたら、速度はフリックとみなさない
+      const vx = performance.now() - drag.lastT > 90 ? 0 : drag.vx;
       const seq = dragSeq;
       drag = null;
       if (!wasActive) return; // ただのタップは click 側で処理する
       swipedAt = Date.now(); // 直後の click で二重にめくらない
       const w = pageWrap.clientWidth || 1;
-      const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
-      const commit = !cancelled && Math.abs(dx) >= Math.max(48, w * 0.18);
+      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
+      const dist = Math.abs(dx);
+      const flick =
+        dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
+      const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
+      if (commit) playPageTurn(); // 確定した瞬間に1回だけ鳴らす
       if (reduceMotion.matches) {
         dragReset();
         if (commit) turnPage(towardNext ? 1 : -1);
         return;
       }
       if (!commit) {
-        // 閾値未満：元の位置へ滑り戻る
+        // 確定量未満：バネで元の位置へ戻る（行き過ぎは控えめに）
         pageEl.classList.remove('dragging');
-        pageEl.style.transition = 'transform .18s ease-out';
+        pageEl.style.transition = 'transform .32s cubic-bezier(.25, 1.3, .4, 1)';
         pageEl.style.transform = '';
         setTimeout(() => {
           if (seq === dragSeq) dragReset();
-        }, 200);
+        }, 340);
         return;
       }
       // 確定：旧ページを指の向きへ滑り出してから差し替え、新ページを反対側から滑り込ませる
       const sign = dx < 0 ? -1 : 1;
       pageEl.classList.remove('dragging');
-      pageEl.style.transition = 'transform .15s ease-out';
+      pageEl.style.transition = 'transform .16s ease-out';
       pageEl.style.transform = 'translateX(' + sign * w + 'px)';
       setTimeout(() => {
         if (seq !== dragSeq) return; // 間際に次のジェスチャが始まっていたら邪魔しない
@@ -1382,12 +1451,12 @@ export function createReader(book: BookData): Reader {
         pageEl.style.transition = '';
         pageEl.style.transform = 'translateX(' + -sign * w + 'px)';
         void pageEl.offsetWidth; // 反対側に置いた状態を確定させてから滑り込ませる
-        pageEl.style.transition = 'transform .18s ease-out';
+        pageEl.style.transition = 'transform .24s cubic-bezier(.22, .9, .28, 1.1)';
         pageEl.style.transform = '';
         setTimeout(() => {
           if (seq === dragSeq) dragReset();
-        }, 200);
-      }, 160);
+        }, 260);
+      }, 170);
     };
     pageWrap.addEventListener('pointerup', (e) => finishDrag(e, false));
     pageWrap.addEventListener('pointercancel', (e) => finishDrag(e, true));
@@ -1398,6 +1467,7 @@ export function createReader(book: BookData): Reader {
       const x = e.clientX - r.left;
       if (x < 12 || x > r.width - 12) return; // 端ぎわは誤爆防止の無反応帯
       const onNextSide = DIR.nextSide === 'left' ? x / r.width < 0.5 : x / r.width > 0.5;
+      playPageTurn(); // タップめくりでも、確定した瞬間に1回鳴らす
       turnPage(onNextSide ? 1 : -1);
     });
     document.addEventListener('keydown', (e) => {
@@ -1407,6 +1477,102 @@ export function createReader(book: BookData): Reader {
       if (e.key === nextKey) turnPage(1);
       else if (e.key === prevKey) turnPage(-1);
     });
+    /* 扉（ゲート）でも本文と同じスワイプで遷移できるようにする（実機報告：扉では
+       スワイプできなかった）。向き・確定量・フリック判定は本文と共通で、追随は
+       扉のシート（.gate-sheet）をゴム状に滑らせる。遷移先は gateNav（表示中の
+       扉が決める）。スワイプ直後の click（扉のタップ処理）が二重に効かないよう、
+       キャプチャ段階で止める */
+    let gateDrag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
+    let gateSwipedAt = 0;
+    const gateSheet = gateView.querySelector<HTMLElement>('.gate-sheet');
+    const gateSheetReset = (): void => {
+      if (!gateSheet) return;
+      gateSheet.style.transition = '';
+      gateSheet.style.transform = '';
+    };
+    gateView.addEventListener(
+      'click',
+      (e) => {
+        if (Date.now() - gateSwipedAt < 350) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      true,
+    );
+    gateView.addEventListener('pointerdown', (e) => {
+      if (gateView.hidden) {
+        gateDrag = null;
+        return;
+      }
+      gateDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false, lastX: e.clientX, lastT: performance.now(), vx: 0 };
+      gateView.classList.add('gate-dragging'); // ドラッグ中のテキスト選択を止める
+      try {
+        gateView.setPointerCapture(e.pointerId);
+      } catch {
+        // 捕捉できなくても続行する
+      }
+    });
+    gateView.addEventListener('pointermove', (e) => {
+      if (!gateDrag || e.pointerId !== gateDrag.id) return;
+      const nowT = performance.now();
+      const dt = nowT - gateDrag.lastT;
+      if (dt > 0) {
+        const inst = (e.clientX - gateDrag.lastX) / dt;
+        gateDrag.vx = gateDrag.vx * 0.35 + inst * 0.65;
+        gateDrag.lastX = e.clientX;
+        gateDrag.lastT = nowT;
+      }
+      const dx = e.clientX - gateDrag.x;
+      const dy = e.clientY - gateDrag.y;
+      if (!gateDrag.active) {
+        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          gateDrag.active = true;
+        } else if (Math.abs(dy) > 10) {
+          gateDrag = null;
+          gateView.classList.remove('gate-dragging');
+          return;
+        } else {
+          return;
+        }
+      }
+      if (!reduceMotion.matches && gateSheet) {
+        gateSheet.style.transform = 'translateX(' + rubberDx(dx, gateView.clientWidth || 1) + 'px)';
+      }
+    });
+    const finishGateDrag = (e: PointerEvent, cancelled: boolean): void => {
+      if (!gateDrag || e.pointerId !== gateDrag.id) return;
+      gateView.classList.remove('gate-dragging');
+      const wasActive = gateDrag.active;
+      const dx = e.clientX - gateDrag.x;
+      const vx = performance.now() - gateDrag.lastT > 90 ? 0 : gateDrag.vx;
+      gateDrag = null;
+      if (!wasActive) return; // ただのタップは扉の click 側で処理する
+      gateSwipedAt = Date.now(); // 直後の click で二重に遷移しない
+      const w = gateView.clientWidth || 1;
+      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
+      const dist = Math.abs(dx);
+      const flick =
+        dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
+      const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
+      if (!commit) {
+        // 確定量未満：バネで元の位置へ戻る
+        if (gateSheet && !reduceMotion.matches) {
+          gateSheet.style.transition = 'transform .32s cubic-bezier(.25, 1.3, .4, 1)';
+          gateSheet.style.transform = '';
+          setTimeout(gateSheetReset, 340);
+        } else {
+          gateSheetReset();
+        }
+        return;
+      }
+      gateSheetReset();
+      if (!gateNav) return;
+      if (towardNext) gateNav.next();
+      else gateNav.prev();
+    };
+    gateView.addEventListener('pointerup', (e) => finishGateDrag(e, false));
+    gateView.addEventListener('pointercancel', (e) => finishGateDrag(e, true));
     let resizeT: ReturnType<typeof setTimeout> | undefined;
     window.addEventListener('resize', () => {
       if (resizeT !== undefined) clearTimeout(resizeT);
@@ -1499,6 +1665,7 @@ export function createReader(book: BookData): Reader {
   fontSize = load<string>('font', 'std') === 'large' ? 'large' : 'std';
   document.body.classList.toggle('font-large', fontSize === 'large');
   $('fontSizeBtn').textContent = fontSize === 'large' ? '大' : '標準';
+  $<HTMLInputElement>('pageSoundToggle').checked = isSoundOn();
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;

@@ -108,9 +108,7 @@ const SCREENS = [
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
       for (let i = 0; i < 300; i++) {
-        const pos = await page.locator('#pageChapterPos').textContent();
-        const m = /(\d+) \/ (\d+)/.exec(pos || '');
-        if (m && m[1] === m[2]) break;
+        if ((await page.locator('#pageContent .story-end').count()) > 0) break;
         await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
         await page.waitForTimeout(40);
       }
@@ -128,9 +126,7 @@ const SCREENS = [
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
       for (let i = 0; i < 300; i++) {
-        const pos = await page.locator('#pageChapterPos').textContent();
-        const m = /(\d+) \/ (\d+)/.exec(pos || '');
-        if (m && m[1] === m[2]) break;
+        if ((await page.locator('#pageContent .story-end').count()) > 0) break;
         await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
         await page.waitForTimeout(40);
       }
