@@ -1,0 +1,30 @@
+== ch1 (female/Leda): 72 sentences
+  ch1-6 done: そふがなくなってさんねん、わたしが店をつ...
+  ch1-7 done: もともとしやくしょにつとめていたわたしが...
+  ch1-8 done: 本のにおいと、戸のすずのおとと、ほうかご...
+  API fail (attempt 0): /python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/usr/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+
+  429: wait 60s and retry once
+  ch1-9 done: この店のくうきが、わたしはすきだった。...
+  API fail (attempt 0): /python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/usr/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+
+  429: wait 60s and retry once
+  API fail (attempt 1): /python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/usr/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+
+QUOTA ABORT: 429 twice; daily quota likely exhausted
+GEN PROGRESS: 0/7 chapters complete, api_calls=19, failures=5, quota_aborted=True

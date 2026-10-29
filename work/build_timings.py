@@ -28,6 +28,7 @@
 使い方：work/build_data.py のあと、音声を生成・差し替えたあとに実行する。
 出力：data/chapters.json と public/book/data.json の各章へ unitTimes を追加。
 """
+import argparse
 import glob
 import json
 import os
@@ -97,8 +98,9 @@ def chapter_unit_times(ch, ch_no):
     seg_dir = SEG_DIRS.get(narrator)
     if not seg_dir:
         fail(f'ch{ch_no}: 未知の narrator {narrator}')
-    files = glob.glob(os.path.join(seg_dir, f'ch{ch_no}-*.mp3'))
-    files.sort(key=lambda f: int(re.search(r'-(\d+)\.mp3$', f).group(1)))
+    files = (glob.glob(os.path.join(seg_dir, f'ch{ch_no}-*.mp3')) +
+             glob.glob(os.path.join(seg_dir, f'ch{ch_no}-*.wav')))
+    files.sort(key=lambda f: int(re.search(r'-(\d+)\.(?:mp3|wav)$', f).group(1)))
     if not files:
         fail(f'ch{ch_no}: セグメントが {seg_dir} にない')
     durs = [duration(f) for f in files]
@@ -197,6 +199,18 @@ def chapter_unit_times(ch, ch_no):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--gap', type=float, default=None,
+                    help='文間の無音秒（既定はモジュール定数 GAP_SEC）')
+    ap.add_argument('--female-dir', default=None, help='女性章のセグメント置き場')
+    ap.add_argument('--male-dir', default=None, help='男性章のセグメント置き場')
+    args = ap.parse_args()
+    if args.gap is not None:
+        globals()['GAP_SEC'] = args.gap
+    if args.female_dir:
+        SEG_DIRS['female'] = args.female_dir
+    if args.male_dir:
+        SEG_DIRS['male'] = args.male_dir
     src_path = os.path.join(BASE, 'data', 'chapters.json')
     pub_path = os.path.join(BASE, 'public', 'book', 'data.json')
     data = json.load(open(src_path))

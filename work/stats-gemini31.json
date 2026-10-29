@@ -1,0 +1,26 @@
+{
+ "api_calls": 36,
+ "api_failures": 14,
+ "quota_aborted": true,
+ "sentences_done": {
+  "ch1-0": true,
+  "ch1-1": true,
+  "ch1-2": true,
+  "ch1-3": true,
+  "ch1-4": true,
+  "ch1-5": true,
+  "ch1-6": true,
+  "ch1-7": true,
+  "ch1-8": true,
+  "ch1-9": true,
+  "ch1-10": true,
+  "ch1-11": true,
+  "ch1-12": true,
+  "ch1-13": true,
+  "ch1-14": true,
+  "ch1-15": true,
+  "ch1-16": true,
+  "ch1-17": true
+ },
+ "note": "stats reset after duplicate-launch race; counts are approximate"
+}
