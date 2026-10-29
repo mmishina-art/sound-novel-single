@@ -42,7 +42,8 @@ export function beep(frequency = 660, seconds = 0.08): void {
 }
 
 /* ページめくり音：紙が擦れる音を、ノイズ＋帯域掃引でその場で合成する（実ファイルは持たない）。
-   短く（約0.3秒）柔らかく、朗読の邪魔をしない音量に抑える。オン/オフは効果音の
+   短く（約0.3秒）柔らかく、朗読の邪魔をしない「気配程度」の音量に抑える
+   （v1.11.1 で包絡全体を約0.4倍に下げた：ピーク 0.13→0.052）。オン/オフは効果音の
    設定（保存キー 'sound'）に従い、BGM とは独立に切れる。連打・高速めくりでも
    音が重なって破綻しないよう、前回から 120ms 以内の再発音はしない */
 let lastPageTurnAt = 0;
@@ -75,9 +76,9 @@ export function playPageTurn(): void {
     lp.frequency.value = 5200;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.13, t + 0.045); // 立ち上がり
-    g.gain.linearRampToValueAtTime(0.055, t + 0.13); // 紙が離れかける谷
-    g.gain.linearRampToValueAtTime(0.1, t + 0.19); // めくり終わりの小さな盛り上がり
+    g.gain.linearRampToValueAtTime(0.052, t + 0.045); // 立ち上がり（ピーク）
+    g.gain.linearRampToValueAtTime(0.022, t + 0.13); // 紙が離れかける谷
+    g.gain.linearRampToValueAtTime(0.04, t + 0.19); // めくり終わりの小さな盛り上がり
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(bp).connect(lp).connect(g).connect(c.destination);
     src.start(t);

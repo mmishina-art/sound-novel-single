@@ -618,7 +618,9 @@ body.hl-off .unit.now { background: none; color: inherit; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .modal-head h3 { margin: 0; }
 /* ============ 目次ページ（本の1ページ。枠・紙は扉とそろえる） ============ */
-.view-toc { height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); }
+.view-toc { height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); touch-action: pan-y pinch-zoom; }
+/* 目次をドラッグしている間はテキスト選択を止める（扉の .gate-dragging と同じ作法） */
+.view-toc.toc-dragging, .view-toc.toc-dragging .toc-sheet { user-select: none; -webkit-user-select: none; }
 .toc-sheet {
   position: relative; flex: 1; min-width: 0; overflow: hidden;
   background: linear-gradient(160deg, #fffdf6, var(--paper) 55%, #f7f0da);

@@ -7,3 +7,8 @@ playwright-report/
 test-results/
 .venv/
 __pycache__/
+work/gemini38/raw/
+work/gemini38/proc/
+work/gemini38/audio/
+work/gemini38/texts/
+work/title-raw/

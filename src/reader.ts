@@ -721,7 +721,7 @@ export function createReader(book: BookData): Reader {
       gateOpen = false;
       enterChapter(idx, opts);
     };
-    gateView.onclick = start;
+    // タップ・スワイプは共通ジェスチャー側が gateNav を呼ぶ（次＝この start）
     // スワイプ：右へ払う＝入章（タップと同じ start）、左へ払う＝後方遷移の規則で
     // 戻る（前の章の扉を最終ページ指定で開く。第一章の扉では後方モードの扉へ）
     gateNav = {
@@ -777,17 +777,8 @@ export function createReader(book: BookData): Reader {
     $('gateHint').textContent = 'タップで本文へ ／ 前へめくると目次へ';
     fillGate(chapters[0]);
     showView('gate');
-    gateView.onclick = (e: MouseEvent) => {
-      const r = gateView.getBoundingClientRect();
-      const ratio = (e.clientX - r.left) / r.width;
-      const onPrevSide = DIR.nextSide === 'left' ? ratio > 0.58 : ratio < 0.42;
-      if (onPrevSide) {
-        openTocPage('gate');
-      } else {
-        gateOpen = false;
-        enterChapter(0, { autoplay: false });
-      }
-    };
+    // タップ・スワイプは共通ジェスチャー側が gateNav を呼ぶ（半分判定に統一。
+    // 以前この扉だけ 0.58/0.42 の帯で分けていた）
     // スワイプ：右へ払う＝第一章の本文へ、左へ払う＝目次へ（タップの作法と同じ）
     gateNav = {
       next: () => {
@@ -1227,52 +1218,197 @@ export function createReader(book: BookData): Reader {
     $('resumeBtn').addEventListener('click', resumeFromBookmark);
     $('menuCloseBtn').addEventListener('click', closeMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
-    /* スワイプ確定の判定（本文・目次で共通。定数はここに集約する）。
-       距離は「幅の9%か28pxの大きい方」まで下げ、速いフリックは短い移動でも拾う */
+    /* ---------- ページ操作の共通ジェスチャー（本文・扉・目次で完全共通） ----------
+       3画面で別々に実装していた頃は、目次だけフリックも追随も無く、扉だけ確定時の
+       アニメーションが無いなど、画面ごとに挙動がずれていた（実機指摘）。ここに
+       一本化し、向き・確定量・フリック・追随・アニメーション・タップの半分判定
+       まで、すべて同じ規則で動かす。
+       - スワイプ：次側と反対へ払うと次、前へ払うと前（タップの半分判定とは逆向き。
+         どちらが次側かは DIR.nextSide が決める）。確定は「幅の9%か28pxの大きい方」
+         まで動かすか、速いフリック（14px以上かつ0.4px/ms以上、同方向）。
+       - 追随：指の移動をゴム状に減衰させたうえで 0.45 倍に抑え、最大48pxまでに
+         留める。旧実装はゴム追随のまま大きく動き「ちらつく」印象だったため、
+         v1.11.1 で遊びを小さくした。確定時の滑りも画面幅ではなく最大56pxに留め、
+         差し替え後は反対側28pxから .18s で静かに収める。未満は .22s で戻す
+         （行き過ぎ＝オーバーシュートは付けない）。
+       - タップ：左右の半分で次／前（中央の無反応帯なし）。端ぎわ12pxは誤爆防止の
+         無反応帯。ボタン上の操作と、スワイプ直後の click は対象にしない。
+       - めくりが確定した瞬間に、ページめくり音を1回鳴らす（スワイプ・タップ共通）。
+       - prefers-reduced-motion では追随もアニメーションもせず即時に切り替える */
     const SWIPE_COMMIT_RATIO = 0.09;
     const SWIPE_COMMIT_MIN_PX = 28;
     const SWIPE_FLICK_VELOCITY = 0.4; // px/ms（直近の指の速度）
     const SWIPE_FLICK_MIN_PX = 14; // フリックでも最低これだけは動いていること
+    const SWIPE_FOLLOW_SCALE = 0.45; // 指の移動に対する追随の割合
+    const SWIPE_FOLLOW_MAX_PX = 48; // 追随の最大移動量
+    const SWIPE_OUT_PX = 56; // 確定時に滑り出す量
+    const SWIPE_IN_PX = 28; // 差し替え後に滑り込む量
     const swipeCommitPx = (w: number): number => Math.max(SWIPE_COMMIT_MIN_PX, w * SWIPE_COMMIT_RATIO);
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    /* ゴムのような減衰（iOS のラバーバンドと同じ形。引っ張るほど鈍くなり、
+       限界ではページ幅に漸近する） */
+    const rubberDx = (d: number, w: number): number => {
+      const a = Math.abs(d);
+      return Math.sign(d) * w * (1 - 1 / ((a / w) * 0.55 + 1));
+    };
+    /* 実際の追随量：ゴム減衰をさらに SWIPE_FOLLOW_SCALE 倍し、上限を設ける */
+    const followDx = (dx: number, w: number): number =>
+      Math.sign(dx) * Math.min(Math.abs(rubberDx(dx, w)) * SWIPE_FOLLOW_SCALE, SWIPE_FOLLOW_MAX_PX);
+    /* タップの半分判定（3画面共通）。端ぎわ12pxは 0（無反応）を返す */
+    const tapDirFor = (view: HTMLElement, clientX: number): 1 | -1 | 0 => {
+      const r = view.getBoundingClientRect();
+      const x = clientX - r.left;
+      if (x < 12 || x > r.width - 12) return 0;
+      const onNextSide = DIR.nextSide === 'left' ? x / r.width < 0.5 : x / r.width > 0.5;
+      return onNextSide ? 1 : -1;
+    };
+    interface SwipeHandle {
+      swipedRecently: () => boolean;
+    }
+    function attachSwipeNav(o: {
+      surface: HTMLElement;
+      followEl: HTMLElement | null;
+      onNav: (dir: 1 | -1) => void;
+      canStart?: (e: PointerEvent) => boolean;
+      onDragActive?: (active: boolean) => void;
+    }): SwipeHandle {
+      let swipedAt = 0;
+      let seq = 0;
+      let drag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
+      const el = o.followEl;
+      const reset = (): void => {
+        if (!el) return;
+        el.style.transition = '';
+        el.style.transform = '';
+      };
+      o.surface.addEventListener('pointerdown', (e) => {
+        seq++;
+        if (o.canStart && !o.canStart(e)) {
+          drag = null;
+          return;
+        }
+        drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false, lastX: e.clientX, lastT: performance.now(), vx: 0 };
+        /* ポインタ捕捉はここではしない。捕捉すると click の宛先が表面に付け替わり、
+           表面の中にあるボタン（目次項目・戻る等）の click が奪われてしまう。
+           捕捉はドラッグが活性化した時点（pointermove）に遅らせる */
+      });
+      o.surface.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        // フリック判定用に、直近の指の速度（px/ms）を平滑化して持つ
+        const nowT = performance.now();
+        const dt = nowT - drag.lastT;
+        if (dt > 0) {
+          const inst = (e.clientX - drag.lastX) / dt;
+          drag.vx = drag.vx * 0.35 + inst * 0.65;
+          drag.lastX = e.clientX;
+          drag.lastT = nowT;
+        }
+        const dx = e.clientX - drag.x;
+        const dy = e.clientY - drag.y;
+        if (!drag.active) {
+          if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+            drag.active = true;
+            o.onDragActive?.(true);
+            try {
+              o.surface.setPointerCapture(e.pointerId);
+            } catch {
+              // 捕捉できなくても、通常のイベントの流れで続行する
+            }
+          } else if (Math.abs(dy) > 10) {
+            drag = null; // 縦方向の動きはジェスチャにしない
+            return;
+          } else {
+            return;
+          }
+        }
+        if (!reduceMotion.matches && el) {
+          el.style.transform = 'translateX(' + followDx(dx, o.surface.clientWidth || 1) + 'px)';
+        }
+      });
+      const finish = (e: PointerEvent, cancelled: boolean): void => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const wasActive = drag.active;
+        const dx = e.clientX - drag.x;
+        // 離す直前に指が止まっていたら、速度はフリックとみなさない
+        const vx = performance.now() - drag.lastT > 90 ? 0 : drag.vx;
+        const mySeq = seq;
+        drag = null;
+        o.onDragActive?.(false);
+        if (!wasActive) return; // ただのタップは click 側で処理する
+        swipedAt = Date.now(); // 直後の click で二重にめくらない
+        const w = o.surface.clientWidth || 1;
+        const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
+        const dir: 1 | -1 = towardNext ? 1 : -1;
+        const dist = Math.abs(dx);
+        const flick =
+          dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
+        const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
+        if (commit) playPageTurn(); // 確定した瞬間に1回だけ鳴らす
+        if (reduceMotion.matches || !el) {
+          reset();
+          if (commit) o.onNav(dir);
+          return;
+        }
+        if (!commit) {
+          // 確定量未満：静かに元の位置へ戻る
+          el.style.transition = 'transform .22s ease-out';
+          el.style.transform = '';
+          setTimeout(() => {
+            if (mySeq === seq) reset();
+          }, 240);
+          return;
+        }
+        // 確定：少しだけ滑り出してから差し替え、反対側から静かに滑り込ませる
+        const sign = dx < 0 ? -1 : 1;
+        el.style.transition = 'transform .14s ease-out';
+        el.style.transform = 'translateX(' + sign * SWIPE_OUT_PX + 'px)';
+        setTimeout(() => {
+          if (mySeq !== seq) return; // 間際に次のジェスチャが始まっていたら邪魔しない
+          o.onNav(dir);
+          el.style.transition = '';
+          el.style.transform = 'translateX(' + -sign * SWIPE_IN_PX + 'px)';
+          void el.offsetWidth; // 反対側に置いた状態を確定させてから滑り込ませる
+          el.style.transition = 'transform .18s ease-out';
+          el.style.transform = '';
+          setTimeout(() => {
+            if (mySeq === seq) reset();
+          }, 200);
+        }, 150);
+      };
+      o.surface.addEventListener('pointerup', (e) => finish(e, false));
+      o.surface.addEventListener('pointercancel', (e) => finish(e, true));
+      return { swipedRecently: () => Date.now() - swipedAt < 350 };
+    }
     /* 目次ページへの入口はメニューの「目次を開く」に一本化（表紙にも読書中にも共通） */
     $('tocFromMenuBtn').addEventListener('click', () => {
       closeMenu();
       openTocPage();
     });
     $('tocBackBtn').addEventListener('click', closeTocPage);
-    /* 目次のページ送りは本文と同じ作法：次側タップで次の目次ページ、前側タップで
-       前の目次ページ（スワイプも同じ向き）。目次ページの端では、前へ辿る連鎖
-       （扉→目次→表紙）で開いた場合に限り、その先へつなぐ：先頭ページの前側で表紙へ、
-       末尾ページの次側で第一章の扉へ（扉は通常モードで開き、本文へ続く） */
+    /* 目次のページ送りも共通ジェスチャーで本文・扉と揃える。目次ページの端では、
+       どこから開いた目次でも本の連鎖へつなぐ（v1.11.1 で統一：以前は前へ辿る連鎖
+       （扉→目次→表紙）で開いた場合だけだったため、メニューから開いた目次では
+       端で操作が途切れていた）：先頭ページの前側で表紙へ、末尾ページの次側で
+       第一章の扉へ（扉は通常モードで開き、本文へ続く）。
+       なお「戻る」ボタンは従来どおり、開いた元の画面へ帰る（連鎖とは別の入口） */
     const tocTapNav = (dir: number): void => {
       if (turnTocPage(dir)) return;
-      if (tocReturn !== 'gate') return;
       if (dir < 0) goCover();
       else showGate(0);
     };
-    let tocSwipedAt = 0;
+    const tocSwipe = attachSwipeNav({
+      surface: tocView,
+      followEl: tocView.querySelector<HTMLElement>('.toc-sheet'),
+      onDragActive: (a) => tocView.classList.toggle('toc-dragging', a),
+      onNav: (dir) => tocTapNav(dir),
+    });
     tocView.addEventListener('click', (e) => {
-      if (Date.now() - tocSwipedAt < 350) return; // スワイプ直後のクリックでは送らない（本文側と同じ）
-      if ((e.target as HTMLElement).closest('button')) return;
-      const r = tocView.getBoundingClientRect();
-      const ratio = (e.clientX - r.left) / r.width;
-      // 本文と同じく、左右の半分で進む／戻るの2択だけ（中央の無反応帯は置かない）
-      const onNextSide = DIR.nextSide === 'left' ? ratio < 0.5 : ratio > 0.5;
-      if (onNextSide) tocTapNav(1);
-      else tocTapNav(-1);
-    });
-    let tocSwipeX: number | null = null;
-    tocView.addEventListener('pointerdown', (e) => {
-      tocSwipeX = e.clientX;
-    });
-    tocView.addEventListener('pointerup', (e) => {
-      if (tocSwipeX === null) return;
-      const dx = e.clientX - tocSwipeX;
-      tocSwipeX = null;
-      if (Math.abs(dx) < swipeCommitPx(tocView.clientWidth || 1)) return;
-      tocSwipedAt = Date.now();
-      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
-      tocTapNav(towardNext ? 1 : -1);
+      if (tocSwipe.swipedRecently()) return; // スワイプ直後のクリックでは送らない
+      if ((e.target as HTMLElement).closest('button')) return; // 章項目と「戻る」はボタン側の処理
+      const dir = tapDirFor(tocView, e.clientX);
+      if (!dir) return;
+      playPageTurn();
+      tocTapNav(dir);
     });
     $('finalToCoverBtn').addEventListener('click', goCover);
     $('toCoverFromMenuBtn').addEventListener('click', () => {
@@ -1338,137 +1474,27 @@ export function createReader(book: BookData): Reader {
     document.addEventListener('pointerdown', () => {
       if (isBgmOn()) startBgm();
     });
-    /* ページめくり：タップとスワイプの併用。役割は「進む／戻る」だけに統一し、
+    /* 本文のページめくり（共通ジェスチャー）。役割は「進む／戻る」だけに統一し、
        メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
-       メニューや操作UIが出ることはない）。
-       - タップ：左右の半分で判定（小口側＝次／綴じ側＝前）。中央の無反応帯は置かない。
-         画面の端ぎわ（持つ手の指が触れやすい左右12px）は誤爆防止の無反応帯にする。
-       - スワイプ：ページが指に追随して滑り、確定量（幅の9%・最低28px）を超えたら
-         めくり確定（旧ページが滑り出し、新ページが反対側から滑り込む）、
-         未満ならバネで元の位置へ戻る。速いフリックは短い移動でも確定する。
-         追随はゴムのように非線形（引っ張るほど鈍くなる）にし、手応えを持たせる。
-       タップの「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右）。
-       スワイプはタップと逆向き：次側と反対へ払うと次ページになる（右綴じなら
-       右へ払う＝次／左へ払う＝前）。2026-10-29 の実機フィードバック（スワイプの
-       向きが直観と逆）を受けて反転した。目次のスワイプも本文に合わせる。
-       めくりが確定した瞬間に、ページめくり音を1回鳴らす（タップも同じ） */
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let swipedAt = 0;
-    let dragSeq = 0;
-    let drag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
-    /* ゴムのような追随：指の移動量を、引っ張るほど鈍くなる関数で減衰させる
-       （iOS のラバーバンドと同じ形。初動から少し遅れ、限界ではページ幅に漸近する） */
-    const rubberDx = (d: number, w: number): number => {
-      const a = Math.abs(d);
-      return Math.sign(d) * w * (1 - 1 / ((a / w) * 0.55 + 1));
-    };
-    const dragReset = (): void => {
-      pageEl.classList.remove('dragging');
-      pageEl.style.transition = '';
-      pageEl.style.transform = '';
-    };
-    pageWrap.addEventListener('pointerdown', (e) => {
-      dragSeq++;
-      // ボタンの上と奥付ページ表示中は、めくりジェスチャの対象にしない
-      if ((e.target as HTMLElement).closest('button') || endOpen) {
-        drag = null;
-        return;
-      }
-      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false, lastX: e.clientX, lastT: performance.now(), vx: 0 };
-      try {
-        pageWrap.setPointerCapture(e.pointerId);
-      } catch {
-        // 捕捉できなくても、通常のイベントの流れで続行する
-      }
+       メニューや操作 UI が出ることはない）。ボタンの上と奥付ページ表示中は
+       めくりジェスチャの対象にしない */
+    const bodySwipe = attachSwipeNav({
+      surface: pageWrap,
+      followEl: pageEl,
+      canStart: (e) => !(e.target as HTMLElement).closest('button') && !endOpen,
+      onDragActive: (a) => {
+        pageEl.classList.toggle('dragging', a);
+        if (a) pageEl.classList.remove('turn-next', 'turn-prev');
+      },
+      onNav: (dir) => turnPage(dir, 0),
     });
-    pageWrap.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      // フリック判定用に、直近の指の速度（px/ms）を平滑化して持つ
-      const nowT = performance.now();
-      const dt = nowT - drag.lastT;
-      if (dt > 0) {
-        const inst = (e.clientX - drag.lastX) / dt;
-        drag.vx = drag.vx * 0.35 + inst * 0.65;
-        drag.lastX = e.clientX;
-        drag.lastT = nowT;
-      }
-      const dx = e.clientX - drag.x;
-      const dy = e.clientY - drag.y;
-      if (!drag.active) {
-        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-          drag.active = true;
-          pageEl.classList.add('dragging');
-          pageEl.classList.remove('turn-next', 'turn-prev');
-        } else if (Math.abs(dy) > 10) {
-          drag = null; // 縦方向の動きはジェスチャにしない
-          return;
-        } else {
-          return;
-        }
-      }
-      if (!reduceMotion.matches) pageEl.style.transform = 'translateX(' + rubberDx(dx, pageWrap.clientWidth || 1) + 'px)';
-    });
-    const finishDrag = (e: PointerEvent, cancelled: boolean): void => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const wasActive = drag.active;
-      const dx = e.clientX - drag.x;
-      // 離す直前に指が止まっていたら、速度はフリックとみなさない
-      const vx = performance.now() - drag.lastT > 90 ? 0 : drag.vx;
-      const seq = dragSeq;
-      drag = null;
-      if (!wasActive) return; // ただのタップは click 側で処理する
-      swipedAt = Date.now(); // 直後の click で二重にめくらない
-      const w = pageWrap.clientWidth || 1;
-      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
-      const dist = Math.abs(dx);
-      const flick =
-        dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
-      const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
-      if (commit) playPageTurn(); // 確定した瞬間に1回だけ鳴らす
-      if (reduceMotion.matches) {
-        dragReset();
-        if (commit) turnPage(towardNext ? 1 : -1);
-        return;
-      }
-      if (!commit) {
-        // 確定量未満：バネで元の位置へ戻る（行き過ぎは控えめに）
-        pageEl.classList.remove('dragging');
-        pageEl.style.transition = 'transform .32s cubic-bezier(.25, 1.3, .4, 1)';
-        pageEl.style.transform = '';
-        setTimeout(() => {
-          if (seq === dragSeq) dragReset();
-        }, 340);
-        return;
-      }
-      // 確定：旧ページを指の向きへ滑り出してから差し替え、新ページを反対側から滑り込ませる
-      const sign = dx < 0 ? -1 : 1;
-      pageEl.classList.remove('dragging');
-      pageEl.style.transition = 'transform .16s ease-out';
-      pageEl.style.transform = 'translateX(' + sign * w + 'px)';
-      setTimeout(() => {
-        if (seq !== dragSeq) return; // 間際に次のジェスチャが始まっていたら邪魔しない
-        turnPage(towardNext ? 1 : -1, 0);
-        pageEl.style.transition = '';
-        pageEl.style.transform = 'translateX(' + -sign * w + 'px)';
-        void pageEl.offsetWidth; // 反対側に置いた状態を確定させてから滑り込ませる
-        pageEl.style.transition = 'transform .24s cubic-bezier(.22, .9, .28, 1.1)';
-        pageEl.style.transform = '';
-        setTimeout(() => {
-          if (seq === dragSeq) dragReset();
-        }, 260);
-      }, 170);
-    };
-    pageWrap.addEventListener('pointerup', (e) => finishDrag(e, false));
-    pageWrap.addEventListener('pointercancel', (e) => finishDrag(e, true));
     pageWrap.addEventListener('click', (e) => {
-      if (Date.now() - swipedAt < 350) return;
+      if (bodySwipe.swipedRecently()) return;
       if ((e.target as HTMLElement).closest('button')) return;
-      const r = pageWrap.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      if (x < 12 || x > r.width - 12) return; // 端ぎわは誤爆防止の無反応帯
-      const onNextSide = DIR.nextSide === 'left' ? x / r.width < 0.5 : x / r.width > 0.5;
+      const dir = tapDirFor(pageWrap, e.clientX);
+      if (!dir) return;
       playPageTurn(); // タップめくりでも、確定した瞬間に1回鳴らす
-      turnPage(onNextSide ? 1 : -1);
+      turnPage(dir);
     });
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
@@ -1477,102 +1503,29 @@ export function createReader(book: BookData): Reader {
       if (e.key === nextKey) turnPage(1);
       else if (e.key === prevKey) turnPage(-1);
     });
-    /* 扉（ゲート）でも本文と同じスワイプで遷移できるようにする（実機報告：扉では
-       スワイプできなかった）。向き・確定量・フリック判定は本文と共通で、追随は
-       扉のシート（.gate-sheet）をゴム状に滑らせる。遷移先は gateNav（表示中の
-       扉が決める）。スワイプ直後の click（扉のタップ処理）が二重に効かないよう、
-       キャプチャ段階で止める */
-    let gateDrag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
-    let gateSwipedAt = 0;
-    const gateSheet = gateView.querySelector<HTMLElement>('.gate-sheet');
-    const gateSheetReset = (): void => {
-      if (!gateSheet) return;
-      gateSheet.style.transition = '';
-      gateSheet.style.transform = '';
-    };
-    gateView.addEventListener(
-      'click',
-      (e) => {
-        if (Date.now() - gateSwipedAt < 350) {
-          e.stopPropagation();
-          e.preventDefault();
-        }
+    /* 扉（ゲート）のページ操作も共通ジェスチャーで本文・目次と揃える。遷移先は
+       gateNav（表示中の扉が決める：通常扉は次＝入章／前＝前の扉か後方扉、後方扉は
+       次＝第一章の本文／前＝目次）。タップも半分判定に統一した（以前は通常扉が
+       「どこを押しても入章」、後方扉が 0.58/0.42 の非対称な帯だった） */
+    const gateSwipe = attachSwipeNav({
+      surface: gateView,
+      followEl: gateView.querySelector<HTMLElement>('.gate-sheet'),
+      onDragActive: (a) => gateView.classList.toggle('gate-dragging', a),
+      onNav: (dir) => {
+        if (!gateNav) return;
+        if (dir > 0) gateNav.next();
+        else gateNav.prev();
       },
-      true,
-    );
-    gateView.addEventListener('pointerdown', (e) => {
-      if (gateView.hidden) {
-        gateDrag = null;
-        return;
-      }
-      gateDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false, lastX: e.clientX, lastT: performance.now(), vx: 0 };
-      gateView.classList.add('gate-dragging'); // ドラッグ中のテキスト選択を止める
-      try {
-        gateView.setPointerCapture(e.pointerId);
-      } catch {
-        // 捕捉できなくても続行する
-      }
     });
-    gateView.addEventListener('pointermove', (e) => {
-      if (!gateDrag || e.pointerId !== gateDrag.id) return;
-      const nowT = performance.now();
-      const dt = nowT - gateDrag.lastT;
-      if (dt > 0) {
-        const inst = (e.clientX - gateDrag.lastX) / dt;
-        gateDrag.vx = gateDrag.vx * 0.35 + inst * 0.65;
-        gateDrag.lastX = e.clientX;
-        gateDrag.lastT = nowT;
-      }
-      const dx = e.clientX - gateDrag.x;
-      const dy = e.clientY - gateDrag.y;
-      if (!gateDrag.active) {
-        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-          gateDrag.active = true;
-        } else if (Math.abs(dy) > 10) {
-          gateDrag = null;
-          gateView.classList.remove('gate-dragging');
-          return;
-        } else {
-          return;
-        }
-      }
-      if (!reduceMotion.matches && gateSheet) {
-        gateSheet.style.transform = 'translateX(' + rubberDx(dx, gateView.clientWidth || 1) + 'px)';
-      }
-    });
-    const finishGateDrag = (e: PointerEvent, cancelled: boolean): void => {
-      if (!gateDrag || e.pointerId !== gateDrag.id) return;
-      gateView.classList.remove('gate-dragging');
-      const wasActive = gateDrag.active;
-      const dx = e.clientX - gateDrag.x;
-      const vx = performance.now() - gateDrag.lastT > 90 ? 0 : gateDrag.vx;
-      gateDrag = null;
-      if (!wasActive) return; // ただのタップは扉の click 側で処理する
-      gateSwipedAt = Date.now(); // 直後の click で二重に遷移しない
-      const w = gateView.clientWidth || 1;
-      const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
-      const dist = Math.abs(dx);
-      const flick =
-        dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
-      const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
-      if (!commit) {
-        // 確定量未満：バネで元の位置へ戻る
-        if (gateSheet && !reduceMotion.matches) {
-          gateSheet.style.transition = 'transform .32s cubic-bezier(.25, 1.3, .4, 1)';
-          gateSheet.style.transform = '';
-          setTimeout(gateSheetReset, 340);
-        } else {
-          gateSheetReset();
-        }
-        return;
-      }
-      gateSheetReset();
-      if (!gateNav) return;
-      if (towardNext) gateNav.next();
+    gateView.addEventListener('click', (e) => {
+      if (gateSwipe.swipedRecently()) return; // スワイプ直後のクリックでは遷移しない
+      if ((e.target as HTMLElement).closest('button')) return;
+      const dir = tapDirFor(gateView, e.clientX);
+      if (!dir || !gateNav) return;
+      playPageTurn();
+      if (dir > 0) gateNav.next();
       else gateNav.prev();
-    };
-    gateView.addEventListener('pointerup', (e) => finishGateDrag(e, false));
-    gateView.addEventListener('pointercancel', (e) => finishGateDrag(e, true));
+    });
     let resizeT: ReturnType<typeof setTimeout> | undefined;
     window.addEventListener('resize', () => {
       if (resizeT !== undefined) clearTimeout(resizeT);
