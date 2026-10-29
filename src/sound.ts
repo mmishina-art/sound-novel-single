@@ -6,13 +6,40 @@ let ctx: AudioContext | undefined;
 let enabled = load('sound', true);
 
 function ac(): AudioContext {
-  ctx ??= new AudioContext();
+  if (!ctx) {
+    ctx = new AudioContext();
+    // OS に割り込まれて（着信・他アプリの音声など）コンテキストが止まり、
+    // 1秒以上たってから戻ってきたら、BGM の世代を作り直す。割り込み中は
+    // 予約済みの音が描画されずに滞留し、復帰時にまとめて鳴って「大きな音」に
+    // なることがあるため、滞留分は旧世代ごと捨てる（restartBgmTimeline）。
+    let leftRunningAt: number | null = null;
+    ctx.addEventListener('statechange', () => {
+      if (!ctx) return;
+      if (ctx.state !== 'running') {
+        if (leftRunningAt === null) leftRunningAt = performance.now();
+      } else {
+        const gap = leftRunningAt === null ? 0 : performance.now() - leftRunningAt;
+        leftRunningAt = null;
+        if (gap >= 1000 && bgmNodes && bgmWanted && bgmOn) restartBgmTimeline();
+      }
+    });
+  }
   // iPhone では操作のあとに resume が必要。ただし、鳴っている最中（running）に
   // resume を繰り返し呼ぶと iOS では音が乱れることがある。ページ送りの連打の
   // たびに pointerdown から呼ばれて resume が連打される実機報告への対策として、
   // 止まっているときだけ開け直す
   if (ctx.state !== 'running') void ctx.resume();
   return ctx;
+}
+
+/** 音の出口が OS に止められていたら開け直す（存在するときだけ）。タップなど
+    ユーザー操作のたびに呼んで、BGM・効果音の両方の復帰を早める */
+export function ensureAudioRunning(): void {
+  try {
+    if (ctx && ctx.state !== 'running') void ctx.resume();
+  } catch {
+    // 開け直せなくても続行する
+  }
 }
 
 export const isSoundOn = (): boolean => enabled;
@@ -105,16 +132,29 @@ export function playPageTurn(): void {
 const BGM_MASTER_GAIN = 0.84;
 
 let bgmOn = load('bgm', true);
-let bgmNodes: { master: GainNode; timer: ReturnType<typeof setInterval> } | undefined;
+
+/* BGM は「世代」単位で管理する：1世代 = マスターゲイン1つ＋先読みスケジューラ1つ。
+   世代は同時に1つだけが生きていて、作り直すときは旧世代を必ず畳んでから
+   新世代を立てる（ゲインやスケジューラが積み重なって音量が増える経路を作らない）。
+   復帰時の「大きな音」対策の要：OS の割り込みや時計のジャンプで予約済みの音が
+   滞留したら、その世代ごと捨てて現在位置から組み直す（restartBgmTimeline）。 */
+interface BgmGeneration {
+  master: GainNode;
+  timer: ReturnType<typeof setInterval>;
+  events: BgmEvent[];
+  beatSec: number;
+  idx: number;
+  loopStart: number;
+  /* スケジューラの最終実行時点（コンテキスト時計と実時間）。両者の進み方の
+     ズレが「時計だけが先行した＝予約が滞留した」ことの検出に使う */
+  lastTickCtx: number;
+  lastTickWall: number;
+}
+
+let bgmNodes: BgmGeneration | undefined;
 let bgmWanted = false;
 
 export const isBgmOn = (): boolean => bgmOn;
-
-/** BGM の出口（AudioContext）がブラウザに止められていたら開け直す。
-    バックグラウンドから戻ってきたときなどに呼ぶ（鳴っていないときは何もしない） */
-export function resumeBgmContext(): void {
-  if (bgmNodes) ac();
-}
 
 export function setBgmOn(on: boolean): void {
   bgmOn = on;
@@ -174,48 +214,82 @@ export function scheduleBgmEvent(c: BaseAudioContext, dest: AudioNode, ev: BgmEv
   else pianoTone(c, dest, ev.midi, at, Math.max(2.0, ev.lenBeats * beatSec * 1.05), ev.gain, 0.05);
 }
 
+/** 世代を1つ立てる（呼び出し側で「生きている世代は無い」ことを保証する）。
+    fadeInSec かけて設定音量まで上げるので、作り直しの直後でも素の大きな
+    音がそのまま出ることはない */
+function startGeneration(fadeInSec: number): void {
+  const c = ac();
+  const master = c.createGain();
+  master.gain.setValueAtTime(0, c.currentTime);
+  master.gain.linearRampToValueAtTime(BGM_MASTER_GAIN, c.currentTime + fadeInSec);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4200;
+  lp.Q.value = 0.3;
+  master.connect(lp).connect(c.destination);
+
+  const gen: BgmGeneration = {
+    master,
+    timer: undefined as unknown as ReturnType<typeof setInterval>,
+    events: buildBgmEvents(),
+    beatSec: 60 / BGM_BPM,
+    idx: 0,
+    loopStart: c.currentTime + 0.15,
+    lastTickCtx: c.currentTime,
+    lastTickWall: performance.now(),
+  };
+  gen.timer = setInterval(() => {
+    if (c.state !== 'running') void c.resume();
+    const now = c.currentTime;
+    gen.lastTickCtx = now;
+    gen.lastTickWall = performance.now();
+    // 先読みは広めに取る：バックグラウンドではタイマーが絞られ（数秒〜分単位に
+    // 間引かれる）ても、予約済みの音が続くようにするため
+    const horizon = now + 30;
+    for (;;) {
+      const ev = gen.events[gen.idx];
+      const at = gen.loopStart + ev.beat * gen.beatSec;
+      if (at > horizon) break;
+      // 過去の音は絶対に予約しない。割り込みや時計のジャンプでスケジューラが
+      // 遅れても、過ぎた分は捨てて現在位置から続ける（遅れた音が復帰時に
+      // まとめて鳴る「大きな音」の経路をここで断つ）
+      if (at >= now + 0.02) scheduleBgmEvent(c, gen.master, ev, at, gen.beatSec);
+      gen.idx += 1;
+      if (gen.idx >= gen.events.length) {
+        gen.idx = 0;
+        gen.loopStart += BGM_LOOP_BEATS * gen.beatSec;
+      }
+    }
+  }, 300);
+
+  bgmNodes = gen;
+  document.body.dataset.bgm = 'on';
+  document.dispatchEvent(new CustomEvent('app:bgm', { detail: { on: true } }));
+}
+
+/** 世代を畳む：スケジューラを止め、マスターを fadeSec で絞ってから切り離す。
+    予約済みでまだ鳴っていない音も、切り離しと一緒に destination へ届かなくなる */
+function teardownGeneration(gen: BgmGeneration, fadeSec: number): void {
+  clearInterval(gen.timer);
+  try {
+    const c = ac();
+    gen.master.gain.cancelScheduledValues(c.currentTime);
+    gen.master.gain.setValueAtTime(gen.master.gain.value, c.currentTime);
+    gen.master.gain.linearRampToValueAtTime(0, c.currentTime + fadeSec);
+    window.setTimeout(() => gen.master.disconnect(), fadeSec * 1000 + 200);
+  } catch {
+    // 止められなくても続行する
+  }
+}
+
 export function startBgm(): void {
   bgmWanted = true;
   if (!bgmOn || bgmNodes) {
-    if (bgmNodes) ac(); // 既に鳴っている場合も、止まっていたら出口を開け直す
+    if (bgmNodes) ensureAudioRunning(); // 既に鳴っている場合も、止まっていたら出口を開け直す
     return;
   }
   try {
-    const c = ac();
-    const master = c.createGain();
-    master.gain.setValueAtTime(0, c.currentTime);
-    master.gain.linearRampToValueAtTime(BGM_MASTER_GAIN, c.currentTime + 2.5);
-    const lp = c.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 4200;
-    lp.Q.value = 0.3;
-    master.connect(lp).connect(c.destination);
-
-    const events = buildBgmEvents();
-    const beatSec = 60 / BGM_BPM;
-    let idx = 0;
-    let loopStart = c.currentTime + 0.15;
-    const timer = setInterval(() => {
-      if (c.state === 'suspended') void c.resume();
-      // 先読みは広めに取る：バックグラウンドではタイマーが絞られ（数秒〜分単位に
-      // 間引かれる）ても、予約済みの音が続くようにするため
-      const horizon = c.currentTime + 30;
-      for (;;) {
-        const ev = events[idx];
-        const at = loopStart + ev.beat * beatSec;
-        if (at > horizon) break;
-        if (at >= c.currentTime - 0.3) scheduleBgmEvent(c, master, ev, at, beatSec);
-        idx += 1;
-        if (idx >= events.length) {
-          idx = 0;
-          loopStart += BGM_LOOP_BEATS * beatSec;
-        }
-      }
-    }, 300);
-
-    bgmNodes = { master, timer };
-    document.body.dataset.bgm = 'on';
-    document.dispatchEvent(new CustomEvent('app:bgm', { detail: { on: true } }));
+    startGeneration(2.5);
   } catch {
     // 音が出せなくても続行する
   }
@@ -226,16 +300,49 @@ export function stopBgm(): void {
   document.body.dataset.bgm = 'off';
   document.dispatchEvent(new CustomEvent('app:bgm', { detail: { on: false } }));
   if (!bgmNodes) return;
-  const { master, timer } = bgmNodes;
+  const gen = bgmNodes;
   bgmNodes = undefined;
+  teardownGeneration(gen, 0.4);
+}
+
+let lastRestartWall = 0;
+
+/** BGM の世代を作り直す：滞留した予約は旧世代ごと捨て、新世代は現在位置から
+    短いフェードインで始める。復帰直後の「大きな音」への主対策。
+    短時間に何度も走らないよう 2 秒に 1 回まで */
+export function restartBgmTimeline(): void {
+  if (!bgmNodes || !bgmOn) return;
+  const now = performance.now();
+  if (now - lastRestartWall < 2000) return;
+  lastRestartWall = now;
+  const old = bgmNodes;
+  bgmNodes = undefined;
+  teardownGeneration(old, 0.15);
   try {
-    clearInterval(timer);
-    const c = ac();
-    master.gain.cancelScheduledValues(c.currentTime);
-    master.gain.setValueAtTime(master.gain.value, c.currentTime);
-    master.gain.linearRampToValueAtTime(0, c.currentTime + 0.4);
-    window.setTimeout(() => master.disconnect(), 600);
+    startGeneration(1.0);
   } catch {
-    // 止められなくても続行する
+    // 音が出せなくても続行する
   }
+}
+
+/** 前面復帰時に呼ぶ：出口を開け直し、BGM の時計がスケジューラより先行していたら
+    （＝割り込み等で予約が滞留していたら）世代を作り直す。世代が消えていたら
+    鳴らす意思がある場合に限って立て直す（復帰時の無音への自己回復） */
+export function resyncBgmIfDesynced(): void {
+  ensureAudioRunning();
+  if (!bgmOn) return;
+  if (!bgmNodes) {
+    if (bgmWanted) {
+      try {
+        startGeneration(1.0);
+      } catch {
+        // 音が出せなくても続行する
+      }
+    }
+    return;
+  }
+  if (!ctx) return;
+  const gen = bgmNodes;
+  const jump = ctx.currentTime - gen.lastTickCtx - (performance.now() - gen.lastTickWall) / 1000;
+  if (jump > 1.0) restartBgmTimeline();
 }

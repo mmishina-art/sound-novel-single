@@ -357,7 +357,6 @@ body.dir-vertical .gate-text { writing-mode: vertical-rl; -webkit-writing-mode: 
 /* 語り手名は題と同じ列の中で、題に続けて置く（独立した列にはしない）。
    文字の大きさは従来どおり。題との間はインライン方向（縦書きでは下方向）に空ける */
 .gate-narrator { font-size: .98rem; font-weight: 400; color: #6a6252; letter-spacing: .12em; margin-inline-start: 1.4em; }
-.gate-hint { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; margin: 0; font-size: .78rem; color: #a3936d; letter-spacing: .25em; }
 
 /* ============ Reader — 机の上に開いた右綴じの本 ============ */
 /* 操作は「出す／隠す」をやめ、ページの備品として常時置く。本文タップはページ
@@ -583,9 +582,16 @@ body.bound-left .page-footer { flex-direction: row-reverse; }
 /* 扉・目次の下の帯（v1.12.2）：本文の .page-footer と同じ家具・同じ位置づけ。
    シート（position: relative）の下端に、ノンブルの帯と同じ高さで置く。
    目次シートは縦書きなので、帯だけ横書きに戻す */
-.sheet-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--folio-band, 44px); z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; pointer-events: none; writing-mode: horizontal-tb; }
-.sheet-footer .page-icon-btn { pointer-events: auto; }
-body.bound-left .sheet-footer { flex-direction: row-reverse; }
+.sheet-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--folio-band, 44px); z-index: 2; pointer-events: none; writing-mode: horizontal-tb; }
+.sheet-footer .page-icon-btn { pointer-events: auto; position: absolute; bottom: 0; }
+/* アイコンの位置は全画面で固定（v1.12.3）：左下＝再生、右下＝家マーク。
+   flex の space-between だと、目で読むで再生が消えたときに家マークが左へ寄ってしまうため、
+   帯の中での位置を絶対指定にして、片方が隠れても動かないようにする */
+#gatePlayBtn, #tocPlayBtn { left: 12px; }
+#gateMenuBtn, #tocMenuBtn { right: 12px; }
+/* 左綴じ（将来対応）では綴じ側と小口側が入れ替わるので、左右も入れ替える */
+body.bound-left #gatePlayBtn, body.bound-left #tocPlayBtn { left: auto; right: 12px; }
+body.bound-left #gateMenuBtn, body.bound-left #tocMenuBtn { right: auto; left: 12px; }
 /* ページ送りの合図（常設の矢印）は置かない。送りはタップ（左右の半分）／スワイプだけ、
    操作ボタンは下の帯の両端に常時置く */
 /* スワイプで指に追随している間は、トランジションを切り、文字選択も止める */

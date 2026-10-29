@@ -1,6 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const { version, name: appId } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; name: string };
@@ -50,11 +50,24 @@ export default defineConfig({
       workbox: {
         // フォント・音・画像のファイルも、オフライン用に持つ。本文データ（book/data.json）も含める
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2,mp3,json,webmanifest}'],
+        // 版数ファイル（version.json）は precache しない。更新確認が古い版数を見てしまうため
+        globIgnores: ['**/version.json'],
         // 章音声（1ファイル約3〜4MB）を precache するため、既定の2MB上限を引き上げる（このアプリの拡張）
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: 'index.html',
       },
     }),
+    {
+      // 更新確認用の版数ファイル（dist/version.json）。アプリが cache: 'no-store' で取りに行き、
+      // 自分の版数と比べる（src/pwa.ts）。Service Worker の precache には絶対に入れない
+      // （入ると古い版数が返り続けて更新に気づけない）。VitePWA より後に置いて SW 生成が
+      // 終わってから書き、あわせて workbox.globIgnores でも除外して二重に防ぐ。
+      name: 'app-version-file',
+      apply: 'build',
+      closeBundle() {
+        writeFileSync(new URL('./dist/version.json', import.meta.url), JSON.stringify({ version }) + '\n');
+      },
+    },
   ],
   test: { environment: 'node', include: ['tests/**/*.test.ts'] },
 });

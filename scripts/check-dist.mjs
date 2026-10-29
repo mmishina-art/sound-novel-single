@@ -9,6 +9,20 @@ const need = (cond, msg) => { if (!cond) errors.push(msg); };
 need(existsSync(join(dist, 'index.html')), 'dist/index.html がありません（先に npm run build）');
 need(existsSync(join(dist, 'sw.js')), 'dist/sw.js（Service Worker）がありません');
 
+// 更新確認用の版数ファイル（src/pwa.ts が cache: 'no-store' で取りに行く）。
+// package.json の版数と一致していること。古いと、公開したのに更新に気づけない。
+const pkgEarly = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const versionPath = join(dist, 'version.json');
+if (!existsSync(versionPath)) {
+  errors.push('dist/version.json がありません（更新確認用の版数ファイル）');
+} else {
+  const v = JSON.parse(readFileSync(versionPath, 'utf8'));
+  need(v.version === pkgEarly.version, `dist/version.json の版数（${v.version}）が package.json（${pkgEarly.version}）と違います`);
+}
+// 版数ファイルが SW の precache に入っていると、古い版数が返り続けて更新を検知できない
+const swJs = existsSync(join(dist, 'sw.js')) ? readFileSync(join(dist, 'sw.js'), 'utf8') : '';
+need(!swJs.includes('version.json'), 'sw.js の precache に version.json が含まれています（vite.config.ts の workbox.globIgnores を確認）');
+
 const manifestPath = join(dist, 'manifest.webmanifest');
 if (!existsSync(manifestPath)) {
   errors.push('dist/manifest.webmanifest がありません');

@@ -76,7 +76,7 @@ Vite + TypeScript + vite-plugin-pwa + Vitest + Playwright + ESLint。UI フレ�
   - Android / パソコンで `beforeinstallprompt` が使えるときは「今すぐインストール」ボタンも出す。
   - すでにインストールされて開いている(`display-mode: standalone`)ときは、入口を出さない。
   - テンプレートの `src/install.ts` と `index.html` の `#install-open` / `#install-dialog` を使う。`npm run check:dist` が入口の有無を確認する。
-- 更新は**「更新」ボタン方式**(`registerType: 'prompt'`)。プレイ中に勝手に切り替えない。「あとで」で閉じられる(次に開いたとき、また出る)。開いたときに加えて、**アプリが前面に戻ったときにも新しい版を確かめる**(ホーム画面アプリは裏で開いたままのことが多く、開いたときだけだと古い版のままになる。`src/pwa.ts`)。
+- 更新は**「更新」ボタン方式**(`registerType: 'prompt'`)。プレイ中に勝手に切り替えない。「あとで」で閉じられる(次に開いたとき、また出る)。開いたときに加えて、**アプリが前面に戻ったとき・表紙が表示されたとき・15分ごとにも新しい版を確かめる**(ホーム画面アプリは裏で開いたままのことが多く、開いたときだけだと古い版のままになる。`src/pwa.ts`)。検知の主経路は SW 任せにせず、**版数ファイル(`version.json`)を `cache: 'no-store'` で直接確認する**(Safari が sw.js をキャッシュから返して更新に気づけないことがあるため)。`version.json` は precache に入れない。
 - **タイトル画面(最初の画面)にバージョンを表示する**(例: `v0.1.0`)。更新が反映されたかを、利用者がひと目で確認できるようにするため。
   - バージョンの元は `package.json` の `version` の1か所(`vite.config.ts` が `__APP_VERSION__` として埋め込み、`index.html` の `#version` に表示する)。
   - 公開のたびに `version` を上げる。Service Worker のキャッシュ名は自動生成なので、手で合わせる番号はない。

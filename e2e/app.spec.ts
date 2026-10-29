@@ -696,10 +696,12 @@ test('扉でもスワイプで遷移できる：左で後方へ（後方扉→�
     await page.mouse.move(box.x + box.width * toRatio, cy, { steps: 4 });
     await page.mouse.up();
   };
-  // 左へ払う → 後方モードの扉へ（ヒントが切り替わる）
+  // 左へ払う → 後方モードの扉へ
   await gateSwipe(0.7, 0.25);
   await expect(page.locator('#gateView')).toBeVisible();
-  await expect(page.locator('#gateHint')).toHaveText('タップで本文へ ／ 前へめくると目次へ');
+  // 扉の下部の案内文言は出さない（v1.12.3 で削除）
+  await expect(page.locator('#gateHint')).toHaveCount(0);
+  await expect(page.locator('#gateView')).not.toContainText('タップで本文へ');
   // もう一度左へ払う → 目次ページへ
   await gateSwipe(0.7, 0.25);
   await expect(page.locator('#tocView')).toBeVisible();
@@ -744,6 +746,47 @@ test('章の扉でスワイプ：左で前の章の扉へ、右でその章へ�
   await gateSwipe(0.3, 0.75);
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#readerChapterLabel')).toHaveText('第二章 忘れ物の傘');
+});
+
+test('回帰：扉で後方スワイプすると前章に着地し、次章へスキップしない（コール読み込み中でも）', async ({ page }) => {
+  // 実機報告の再現：章題コールの読み込みが終わらないうちに扉で戻るスワイプをすると、
+  // 旧い扉の play() 中断フォールバックが割り込んで、戻った先から元の章（次の章）へ
+  // 進んでしまった。コールの応答を遅らせて「読み込み中」を作り、その状態で払う。
+  // （修正前のコードでは、このテストは「第一章」ではなく「第二章」に入って失敗する）
+  await page.route('**/audio/ch2-title.mp3', async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      await route.fulfill({
+        contentType: 'audio/mpeg',
+        body: readFileSync(new URL('../public/book/audio/ch2-title.mp3', import.meta.url)),
+      });
+    } catch {
+      // 読み込みが中断されていたら何もしない
+    }
+  });
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await clickTocChapter(page, 1); // 第二章の扉（コールは読み込み中）
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateNum')).toHaveText('第二章');
+  const box = await page.locator('#gateView').boundingBox();
+  if (!box) throw new Error('gateView not found');
+  const cy = box.y + box.height * 0.5;
+  // 左へ払う → 第一章の扉へ戻る
+  await page.mouse.move(box.x + box.width * 0.7, cy);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.45, cy, { steps: 4 });
+  await page.mouse.move(box.x + box.width * 0.25, cy, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  // 扉の自動入章（1.8秒）を過ぎたら第一章の本文に着地し、その後も第二章へは進まない
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+  await page.waitForTimeout(2500);
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
 });
 
 test('画面は上下に引っ張れない：ドキュメントがスクロールしない', async ({ page }) => {
@@ -835,6 +878,39 @@ test('manifest と Service Worker が使える', async ({ page }) => {
 test('更新バナーは通常は隠れている', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#update-banner')).toBeHidden();
+});
+
+test('章の扉に下部の案内文言は出ない（タイトルブロックは残る）', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await page.locator('#eyeModeBtn').click(); // 目で読むは扉で止まるので、そのまま確認できる
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gateHint')).toHaveCount(0);
+  await expect(page.locator('#gateView')).not.toContainText('タップで本文へ');
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  await expect(page.locator('#gateTitle')).toHaveText('雨の日の客');
+});
+
+test('版数ファイルが新しい版を示すと更新バナーが出る', async ({ page }) => {
+  // 配信側の版数ファイルだけが新しい、という状況を差し替えで再現する。
+  // アプリは起動時に version.json をキャッシュなしで取りに行き、自分の版数と比べる
+  await page.route('**/version.json', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: '999.0.0' }) }),
+  );
+  await page.goto('/');
+  await expect(page.locator('#update-banner')).toBeVisible();
+});
+
+test('版数ファイルの検知で「更新」を押すと、再読み込みしてアプリが開き直す', async ({ page }) => {
+  await page.route('**/version.json', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: '999.0.0' }) }),
+  );
+  await page.goto('/');
+  await expect(page.locator('#update-banner')).toBeVisible();
+  // 待機中 SW が無い場合は、キャッシュを消して再読み込みする最終手段に進む（少し時間がかかる）
+  await page.locator('#update-button').click();
+  await expect(page.locator('#coverView')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('.cover-vtitle')).toContainText('空の郵便が');
 });
 
 test('更新バナーは「あとで」で閉じられる', async ({ page }) => {
@@ -1503,7 +1579,8 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
     await tapPrevOn('#gateView');
     await expect(page.locator('#gateNum')).toHaveText('第一章');
     await tapPrevOn('#gateView'); // 後方扉へ
-    await expect(page.locator('#gateHint')).toHaveText('タップで本文へ ／ 前へめくると目次へ');
+    // 扉の下部の案内文言は出さない（v1.12.3 で削除）
+    await expect(page.locator('#gateHint')).toHaveCount(0);
     await tapPrevOn('#gateView'); // 目次へ
     await expect(page.locator('#tocView')).toBeVisible();
     await tapPrevOn('#tocView'); // 表紙へ
@@ -1545,6 +1622,50 @@ test('扉と目次にも本文と同じアイコン（再生・家マーク）�
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gatePlayBtn')).toBeHidden();
   await expect(page.locator('#gateMenuBtn')).toBeVisible();
+});
+
+test('アイコンの位置は全画面・全モードで統一（左下＝再生、右下＝家マーク）', async ({ page }) => {
+  // ボタンの中心が、画面の左右どちら寄りにあるか（0.5 が中央）
+  const ratio = async (viewSel: string, btnSel: string): Promise<number> => {
+    const v = await page.locator(viewSel).boundingBox();
+    const b = await page.locator(btnSel).boundingBox();
+    if (!v || !b) throw new Error(`box not found: ${viewSel} ${btnSel}`);
+    return (b.x + b.width / 2 - v.x) / v.width;
+  };
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  // 耳で読む・扉：再生は左、家マークは右
+  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  expect(await ratio('#gateView', '#gatePlayBtn')).toBeLessThan(0.5);
+  expect(await ratio('#gateView', '#gateMenuBtn')).toBeGreaterThan(0.5);
+  // 目で読む・扉：再生が消えても、家マークは右のまま（左へ寄らない）
+  await page.locator('#gateMenuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await page.locator('#toCoverFromMenuBtn').click();
+  await expect(page.locator('#coverView')).toBeVisible();
+  await page.locator('#eyeModeBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gatePlayBtn')).toBeHidden();
+  expect(await ratio('#gateView', '#gateMenuBtn')).toBeGreaterThan(0.5);
+  // 目で読む・目次：家マークは右のまま
+  await page.locator('#gateMenuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await expect(page.locator('#tocPlayBtn')).toBeHidden();
+  expect(await ratio('#tocView', '#tocMenuBtn')).toBeGreaterThan(0.5);
+  // 耳で読む・本文：再生は左、家マークは右
+  await page.locator('#tocBackBtn').click(); // メニューから開いた目次は表紙へ戻る
+  await expect(page.locator('#coverView')).toBeVisible();
+  await page.locator('#earModeBtn').click();
+  // 扉が出たらタップで本文へ（しおりから直接本文が開いた場合はそのまま）
+  if (await page.locator('#gateView').isVisible()) {
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+  }
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  expect(await ratio('#readerView', '#playPauseBtn')).toBeLessThan(0.5);
+  expect(await ratio('#readerView', '#menuBtn')).toBeGreaterThan(0.5);
 });
 
 test.describe('読書モード（耳で読む／目で読む）', () => {
@@ -1684,4 +1805,88 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     }));
     expect(grouping).toEqual({ bgmInNav: true, soundInNav: true, speedInAud: true });
   });
+});
+
+test('復帰を繰り返してもBGMのマスターゲインは1つだけが生きている（二重化しない）', async ({ page }) => {
+  /* 実機報告「復帰時に音が大きくなる／出なくなる」への回帰テスト（自動化できる範囲）。
+     AudioContext を差し替えて、BGM のマスターゲイン（設定値 0.84 へランプする
+     ゲイン）の生成と切断を記録する。背面→前面の往復（BGM が止まる→立つ経路）を
+     繰り返したあと、生きているマスターがちょうど1つで、その値が設定値を
+     超えていないことを数値で確認する。世代やゲインが積み重なる実装になると
+     ここで落ちる。割り込み時の予約滞留（iOS 実機でしか再現できない分）は
+     sound.ts の世代作り直しで対処し、本テストの対象外 */
+  await page.addInitScript(() => {
+    interface MasterRec { node: GainNode; disconnected: boolean }
+    const probe = { masters: [] as MasterRec[] };
+    (window as unknown as { __bgmProbe: typeof probe }).__bgmProbe = probe;
+    const OrigAC = window.AudioContext;
+    const origCreateGain = OrigAC.prototype.createGain;
+    OrigAC.prototype.createGain = function () {
+      const g = origCreateGain.call(this);
+      const p = g.gain;
+      const origLin = p.linearRampToValueAtTime.bind(p);
+      p.linearRampToValueAtTime = (v: number, t: number) => {
+        if (Math.abs(v - 0.84) < 0.01) probe.masters.push({ node: g, disconnected: false });
+        return origLin(v, t);
+      };
+      const origDisc = g.disconnect.bind(g);
+      g.disconnect = (...args: []) => {
+        const rec = probe.masters.find((m) => m.node === g);
+        if (rec) rec.disconnected = true;
+        return (origDisc as (...a: unknown[]) => void)(...args);
+      };
+      return g;
+    };
+  });
+  await page.goto('/');
+  await expect(page.locator('#tocList li')).toHaveCount(7);
+  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+  const gateBox = await page.locator('#gateView').boundingBox();
+  if (!gateBox) throw new Error('gateView の矩形が取れない');
+  await page.mouse.click(gateBox.x + gateBox.width * 0.15, gateBox.y + gateBox.height * 0.5);
+  await expect(page.locator('#readerView')).toBeVisible();
+  await page.locator('#playPauseBtn').click(); // 朗読を止める（BGM が stop→start する復帰経路）
+  const setHidden = async (hidden: boolean): Promise<void> => {
+    await page.evaluate((h) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+  };
+  for (let i = 0; i < 3; i++) {
+    await setHidden(true);
+    await page.waitForTimeout(300);
+    await setHidden(false);
+    await page.waitForTimeout(300);
+  }
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+  await page.waitForTimeout(3000); // 最後のフェードイン（2.5秒）が終わるまで待つ
+  const result = await page.evaluate(() => {
+    const probe = (window as unknown as { __bgmProbe: { masters: Array<{ node: GainNode; disconnected: boolean }> } }).__bgmProbe;
+    const live = probe.masters.filter((m) => !m.disconnected);
+    return { created: probe.masters.length, liveCount: live.length, liveValues: live.map((m) => m.node.gain.value) };
+  });
+  expect(result.created).toBeGreaterThanOrEqual(4); // 初回＋復帰3回ぶんの世代が作られた
+  expect(result.liveCount).toBe(1); // 生きているマスターは1つだけ（積み重なっていない）
+  expect(result.liveValues[0]).toBeGreaterThan(0.8);
+  expect(result.liveValues[0]).toBeLessThanOrEqual(0.84); // 設定値を超えない
+  // 効果音も復帰後に鳴る（同じ AudioContext の回復を確認）：めくりで app:sound が出る
+  await page.evaluate(() => {
+    const w = window as unknown as { __pageSounds: number };
+    w.__pageSounds = 0;
+    document.addEventListener('app:sound', (e) => {
+      if ((e as CustomEvent).detail?.kind === 'page-turn') w.__pageSounds++;
+    });
+  });
+  const box = await page.locator('#readerView').boundingBox();
+  if (!box) throw new Error('readerView の矩形が取れない');
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.3, cy);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.75, cy, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  expect(await page.evaluate(() => (window as unknown as { __pageSounds: number }).__pageSounds)).toBeGreaterThanOrEqual(1);
 });

@@ -17,7 +17,8 @@ import {
   type Page,
   type Unit,
 } from './logic';
-import { isBgmOn, isSoundOn, playPageTurn, resumeBgmContext, setBgmOn, setSound, startBgm, stopBgm } from './sound';
+import { checkForUpdate } from './pwa';
+import { ensureAudioRunning, isBgmOn, isSoundOn, playPageTurn, resyncBgmIfDesynced, setBgmOn, setSound, startBgm, stopBgm } from './sound';
 import { load, remove, save } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -90,6 +91,13 @@ export function createReader(book: BookData): Reader {
   let speedIdx = speedIndexOf(load<number>('speed', 1.0));
   let gateTimer: ReturnType<typeof setTimeout> | undefined;
   let gateOpen = false; // 章扉を表示中かどうか（旧章の音声の 'ended' で二重に進まないための番兵）
+  /* 表示中の扉の世代。扉が差し替わるたびに増やし、旧い扉の非同期な続き
+     （play() の失敗時フォールバックやタイマー）が新しい扉に割り込んで前へ進めて
+     しまわないようにする（実機報告：扉で戻るスワイプをしたのに次の章へ
+     スキップした。原因は、旧い扉の play() の中断が遅れて届き、その
+     フォールバックが新しい扉のタイマーを上書きして旧い章への入章を予約したこと。
+     gateOpen だけでは「どの扉か」を区別できない） */
+  let gateSeq = 0;
   // 扉でのスワイプ遷移先（showGate／showGateBack が表示のたびに差し替える）
   let gateNav: { next: () => void; prev: () => void } | null = null;
   /* 扉の再生アイコンの動作（表示中の扉が決める）：コールや待ち時間を飛ばして、
@@ -291,6 +299,8 @@ export function createReader(book: BookData): Reader {
     readerView.hidden = name !== 'reader';
     window.scrollTo(0, 0);
     syncWakeLock();
+    // 表紙に戻るたびに、新しい版がないか確かめる（間隔の下限つき。src/pwa.ts）
+    if (name === 'cover') checkForUpdate();
   }
 
   /* ---------- メニュー（入口はボタンだけ） ----------
@@ -798,6 +808,7 @@ export function createReader(book: BookData): Reader {
     $('gateNarrator').textContent = ch.narratorName;
   }
   function showGate(idx: number, opts: EnterOptions = {}): void {
+    const myGate = ++gateSeq; // この扉の世代（旧い扉の非同期な続きを無効化する）
     save('seen', true); // 一度読み始めたら、表紙のヒント文は二度と出さない
     stopGateCall(); // 前の扉のコールが残っていたら止める
     // 扉にいる間、本文の朗読は必ず止める。止めないと、再生中のままページ送りで
@@ -808,13 +819,12 @@ export function createReader(book: BookData): Reader {
     updatePlayBtn();
     current = idx;
     gateOpen = true;
-    $('gateHint').textContent = 'タップで本文へ';
     fillGate(chapters[idx]);
     showView('gate');
     if (gateTimer !== undefined) clearTimeout(gateTimer);
     let started = false;
     const start = (): void => {
-      if (started) return;
+      if (started || myGate !== gateSeq) return; // 既に進んだ／既に別の扉に替わった
       started = true;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       stopGateCall();
@@ -833,7 +843,7 @@ export function createReader(book: BookData): Reader {
     };
     // 扉の再生アイコン：コールや待ち時間を飛ばし、その章の朗読をすぐ始める
     gatePlay = (): void => {
-      if (started) return;
+      if (started || myGate !== gateSeq) return;
       started = true;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       stopGateCall();
@@ -865,9 +875,11 @@ export function createReader(book: BookData): Reader {
     if ('webkitPreservesPitch' in gp) gp.webkitPreservesPitch = true;
     gateAudio.onended = start;
     const fallback = (): void => {
-      // 扉をすでに進んだ後の打ち切り（止めたことによる play() の中断など）では、
-      // 進み直さない
-      if (!gateOpen) return;
+      // 扉をすでに進んだ後／別の扉に替わった後の打ち切り（止めたことによる
+      // play() の中断など）では、進み直さない。世代も見るのは、替わった先の
+      // 扉が開いている間（gateOpen は真に戻る）に旧い扉のフォールバックが
+      // 割り込んで、タイマーを上書きしてしまうため
+      if (!gateOpen || myGate !== gateSeq) return;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       gateTimer = setTimeout(start, 1800);
     };
@@ -881,6 +893,7 @@ export function createReader(book: BookData): Reader {
      朗読は止める（扉・目次・表紙にいる間に音声が勝手に進まないように）。
      位置はしおりに残っているので、表紙の再開から元の場所へ戻れる */
   function showGateBack(): void {
+    gateSeq++; // 前の扉の非同期な続き（フォールバック等）を無効化する
     save('seen', true);
     stopGateCall(); // 前へ辿る扉は無音が原則（コールは鳴らさない）
     audio.pause();
@@ -889,7 +902,6 @@ export function createReader(book: BookData): Reader {
     current = 0;
     gateOpen = true;
     if (gateTimer !== undefined) clearTimeout(gateTimer);
-    $('gateHint').textContent = 'タップで本文へ ／ 前へめくると目次へ';
     fillGate(chapters[0]);
     showView('gate');
     // タップ・スワイプは共通ジェスチャー側が gateNav を呼ぶ（半分判定に統一。
@@ -1193,6 +1205,9 @@ export function createReader(book: BookData): Reader {
   let bgPlay = load<boolean>('bgplay', true);
   let hiddenPausedAudio = false;
   let hiddenStoppedBgm = false;
+  // 隠れる直前に朗読が鳴っていたか（バックグラウンド再生の経路用）。
+  // OS が割り込みで朗読を強制停止していても、戻ったときに再開できるよう覚える
+  let hiddenNarrationWasPlaying = false;
   function onVisibilityChange(): void {
     // Wake Lock は隠れると OS に解放される。戻ってきたら、条件が合えば取り直す
     syncWakeLock();
@@ -1201,8 +1216,9 @@ export function createReader(book: BookData): Reader {
          だけ（v1.12.2 で仕様変更）。表紙にいる間や目で読むモード中は、オンでも
          BGM を止める（前面に戻ったら設定どおり再開する） */
       const narrationPlaying = !isEye() && !audio.paused && !audio.ended;
+      hiddenNarrationWasPlaying = narrationPlaying;
       if (bgPlay && narrationPlaying) {
-        resumeBgmContext();
+        ensureAudioRunning();
         return;
       }
       hiddenPausedAudio = !audio.paused && !audio.ended;
@@ -1210,11 +1226,19 @@ export function createReader(book: BookData): Reader {
       hiddenStoppedBgm = document.body.dataset.bgm === 'on';
       if (hiddenStoppedBgm) stopBgm();
     } else {
+      /* 復帰時の音の再開はここに一本化する。朗読：止めていた分を再開し、
+         バックグラウンド再生中だったのに OS に強制停止されていた分も再開する。
+         BGM：止めていた分は立て直し（フェードイン付き）、鳴らし続けていた分は
+         時計のズレを見て、ズレていれば世代を作り直す（滞留した予約の一斉発音を
+         防ぐ。sound.ts の restartBgmTimeline）。あわせて出口を開け直し、BGM と
+         効果音（どちらも同じ AudioContext）が揃って戻るようにする */
       if (hiddenPausedAudio) playAudio();
+      else if (hiddenNarrationWasPlaying && bgPlay && !isEye() && audio.paused && !audio.ended) playAudio();
       if (hiddenStoppedBgm && isBgmOn()) startBgm();
+      else resyncBgmIfDesynced();
       hiddenPausedAudio = false;
       hiddenStoppedBgm = false;
-      if (bgPlay) resumeBgmContext();
+      hiddenNarrationWasPlaying = false;
     }
   }
 
@@ -1410,9 +1434,9 @@ export function createReader(book: BookData): Reader {
     const SWIPE_FLICK_VELOCITY = 0.4; // px/ms（直近の指の速度）
     const SWIPE_FLICK_MIN_PX = 14; // フリックでも最低これだけは動いていること
     const SWIPE_FOLLOW_SCALE = 0.45; // 指の移動に対する追随の割合
-    const SWIPE_FOLLOW_MAX_PX = 24; // 追随の最大移動量（v1.12.2 で 48 → 24 に半減）
-    const SWIPE_OUT_PX = 28; // 確定時に滑り出す量（v1.12.2 で 56 → 28）
-    const SWIPE_IN_PX = 14; // 差し替え後に滑り込む量（v1.12.2 で 28 → 14）
+    const SWIPE_FOLLOW_MAX_PX = 12; // 追随の最大移動量（実機フィードバックで段階的に縮小：48 → 24 → 12px。ページはほぼ動かさず、めくれる方向だけが感じられる最小限）
+    const SWIPE_OUT_PX = 14; // 確定時に滑り出す量（56 → 28 → 14px と段階的に縮小）
+    const SWIPE_IN_PX = 7; // 差し替え後に滑り込む量（28 → 14 → 7px と段階的に縮小）
     const swipeCommitPx = (w: number): number => Math.max(SWIPE_COMMIT_MIN_PX, w * SWIPE_COMMIT_RATIO);
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     /* ゴムのような減衰（iOS のラバーバンドと同じ形。引っ張るほど鈍くなり、
@@ -1644,6 +1668,9 @@ export function createReader(book: BookData): Reader {
        表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く
        （BGM は両モード共通。目で読むモードでも鳴る） */
     document.addEventListener('pointerdown', () => {
+      // どのタップでも音の出口を開け直す（復帰後に BGM は鳴るのに効果音だけ
+      // 出ない、といった食い違いを作らない。BGM の開始判定は従来どおり）
+      ensureAudioRunning();
       if (isBgmOn()) startBgm();
     });
     /* 本文のページめくり（共通ジェスチャー）。役割は「進む／戻る」だけに統一し、
