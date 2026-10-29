@@ -73,7 +73,15 @@ export function createReader(book: BookData): Reader {
   function stopGateCall(): void {
     gateAudio.onended = null;
     gateAudio.onerror = null;
-    if (!gateAudio.paused) gateAudio.pause();
+    // 必ず止める。「再生中なら」という条件にすると、play() の完了が保留中の
+    // ときに止め損ね、後からコールが鳴り出して本文と重なる（実機の2重再生）。
+    // ソースも外し、保留中の読み込みごと打ち切る（次に鳴らすときは
+    // showGate が必ずソースを入れ直す）
+    gateAudio.pause();
+    if (gateAudio.getAttribute('src')) {
+      gateAudio.removeAttribute('src');
+      gateAudio.load();
+    }
   }
   const audioError = $('audioError');
 
@@ -185,6 +193,28 @@ export function createReader(book: BookData): Reader {
   /* 表示はページ形式のみ。表示方式の切替は廃止した（v1.6.0 のセンテンス形式、
      v1.7.0〜のカラオケ方式はいずれも廃止）。保存済みの方式指定（キー display）が
      残っている端末でもページ形式で開くよう、起動時に読み捨てて消す（初期化側） */
+  /* 文字サイズ：'std'＝標準（従来どおり）／'large'＝大（本文を1.2倍）。
+     body.font-large で CSS 変数（--font-scale）を切り替えると、本文と計測用が
+     同じ倍率になる。ページ割りは sizeKeyNow に設定を含めて再計算させ、
+     読んでいる位置は文字アンカーで保つ */
+  let fontSize: 'std' | 'large' = 'std';
+  function setFontSize(size: 'std' | 'large'): void {
+    if (size === fontSize) return;
+    fontSize = size;
+    save('font', size);
+    document.body.classList.toggle('font-large', size === 'large');
+    $('fontSizeBtn').textContent = size === 'large' ? '大' : '標準';
+    if (!readerView.hidden && PAGES.length) {
+      const anchor = currentAnchorChar();
+      pageSizeKey = '';
+      if (paginateAll()) {
+        curPage = pageForChar(PAGES[current], anchor);
+        renderPage(0);
+        refreshTocCurrent();
+        saveBookmark();
+      }
+    }
+  }
   /* 表示中ページの各文の、章通しでの番号（renderPage が埋める。強調の対応付けに使う） */
   let pageUnitIdx: number[] = [];
   function unitIndexForChar(chIdx: number, charPos: number): number {
@@ -356,7 +386,8 @@ export function createReader(book: BookData): Reader {
     return true;
   }
   function sizeKeyNow(): string {
-    return pageContent.clientWidth + 'x' + pageContent.clientHeight;
+    // 文字サイズも含める（変わったらページ割りをやり直すため）
+    return pageContent.clientWidth + 'x' + pageContent.clientHeight + 'x' + fontSize;
   }
   function bookPageOf(chIdx: number, pageIdx: number): number {
     return CUM_PAGES[chIdx] + pageIdx + 1;
@@ -668,6 +699,12 @@ export function createReader(book: BookData): Reader {
   function showGate(idx: number, opts: EnterOptions = {}): void {
     save('seen', true); // 一度読み始めたら、表紙のヒント文は二度と出さない
     stopGateCall(); // 前の扉のコールが残っていたら止める
+    // 扉にいる間、本文の朗読は必ず止める。止めないと、再生中のままページ送りで
+    // 章をまたいだときに、前の章の朗読と章題コールが重なって2重に聞こえる
+    // （実機報告の2重再生の主因）。再生中だったかは opts.autoplay に引き継がれ、
+    // 本文は enterChapter が改めて再生する
+    audio.pause();
+    updatePlayBtn();
     current = idx;
     gateOpen = true;
     $('gateHint').textContent = 'タップで本文へ';
@@ -703,6 +740,9 @@ export function createReader(book: BookData): Reader {
     if ('webkitPreservesPitch' in gp) gp.webkitPreservesPitch = true;
     gateAudio.onended = start;
     const fallback = (): void => {
+      // 扉をすでに進んだ後の打ち切り（止めたことによる play() の中断など）では、
+      // 進み直さない
+      if (!gateOpen) return;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       gateTimer = setTimeout(start, 1800);
     };
@@ -1226,6 +1266,9 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
     });
+    $('fontSizeBtn').addEventListener('click', () => {
+      setFontSize(fontSize === 'std' ? 'large' : 'std');
+    });
     $<HTMLInputElement>('hlToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('hl-off', !checked);
@@ -1452,6 +1495,10 @@ export function createReader(book: BookData): Reader {
   // 表示方式の切替は廃止した（ページ形式のみ）。旧設定で 'karaoke' や 'sentence' が
   // 保存されていてもページ形式で開くよう、保存済みの方式指定はここで消しておく
   remove('display');
+  // 文字サイズ（未保存なら標準＝従来どおり）
+  fontSize = load<string>('font', 'std') === 'large' ? 'large' : 'std';
+  document.body.classList.toggle('font-large', fontSize === 'large');
+  $('fontSizeBtn').textContent = fontSize === 'large' ? '大' : '標準';
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;

@@ -468,6 +468,51 @@ test('進む・戻るの連打やメニュー開閉を繰り返しても、ハ�
   await expect(page.locator('.unit.now')).toHaveCount(1);
 });
 
+test('文字サイズを「大」にすると本文が一回り大きくなり、ページ組みが追随する', async ({ page }) => {
+  await openReader(page);
+  const fontPx = (): Promise<number> =>
+    page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('pageContent') as HTMLElement).fontSize));
+  const stdPx = await fontPx();
+  const posBefore = await page.locator('#pageChapterPos').textContent();
+  // メニュー → 文字サイズを「大」へ
+  await openMenuInReader(page);
+  const btn = page.locator('#fontSizeBtn');
+  await expect(btn).toHaveText('標準');
+  await btn.click();
+  await expect(btn).toHaveText('大');
+  await page.locator('#menuCloseBtn').click();
+  // 本文が 1.15〜1.25 倍になっている
+  const largePx = await fontPx();
+  expect(largePx / stdPx).toBeGreaterThanOrEqual(1.15);
+  expect(largePx / stdPx).toBeLessThanOrEqual(1.25);
+  // ページ組みが追随している（章内位置の表示が組み直され、本文がはみ出していない）
+  const posAfter = await page.locator('#pageChapterPos').textContent();
+  expect(posAfter).toMatch(/^\d+ \/ \d+$/);
+  expect(posAfter).not.toBe(posBefore); // 1ページの分量が変わるので総ページ数が増える
+  const overflow = await page.evaluate(() => {
+    const el = document.getElementById('pageContent') as HTMLElement;
+    return el.scrollWidth - el.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+  // シークしても強調は1文だけ（unitTimes との整合は保たれる）
+  await page.evaluate(() => {
+    (document.getElementById('audioEl') as HTMLAudioElement).currentTime = 60;
+  });
+  await expect(page.locator('.unit.now')).toHaveCount(1, { timeout: 8000 });
+  // 再読み込みしても「大」が保たれる
+  await page.reload();
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  expect(await fontPx()).toBeCloseTo(largePx, 0);
+  // 標準へ戻すと元の大きさに戻る
+  await openMenuInReader(page);
+  await page.locator('#fontSizeBtn').click();
+  await expect(page.locator('#fontSizeBtn')).toHaveText('標準');
+  await page.locator('#menuCloseBtn').click();
+  expect(await fontPx()).toBeCloseTo(stdPx, 0);
+});
+
 test('旧設定でカラオケ方式が保存されていても、ページ形式で開き、設定項目も残っていない', async ({ page }) => {
   // 起動前に、旧バージョンが保存していた方式指定（カラオケ）を仕込む
   await page.addInitScript((appId) => {
@@ -1160,5 +1205,76 @@ test.describe('章題コール（扉の朗読）', () => {
     await page.locator('#coverTap').click();
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 8000 });
+  });
+
+  test('再生中にページ送りで章をまたいでも、本文とコールが重ならない（2重再生の regression）', async ({ page }) => {
+    await openReader(page);
+    // 朗読が再生中であること
+    await expect
+      .poll(() => page.evaluate(() => !(document.getElementById('audioEl') as HTMLAudioElement).paused), { timeout: 8000 })
+      .toBe(true);
+    // 状態サンプリングを先に仕掛ける：コールが鳴り終わるまで100msごとに状態を取り、
+    // 「本文とコールが同時に鳴っている瞬間が一度もない」ことと「コール自体は
+    // 鳴った」ことを確かめる（一時点の状態だけ見ると、重なりの途中を取りこぼすため）
+    await page.evaluate(() => {
+      const w = window as unknown as { __overlap: number; __callHeard: boolean; __iv: ReturnType<typeof setInterval> };
+      w.__overlap = 0;
+      w.__callHeard = false;
+      const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const g = document.getElementById('gateAudio') as HTMLAudioElement;
+      w.__iv = setInterval(() => {
+        const body = !a.paused && !a.ended;
+        const call = !g.paused && !g.ended;
+        if (body && call) w.__overlap++;
+        if (call) w.__callHeard = true;
+      }, 100);
+    });
+    // 章の最終ページまで送り、もう1回送って扉へ（再生中のまま章をまたぐ）
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    for (let i = 0; i < 60; i++) {
+      if (await page.locator('#gateView').isVisible()) break;
+      await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+      await page.waitForTimeout(120);
+    }
+    await expect(page.locator('#gateView')).toBeVisible();
+    await expect(page.locator('#gateNum')).toHaveText('第二章');
+    // コールが終われば本文（第2章）が始まる
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#readerChapterLabel')).toHaveText('第二章 忘れ物の傘');
+    const seen = await page.evaluate(() => {
+      const w = window as unknown as { __overlap: number; __callHeard: boolean; __iv: ReturnType<typeof setInterval> };
+      clearInterval(w.__iv);
+      return { overlap: w.__overlap, callHeard: w.__callHeard };
+    });
+    expect(seen.callHeard).toBe(true);
+    expect(seen.overlap).toBe(0);
+  });
+
+  test('コールの読み込みが保留中でも、扉を進めばコールは後から鳴り出さない', async ({ page }) => {
+    // 第2章のコール音声の応答を保留し、play() が完了しない状態を作る
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route('**/book/audio/ch2-title.mp3', async (route) => {
+      await held;
+      await route.continue();
+    });
+    await openReader(page);
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    for (let i = 0; i < 60; i++) {
+      if (await page.locator('#gateView').isVisible()) break;
+      await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+      await page.waitForTimeout(120);
+    }
+    await expect(page.locator('#gateView')).toBeVisible();
+    // コールが鳴り出す前に扉をタップして本文へ進む
+    await page.locator('#gateView').click();
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 5000 });
+    // ここで保留していたコール音声を流す。止めたはずのコールが後から鳴り出してはいけない
+    release();
+    await page.waitForTimeout(1500);
+    const gatePaused = await page.evaluate(() => (document.getElementById('gateAudio') as HTMLAudioElement).paused);
+    expect(gatePaused).toBe(true);
   });
 });

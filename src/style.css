@@ -12,6 +12,9 @@
   --frame-mb: max(18px, calc(env(safe-area-inset-bottom) + 8px));
   --frame-ml: max(14px, calc(env(safe-area-inset-left) + 2px));
   --frame-mr: max(14px, calc(env(safe-area-inset-right) + 2px));
+  /* 文字サイズの倍率（設定「文字サイズ」）。標準＝1／大＝1.2。本文（.page-content）
+     にだけ効かせ、計測用（.measurer）も同じ倍率で測るのでページ割りが追随する */
+  --font-scale: 1;
   color-scheme: dark only;
   /* テンプレート共通部品（ダイアログ・バナー・バックアップ）用。紙の色にそろえる */
   --bg: #17130e;
@@ -516,10 +519,11 @@ body.bg-off .page-anim { display: none; }
   from { transform: translateY(-3px); }
   to { transform: translateY(3px); }
 }
+body.font-large { --font-scale: 1.2; }
 /* 本文。組版方向は body.dir-* で決まり、余白はノド側（綴じ側）を広く取る */
 .page-content {
   position: absolute; inset: 0; z-index: 0;
-  font-size: 1.12rem; line-height: 2.1; letter-spacing: .04em; color: var(--ink);
+  font-size: calc(1.12rem * var(--font-scale)); line-height: 2.1; letter-spacing: .04em; color: var(--ink);
   overflow: hidden;
 }
 body.dir-vertical .page-content { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
@@ -532,7 +536,7 @@ body.dir-horizontal .page-content p { margin: 0 0 1em; text-indent: 1em; }
 .page-content p.sep { text-align: center; text-indent: 0; color: #a08c5a; }
 .page-content ruby rt { font-size: .52em; color: #555; }
 body.ruby-off .page-content ruby rt { display: none; }
-@media (min-width: 700px) { .page-content { font-size: 1.18rem; } }
+@media (min-width: 700px) { .page-content { font-size: calc(1.18rem * var(--font-scale)); } }
 .page-content.measurer { position: fixed; left: 0; top: 0; transform: translateX(-110%); visibility: hidden; pointer-events: none; z-index: -1; }
 /* めくりアニメーションは「次のページが来る側」から差し込む。側は綴じで決まる */
 body.bound-right .page.turn-next { animation: turnFromLeft .18s ease-out; }
