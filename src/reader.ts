@@ -590,8 +590,11 @@ export function createReader(book: BookData): Reader {
     if (!PAGES.length || readerView.hidden) return;
     lastManualTurn = Date.now();
     if (endOpen) {
-      // 奥付ページにいる間は、前へで本文の最終ページへ戻るだけ（先はない）
+      // 奥付ページ（本の最終ページ）での操作：前へ＝本文の最終ページへ戻る、
+      // 次へ＝本を閉じて表紙へ戻る（v1.12.4 で追加。以前は次へが無反応で、
+      // スワイプでは戻ることもできなかった）
       if (dir < 0) closeEndPage();
+      else goCover();
       return;
     }
     const pages = PAGES[current];
@@ -1041,6 +1044,33 @@ export function createReader(book: BookData): Reader {
      出さない（家マーク＝メニューは両モード・3画面とも常時出す） */
   function syncPlayChrome(): void {
     for (const id of PLAY_BTN_IDS) $(id).hidden = isEye();
+    // 文送りは本文専用・耳で読むときだけ（v1.12.4）
+    $('prevSentBtn').hidden = isEye();
+    $('nextSentBtn').hidden = isEye();
+  }
+  /* 文単位の送り（v1.12.4、本文・耳で読む専用）：朗読位置を文の頭へ移す。
+     ページとハイライトは、シーク確定後の既存の追従（seeked → syncPageToAudio /
+     updateNowHighlight）がその文に合わせてくれる。一時停止中に押しても
+     再生は始めず、位置だけが移る（一般的なプレイヤーの作法）。
+     章はまたがない：章の最初／最後の文では、その文の頭に留まる */
+  function stepSentence(dir: 1 | -1): void {
+    if (isEye() || !chapters.length) return;
+    const count = UNITS[current]?.length ?? 0;
+    if (!count) return;
+    const idx = unitIndexAtPos(current, audio.currentTime);
+    let target: number;
+    if (dir > 0) target = Math.min(count - 1, idx + 1);
+    else if (audio.currentTime - (timeAtUnitStart(current, idx) ?? 0) > 1) {
+      // 前へ：文の途中（1秒より先）なら、まずその文の頭に戻す
+      target = idx;
+    } else target = Math.max(0, idx - 1);
+    const t = timeAtUnitStart(current, target);
+    if (t === null) return;
+    try {
+      audio.currentTime = t;
+    } catch {
+      // 位置指定できなくても続行する
+    }
   }
   function updateNav(): void {
     $('speedBtn').textContent = speedLabel(SPEEDS[speedIdx]);
@@ -1337,7 +1367,8 @@ export function createReader(book: BookData): Reader {
     document.querySelector('.toc-sheet .toc-inner')?.classList.toggle('no-head', tocPage !== 0);
     const pager = $('tocPager');
     pager.hidden = tocPages.length <= 1;
-    pager.textContent = tocPages.length > 1 ? String(tocPage + 1) + ' / ' + String(tocPages.length) : '';
+    // ノンブルは本文と同じ体裁（― N ―）・帯の中央に置く（v1.12.4）
+    pager.textContent = tocPages.length > 1 ? '― ' + String(tocPage + 1) + ' / ' + String(tocPages.length) + ' ―' : '';
     refreshTocCurrent();
   }
   function tocPageIndexOf(chIdx: number): number {
@@ -1352,14 +1383,19 @@ export function createReader(book: BookData): Reader {
     return true;
   }
   function openTocPage(from?: 'cover' | 'reader' | 'gate'): void {
-    /* 開いた元の画面を覚えておき、「戻る」でそこへ帰る。
+    /* 開いた元の画面を覚えておく（先頭ページでの後方操作が、そこへ帰るため。
+       旧「戻る」ボタンの役目を v1.12.4 で後方操作へ統合した）。
        'gate' は、第一章から前へ辿る連鎖（扉→目次→表紙）で開いた場合 */
     tocReturn = from ?? (readerView.hidden ? 'cover' : 'reader');
     showView('toc');
     syncPlayChrome();
-    // 開くたびに実測し直し、今読んでいる章のあるページから出す
+    // 開くたびに実測し直して出す。着地するページは開き方で決まる：
+    // 後方連鎖（扉から前へ）で開いたら、本の並び順で扉の直前にある
+    // 目次の最終ページに着地する（v1.12.4 で修正：以前は第一章のある
+    // 1枚目に着地してしまい、扉の直前に戻れなかった）。
+    // それ以外（表紙・メニューから）は、今読んでいる章のあるページ
     paginateToc();
-    tocPage = tocPageIndexOf(current);
+    tocPage = from === 'gate' ? tocPages.length - 1 : tocPageIndexOf(current);
     renderTocPage();
   }
   function closeTocPage(): void {
@@ -1380,7 +1416,11 @@ export function createReader(book: BookData): Reader {
       readMode = mode;
       // BGM は両モード共通なので、目で読むで入るときも止めない
       if (loadBookmark()) resumeFromBookmark();
-      else showGate(0);
+      // 初めて読むとき（しおりが無い）は、まず目次ページを開く（v1.12.4）。
+      // 章を選ぶ／前方向の操作で第一章の扉へ進む流れは、目次の既存の規則どおり。
+      // 「しおりが無い」には読了後も含まれる：読了でしおりは消える
+      // （openEndPage）ため、読み直しも目次から始まる
+      else openTocPage('cover');
     };
     $('earModeBtn').addEventListener('click', () => enterFromCover('ear'));
     $('eyeModeBtn').addEventListener('click', () => enterFromCover('eye'));
@@ -1390,6 +1430,7 @@ export function createReader(book: BookData): Reader {
     $('gateMenuBtn').addEventListener('click', openMenu);
     $('tocMenuBtn').addEventListener('click', openMenu);
     $('coverMenuBtn').addEventListener('click', openMenu);
+    $('endMenuBtn').addEventListener('click', openMenu); // 奥付の家マークも他画面と同じくメニューを開く
     /* 扉の再生アイコン：表示中の扉が決めた gatePlay（入章して朗読開始） */
     $('gatePlayBtn').addEventListener('click', () => {
       if (gatePlay) gatePlay();
@@ -1578,17 +1619,21 @@ export function createReader(book: BookData): Reader {
       closeMenu();
       openTocPage();
     });
-    $('tocBackBtn').addEventListener('click', closeTocPage);
-    /* 目次のページ送りも共通ジェスチャーで本文・扉と揃える。目次ページの端では、
-       どこから開いた目次でも本の連鎖へつなぐ（v1.11.1 で統一：以前は前へ辿る連鎖
-       （扉→目次→表紙）で開いた場合だけだったため、メニューから開いた目次では
-       端で操作が途切れていた）：先頭ページの前側で表紙へ、末尾ページの次側で
-       第一章の扉へ（扉は通常モードで開き、本文へ続く）。
-       なお「戻る」ボタンは従来どおり、開いた元の画面へ帰る（連鎖とは別の入口） */
+    /* 目次のページ送りも共通ジェスチャーで本文・扉と揃える（v1.11.1 で統一）。
+       目次ページの端での遷移（v1.12.4 で「戻る」ピルを廃止し、その役目を
+       後方操作へ統合した）：
+       - 先頭ページでの前へ＝「開いた元へ戻る」。読書中（メニュー）から開いた
+         目次なら本文へ帰り、表紙から開いた目次なら表紙へ帰る。後方連鎖
+         （扉から前へ）で開いた目次は、本の並び順どおり表紙へ進む
+         （扉へは次方向の操作で戻れるので、後方だけで表紙まで辿り着ける
+         連鎖は途切れない）
+       - 末尾ページでの次へ＝第一章の扉（通常モードで開き、本文へ続く） */
     const tocTapNav = (dir: number): void => {
       if (turnTocPage(dir)) return;
-      if (dir < 0) goCover();
-      else showGate(0);
+      if (dir < 0) {
+        if (tocReturn === 'reader') showView('reader');
+        else goCover();
+      } else showGate(0);
     };
     const tocSwipe = attachSwipeNav({
       surface: tocView,
@@ -1598,13 +1643,12 @@ export function createReader(book: BookData): Reader {
     });
     tocView.addEventListener('click', (e) => {
       if (tocSwipe.swipedRecently()) return; // スワイプ直後のクリックでは送らない
-      if ((e.target as HTMLElement).closest('button')) return; // 章項目と「戻る」はボタン側の処理
+      if ((e.target as HTMLElement).closest('button')) return; // 章項目はボタン側の処理
       const dir = tapDirFor(tocView, e.clientX);
       if (!dir) return;
       turnSound();
       tocTapNav(dir);
     });
-    $('finalToCoverBtn').addEventListener('click', goCover);
     $('toCoverFromMenuBtn').addEventListener('click', () => {
       closeMenu();
       goCover();
@@ -1616,6 +1660,8 @@ export function createReader(book: BookData): Reader {
         saveBookmark();
       }
     });
+    $('prevSentBtn').addEventListener('click', () => stepSentence(-1));
+    $('nextSentBtn').addEventListener('click', () => stepSentence(1));
     /* 章移動の入口は画面上のボタンではなく、ページめくり（章またぎ）と目次に一本化した。
        前章／次章は Media Session の previoustrack / nexttrack でも行える */
     $('speedBtn').addEventListener('click', () => {
@@ -1690,9 +1736,38 @@ export function createReader(book: BookData): Reader {
     pageWrap.addEventListener('click', (e) => {
       if (bodySwipe.swipedRecently()) return;
       if ((e.target as HTMLElement).closest('button')) return;
+      // 奥付は pageWrap の内側に重なっているため、奥付のタップがここへ
+      // 伝播してくる。奥付表示中は奥付側のハンドラに任せる（スワイプで
+      // 奥付を閉じた直後の click が本文側で「次へ」と解釈され、奥付を
+      // 開き直してしまう事故の防止）
+      if (endOpen) return;
       const dir = tapDirFor(pageWrap, e.clientX);
       if (!dir) return;
       turnSound(); // タップめくりでも、確定した瞬間に1回鳴らす
+      turnPage(dir);
+    });
+    /* 奥付ページにも、他のページと同じページ操作を効かせる（v1.12.4、実機
+       報告「奥付まで行くとスワイプで戻れない」への対応）。奥付は本文の上に
+       重なる独立レイヤーなので、共通ジェスチャーを奥付自身にも付ける。
+       遷移先は turnPage の奥付中の規則どおり：前へ＝本文の最終ページ、
+       次へ＝表紙。帯の家マークはボタンのため、ジェスチャーの対象から
+       外れてメニューを開く（docs/DESIGN.md に記録） */
+    const endPageEl = $('endPage');
+    const endSwipe = attachSwipeNav({
+      surface: endPageEl,
+      followEl: endPageEl,
+      canStart: (e) => !(e.target as HTMLElement).closest('button'),
+      onNav: (dir) => turnPage(dir, 0),
+    });
+    endPageEl.addEventListener('click', (e) => {
+      // 奥付は pageWrap の内側にあるため、処理したタップを本文側へ伝播させない
+      // （奥付を閉じた直後に、同じタップで本文までめくれてしまう二重効きの防止）
+      e.stopPropagation();
+      if (endSwipe.swipedRecently()) return;
+      if ((e.target as HTMLElement).closest('button')) return;
+      const dir = tapDirFor(endPageEl, e.clientX);
+      if (!dir) return;
+      turnSound();
       turnPage(dir);
     });
     document.addEventListener('keydown', (e) => {

@@ -22,9 +22,30 @@ const openToc = async (page) => {
   await page.click('#tocFromMenuBtn');
   await page.waitForSelector('#tocView:not([hidden])');
 };
+// 目次で目的の章を選ぶ（項目が別ページにあるときは、目次を送りながら探す）。
+// セレクタは E2E と同じく #tocList 内の data-idx で絞る（計測用の隠しコピーを
+// 数えないため。旧実装は .toc-item の nth で数えていて最終ページ撮影が止まっていた）
+const clickTocChapterShots = async (page, idx) => {
+  const item = page.locator(`#tocList .toc-item[data-idx="${idx}"]`);
+  for (let i = 0; i < 6 && !(await item.isVisible()); i++) {
+    const box = await page.locator('#tocView').boundingBox();
+    if (!box) break;
+    await page.mouse.click(box.x + box.width * 0.15, box.y + box.height * 0.08);
+    await page.waitForTimeout(250);
+  }
+  await item.click();
+};
 const openReader = async (page) => {
   await waitBook(page);
   await page.click('#earModeBtn');
+  // 初めて読むときは目次から始まる（v1.12.4）。第一章を選んで扉へ。
+  // しおりがあるときは扉から再開する（撮影は同一コンテキストで続くため、
+  // 前の画面が置いたしおりが残っていることがある）
+  await page.waitForSelector('#tocView:not([hidden]), #gateView:not([hidden])', { timeout: 10000 });
+  if (await page.locator('#tocView').isVisible()) {
+    await page.locator('.toc-item').first().click();
+    await page.waitForSelector('#gateView:not([hidden])');
+  }
   // 章扉は章題コールのあと自動で本文へ進む
   await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
   await page.waitForTimeout(400);
@@ -47,7 +68,20 @@ const SCREENS = [
     },
   },
   { name: 'toc-page', open: openToc },
-  { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#earModeBtn'); } },
+  {
+    name: 'gate',
+    open: async (page) => {
+      await waitBook(page);
+      await page.click('#earModeBtn');
+      // しおりが無いときは目次から、あるときは扉から再開する（撮影は同一
+      // コンテキストで続くため、前の画面が置いたしおりが残っていることがある）
+      await page.waitForSelector('#tocView:not([hidden]), #gateView:not([hidden])');
+      if (await page.locator('#tocView').isVisible()) {
+        await page.locator('.toc-item').first().click();
+        await page.waitForSelector('#gateView:not([hidden])');
+      }
+    },
+  },
   {
     name: 'gate2',
     open: async (page) => {
@@ -104,7 +138,7 @@ const SCREENS = [
     open: async (page) => {
       await forcePageMode(page);
       await openToc(page);
-      await page.locator('.toc-item').nth(6).click();
+      await clickTocChapterShots(page, 6);
       await page.click('#gateView');
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
@@ -122,7 +156,7 @@ const SCREENS = [
     open: async (page) => {
       await forcePageMode(page);
       await openToc(page);
-      await page.locator('.toc-item').nth(6).click();
+      await clickTocChapterShots(page, 6);
       await page.click('#gateView');
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
