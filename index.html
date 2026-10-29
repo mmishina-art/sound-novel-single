@@ -67,16 +67,24 @@
     </section>
 
     <!-- ============ READER VIEW ============ -->
-    <!-- 操作UIは普段は隠し、中央タップで上下にうっすら浮かび上がる（オーバーレイ）。
-         常時見えるのは、画面下端の極細の進み具合ラインだけ -->
+    <!-- 操作はページの備品として常時置く：下の帯に再生／停止とメニュー、上の帯（柱）に
+         章題と章内位置。本文タップはページめくり（進む／戻る）だけに使い、メニューは
+         ボタンからしか開かない。常時見えるのは他に、画面下端の極細の進み具合ラインだけ -->
     <section id="readerView" class="view view-reader" hidden>
       <div id="pageWrap" class="page-wrap">
         <div id="pageEl" class="page">
           <!-- 章背景のアニメーション層（線画の上に小さな動きだけを重ねる。reader.ts が章ごとに中身を作る） -->
           <div id="pageAnim" class="page-anim" aria-hidden="true"></div>
+          <!-- 柱：章題と章内位置（本の備品として常時表示。操作ボタンは置かない） -->
+          <div class="page-head"><span id="readerChapterLabel" class="page-head-title"></span><span id="pageChapterPos" class="page-head-pos"></span></div>
           <article id="pageContent" class="page-content" aria-label="本文"></article>
-          <div class="page-footer"><span id="pageFolio" class="folio"></span></div>
-          <span id="pageChapterPos" class="folio-chapter"></span>
+          <!-- 下の帯：ノンブルを中央に、操作ボタンは両端に（ボタン上のタップはめくりに使わない） -->
+          <div class="page-footer">
+            <button id="playPauseBtn" type="button" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
+            <span id="pageFolio" class="folio"></span>
+            <button id="menuBtn" type="button" class="btn btn-small page-menu-btn">メニュー</button>
+          </div>
+          <p id="audioError" class="audio-error" hidden></p>
         </div>
 
         <!-- 独立した奥付ページ（本文の最終ページの次に来る、本のいちばん最後のページ）。
@@ -90,21 +98,9 @@
         </div>
       </div>
 
-      <!-- 読書画面の操作は最小限に：入口は「メニュー」だけ、章題は情報表示として残す。
-           表紙へ戻る・章移動は、メニュー（目次・表紙に戻る）とページめくりが担う -->
-      <header class="reader-header chrome chrome-top">
-        <span id="readerChapterLabel" class="reader-chapter-label"></span>
-        <button id="menuBtn" class="btn btn-small">メニュー</button>
-      </header>
-
-      <!-- プレイヤーは再生／停止だけ。シークバーと前章／次章ボタンは置かない
-           （位置はノンブルと下端の進捗ライン、細かなシークはロック画面等の Media Session が担う） -->
-      <footer class="player chrome chrome-bottom">
-        <p id="audioError" class="audio-error" hidden></p>
-        <div class="controls-row">
-          <button id="playPauseBtn" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
-        </div>
-      </footer>
+      <!-- 読書画面の操作はページ下の帯の再生／停止とメニューだけ。シークバーと
+           前章／次章ボタンは置かない（章移動はページめくりと目次、細かなシークは
+           ロック画面等の Media Session が担う）。表紙へ戻るもメニューの中にある -->
 
       <!-- 進み具合（本全体のページ位置）。数字は出さず、極細の線だけ -->
       <div class="read-progress" aria-hidden="true"><span id="readProgressFill"></span></div>

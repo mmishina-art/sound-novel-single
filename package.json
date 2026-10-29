@@ -29,5 +29,5 @@
     "verify": "npm run lint && npm test && npm run build && npm run check:dist"
   },
   "type": "module",
-  "version": "1.9.0"
+  "version": "1.10.0"
 }

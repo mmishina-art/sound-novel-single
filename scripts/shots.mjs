@@ -59,22 +59,19 @@ const SCREENS = [
       await page.waitForSelector('#gateView:not([hidden])');
     },
   },
-  // page1 は操作UIが出ている状態（開いた直後は出ていないので、中央タップで出す）、
-  // page-clean は自動で消えたあとの本文だけの状態
+  // page1 も page-clean も現在の本文ページ（操作ボタンはページの帯に常時あるため、
+  // 出し分けはしない。どちらも素の読書画面）
   {
     name: 'page1',
     open: async (page) => {
       await openReader(page);
-      const box = await page.locator('#pageWrap').boundingBox();
-      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
+      await page.waitForTimeout(300);
     },
   },
   {
     name: 'page-clean',
     open: async (page) => {
       await openReader(page);
-      await page.waitForSelector('#readerView:not(.chrome-on)', { timeout: 10000 });
       await page.waitForTimeout(300);
     },
   },
@@ -92,10 +89,7 @@ const SCREENS = [
     name: 'menu',
     open: async (page) => {
       await openReader(page);
-      // 操作UIは開いた直後は出ていないので、中央タップで出してから「メニュー」を押す
-      const box = await page.locator('#pageWrap').boundingBox();
-      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
+      // メニューはページ下の帯のボタンから直接開く（常時表示）
       await page.click('#menuBtn');
     },
   },
@@ -112,9 +106,6 @@ const SCREENS = [
     name: 'karaoke',
     open: async (page) => {
       await openReader(page);
-      const box = await page.locator('#pageWrap').boundingBox();
-      await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-      await page.waitForSelector('#readerView.chrome-on', { timeout: 5000 });
       await page.click('#menuBtn');
       await page.click('#displayModeBtn'); // ページ形式 → カラオケ方式
       await page.click('#menuCloseBtn');

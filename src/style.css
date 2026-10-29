@@ -336,23 +336,17 @@ body.dir-vertical .gate-text { writing-mode: vertical-rl; -webkit-writing-mode: 
 .gate-hint { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; margin: 0; font-size: .78rem; color: #a3936d; letter-spacing: .25em; }
 
 /* ============ Reader — 机の上に開いた右綴じの本 ============ */
-/* 操作UI（.chrome）は普段は隠れ、中央タップで上下にうっすら浮かび上がる。
-   常時見えるのは下端の進み具合ラインと、ページ下のノンブル（本の一部として）だけ。
-   本文ページは画面いっぱいに取る */
+/* 操作は「出す／隠す」をやめ、ページの備品として常時置く。本文タップはページ
+   めくり専用（進む／戻るの2択）で、メニューや再生はボタンからしか触れない。
+   上の帯（柱）に章題と章内位置、下の帯にノンブルと両端のボタンを置く。
+   常時見えるのは他に、下端の進み具合ラインだけ。本文ページは画面いっぱいに取る */
 .view-reader { position: relative; height: 100dvh; background: radial-gradient(ellipse at 50% 20%, var(--desk2), var(--desk) 78%); display: flex; flex-direction: column; }
-.reader-header { position: absolute; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 44px; padding: max(10px, var(--safe-top)) 12px 10px; background: rgba(253,250,240,.94); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-bottom: 1px solid #e2dcc8; }
-/* 章題は情報表示として画面の真ん中に置く（操作ボタンとは重ならないよう幅を絞る） */
-.reader-chapter-label { position: absolute; left: 50%; transform: translateX(-50%); max-width: 58%; text-align: center; font-size: .9rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toggle-label { font-size: .85rem; display: flex; align-items: center; gap: 4px; white-space: nowrap; min-height: 44px; }
-.chrome { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s; }
-.chrome-top { transform: translateY(-8px); }
-.chrome-bottom { transform: translateY(8px); }
-.view-reader.chrome-on .chrome { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition: opacity .25s ease, transform .25s ease; }
-/* ページの数字：ノンブル（本通しのページ数）は「本の一部」なので常時表示する
-   （紙の本のノンブルと同じ考え方。操作UIの表示・非表示には連動させない）。
-   章内位置のほうは操作の目安なので、操作表示中だけ出す */
-.folio-chapter { transition: opacity .25s ease; }
-.view-reader:not(.chrome-on) .folio-chapter { opacity: 0; }
+/* 柱：ページの上の余白（本文の上パディング30pxの内側）に、章題と章内位置を
+   小さく組む。紙の本の柱と同じく、本文の邪魔をしない情報表示だけを置く */
+.page-head { position: absolute; top: 7px; left: 44px; right: 44px; z-index: 2; display: flex; justify-content: center; align-items: baseline; gap: 1em; pointer-events: none; }
+.page-head-title { font-size: .72rem; letter-spacing: .14em; color: #8d7c55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-head-pos { font-size: .68rem; letter-spacing: .1em; color: #b0a077; white-space: nowrap; }
 /* 進み具合：画面下端の極細ライン（本全体のページ位置）。
    ホームインジケータに重なって見切れないよう、安全領域の内側（下端の余白の中）に置く。
    伸びる向きは本の綴じ＝direction 設定と連動：縦書き（右綴じ）は右から左へ、
@@ -362,7 +356,7 @@ body.dir-vertical .read-progress { justify-content: flex-end; }
 body.dir-horizontal .read-progress { justify-content: flex-start; }
 .read-progress span { display: block; height: 100%; width: 0; background: var(--gold); transition: width .3s ease; }
 
-.page-wrap { position: relative; flex: 1; min-height: 0; margin: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); --folio-band: 44px; }
+.page-wrap { position: relative; flex: 1; min-height: 0; margin: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); --folio-band: 44px; touch-action: pan-y pinch-zoom; }
 /* 1ページの紙。背（綴じ側）は右、 小口は左。
    章ごとの背景イメージ（--chapter-bg、reader.ts が章ごとに差し込む）は ::before の
    専用層に敷く。下端はノンブルの帯（--folio-band）の上で止め、ページ数の表示と
@@ -533,12 +527,23 @@ body.bound-left .page.turn-next { animation: turnFromRight .18s ease-out; }
 body.bound-left .page.turn-prev { animation: turnFromLeft .18s ease-out; }
 @keyframes turnFromLeft { from { transform: translateX(-16px); opacity: .35; } }
 @keyframes turnFromRight { from { transform: translateX(16px); opacity: .35; } }
-.page-footer { position: absolute; left: 0; right: 0; bottom: 11px; z-index: 2; display: flex; justify-content: center; pointer-events: none; }
+/* ページ下の帯：中央にノンブル、両端に操作ボタン（再生／停止＝小口側、
+   メニュー＝綴じ側。右綴じの場合）。帯自体はタップを受けず、ボタンだけが受ける */
+.page-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--folio-band, 44px); z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; pointer-events: none; }
+.page-footer .folio { flex: 1; text-align: center; }
+.page-footer .btn { pointer-events: auto; }
+/* 左綴じでは並びを鏡写しにする（再生＝小口側、メニュー＝綴じ側を保つ） */
+body.bound-left .page-footer { flex-direction: row-reverse; }
 .folio { font-size: .78rem; letter-spacing: .32em; color: #9a8a64; }
-.folio-chapter { position: absolute; bottom: 11px; z-index: 2; font-size: .72rem; letter-spacing: .14em; color: #b0a077; pointer-events: none; }
-body.bound-right .folio-chapter { left: 38px; }
-body.bound-left .folio-chapter { right: 38px; }
-/* ページ送りの合図（常設の矢印）は置かない。送りはタップ／スワイプ、操作は中央タップで出す */
+/* 下の帯に収まる大きさの再生ボタン（ピル型はそのままに、帯の高さ44pxへ） */
+.page-footer .btn-play { min-width: 6.6em; font-size: .92rem; padding: .5em 1.1em; }
+/* メニューは紙の上の静かなボタンに（枠線と生成りの地で、本文の邪魔をしない） */
+.page-menu-btn { background: rgba(255,253,246,.85); border-color: #c9bb96; color: #5c5138; }
+/* ページ送りの合図（常設の矢印）は置かない。送りはタップ（左右の半分）／スワイプだけ、
+   操作ボタンは下の帯の両端に常時置く */
+/* スワイプで指に追随している間は、トランジションを切り、文字選択も止める */
+.page.dragging { transition: none !important; user-select: none; -webkit-user-select: none; }
+.page.dragging .page-content { user-select: none; -webkit-user-select: none; }
 
 /* 最終ページ（おわり） */
 /* 「おわり」は本文の流れに混ぜず、最後の文のあとで改列した独立の列に、
@@ -567,11 +572,8 @@ body.mode-karaoke .unit.k-hide, body.mode-karaoke .story-end.k-hide { visibility
 .end-colophon { margin: 0; font-size: .72rem; line-height: 1.9; letter-spacing: .06em; color: #7d7260; text-align: center; }
 .final-cover-link { background: none; border: none; padding: 6px 4px; font-size: .8rem; letter-spacing: .1em; color: #8a6d2f; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
-/* Player（下部オーバーレイ） */
-.player { position: absolute; left: 0; right: 0; bottom: 0; z-index: 10; background: rgba(255,253,246,.96); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-top: 1px solid #ddd6c2; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }
-.audio-error { color: #a33; background: #fdf0f0; border: 1px solid #e8bcbc; border-radius: 8px; padding: 6px 10px; font-size: .85rem; margin: 0 0 8px; text-align: center; }
-/* 操作は再生／停止だけ。1つだけのボタンが浮いて見えないよう、帯の中央に据えて横幅を持たせる */
-.controls-row { display: flex; justify-content: center; align-items: center; padding: 2px 0; }
+/* 音声エラーは、下の帯の上に重ねて知らせる（普段は隠れている） */
+.audio-error { position: absolute; left: 12px; right: 12px; bottom: calc(var(--folio-band, 44px) + 8px); z-index: 6; color: #a33; background: #fdf0f0; border: 1px solid #e8bcbc; border-radius: 8px; padding: 6px 10px; font-size: .85rem; margin: 0; text-align: center; }
 
 /* TOC modal */
 .modal { position: fixed; inset: 0; z-index: 20; }

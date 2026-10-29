@@ -13,19 +13,9 @@ async function openReader(page: import('@playwright/test').Page): Promise<void> 
   await expect(page.locator('#pageFolio')).not.toHaveText('');
 }
 
-/** 操作UI（クローム）が消えているときだけ、中央タップで出す */
-async function ensureChrome(page: import('@playwright/test').Page): Promise<void> {
-  if ((await page.locator('#readerView.chrome-on').count()) === 0) {
-    const box = await page.locator('#pageWrap').boundingBox();
-    if (!box) throw new Error('pageWrap not found');
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-    await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
-  }
-}
-
-/** 読書画面からメニューを開く */
+/** 読書画面からメニューを開く（入口はページ下の帯の「メニュー」ボタンだけ。
+    本文タップでは開かない。ボタンは常時表示されている） */
 async function openMenuInReader(page: import('@playwright/test').Page): Promise<void> {
-  await ensureChrome(page);
   await page.locator('#menuBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
 }
@@ -208,8 +198,7 @@ test('読書画面の操作は再生／停止とメニューだけ。前章／�
   await expect(page.locator('#nextChapterBtn')).toHaveCount(0);
   await expect(page.locator('#progressBar')).toHaveCount(0);
   await expect(page.locator('#toCoverBtn')).toHaveCount(0);
-  // 残した操作：操作UIを出すと、再生／停止とメニューが使える
-  await ensureChrome(page);
+  // 残した操作：再生／停止とメニューは、ページ下の帯に常時あって使える
   await expect(page.locator('#playPauseBtn')).toBeVisible();
   await expect(page.locator('#menuBtn')).toBeVisible();
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
@@ -339,14 +328,12 @@ test('再生中にページをめくると、朗読がそのページの先頭�
 
 test('停止中にめくると位置がそのページに合い、再生はそこから始まる', async ({ page }) => {
   await openReader(page);
-  await ensureChrome(page);
   await page.locator('#playPauseBtn').click(); // 停止
   await page.mouse.click(78, 400); // 次ページへ
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   await page.waitForTimeout(700);
   const t1 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
   expect(t1).toBeGreaterThan(2); // 停止中でも位置はページに合っている
-  await ensureChrome(page);
   await page.locator('#playPauseBtn').click(); // 再生
   await page.waitForTimeout(600);
   const t2 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
@@ -516,8 +503,10 @@ test('表示方式をカラオケ方式に切り替えると、まだ読まれ�
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore + 1);
   expect(await page.locator('.unit.k-hide').count()).toBe(hiddenBefore - 1);
-  const tAfter = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
-  expect(tAfter).toBeGreaterThan(tBefore);
+  // 音声の移動は260msデバウンスのあとなので、即時読みではなく条件で待つ
+  await expect
+    .poll(() => page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime), { timeout: 8000 })
+    .toBeGreaterThan(tBefore);
   // 前側タップで1文戻る：強調が戻り、隠れている文が1つ増える
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
   await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore);
@@ -621,27 +610,51 @@ test('フリガナのオン/オフが切り替わる', async ({ page }) => {
   await expect(page.locator('body')).toHaveClass(/ruby-off/);
 });
 
-test('中央タップで操作UIの表示・非表示が切り替わり、放っておくと消える', async ({ page }) => {
+test('本文タップは進む／戻るだけ：中央寄りのタップでもめくれ、メニューは開かない', async ({ page }) => {
   await openReader(page);
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
-  const cx = box.x + box.width * 0.5;
   const cy = box.y + box.height * 0.5;
-  // 本を開いた直後は操作UIは出ていない（出すのは中央タップだけ）
-  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
-  await page.mouse.click(cx, cy); // 消えている → 出る
-  await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
+  // 操作ボタンは常時見えている（召喚する操作は要らない）
   await expect(page.locator('#playPauseBtn')).toBeVisible();
-  await page.mouse.click(cx, cy); // 表示中 → 消える
-  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
-  await expect(page.locator('#playPauseBtn')).toBeHidden();
-  await page.mouse.click(cx, cy); // また出す
-  await expect(page.locator('#readerView')).toHaveClass(/chrome-on/);
-  // 数秒で自動的に消える
-  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/, { timeout: 8000 });
+  await expect(page.locator('#menuBtn')).toBeVisible();
+  // 中央寄り（左半分）のタップでも「次へ」としてめくれる（無反応帯はない）
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await page.mouse.click(box.x + box.width * 0.46, cy);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await expect(page.locator('#menuModal')).toBeHidden();
+  // 中央寄り（右半分）のタップは「前へ」
+  await page.mouse.click(box.x + box.width * 0.54, cy);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await expect(page.locator('#menuModal')).toBeHidden();
+  // 画面の端ぎわ（左右12px）は誤爆防止の無反応帯：めくれない
+  await page.mouse.click(box.x + 4, cy);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
 });
 
-test('本を開いた直後は、操作UIもメニューも勝手に出ない', async ({ page }) => {
+test('スワイプでめくれる：大きく払うと進み、小さい払いでは戻る', async ({ page }) => {
+  await openReader(page);
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  const cy = box.y + box.height * 0.5;
+  const swipe = async (fromRatio: number, toRatio: number): Promise<void> => {
+    await page.mouse.move(box.x + box.width * fromRatio, cy);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * ((fromRatio + toRatio) / 2), cy, { steps: 6 });
+    await page.mouse.move(box.x + box.width * toRatio, cy, { steps: 6 });
+    await page.mouse.up();
+  };
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await swipe(0.7, 0.25); // 左へ大きく払う → 次ページ
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await expect(page.locator('#menuModal')).toBeHidden();
+  await swipe(0.3, 0.75); // 右へ大きく払う → 前ページ
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await swipe(0.55, 0.47); // 小さく払う → めくれない（元の位置に戻る）
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+});
+
+test('本を開いた直後は、メニューが勝手に出ない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#menuModal')).toBeHidden(); // 起動直後
@@ -649,11 +662,9 @@ test('本を開いた直後は、操作UIもメニューも勝手に出ない', 
   await page.locator('#gateView').click(); // 扉を即タップして本文へ（実機の速い操作を再現）
   await expect(page.locator('#readerView')).toBeVisible();
   await expect(page.locator('#pageFolio')).not.toHaveText('');
-  // 開いた直後は本文だけ。少し待っても、勝手に出てこない
-  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
+  // 少し待っても、メニューが勝手に出てくることはない
   await expect(page.locator('#menuModal')).toBeHidden();
   await page.waitForTimeout(1200);
-  await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
   await expect(page.locator('#menuModal')).toBeHidden();
   // メニューは、入口を明示的に押したときだけ開く
   await openMenuInReader(page);
@@ -805,17 +816,15 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await expect(page.locator('#pageAnim')).toBeVisible();
   });
 
-  test('ノンブル（ページ数）は操作UIが消えていても常時表示される', async ({ page }) => {
+  test('ノンブルと章内位置は、ページの備品として常時表示される', async ({ page }) => {
     await openReader(page);
-    const box = await page.locator('#pageWrap').boundingBox();
-    if (!box) throw new Error('pageWrap not found');
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5); // 中央タップで操作UIを消す
-    await expect(page.locator('#readerView')).not.toHaveClass(/chrome-on/);
     await expect(page.locator('#pageFolio')).toBeVisible();
     await expect(page.locator('#pageFolio')).toHaveText(/― \d+ ―/);
     await expect(page.locator('#pageFolio')).toHaveCSS('opacity', '1');
-    // 章内位置は操作の目安なので、操作表示中だけ出す
-    await expect(page.locator('#pageChapterPos')).toHaveCSS('opacity', '0');
+    // 章内位置も柱（上の帯）に常時出す
+    await expect(page.locator('#pageChapterPos')).toBeVisible();
+    await expect(page.locator('#pageChapterPos')).toHaveCSS('opacity', '1');
+    await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
   });
 
   test('Media Session に章・著者・本の題と表紙画像が載る', async ({ page }) => {

@@ -76,8 +76,6 @@ export function createReader(book: BookData): Reader {
     if (!gateAudio.paused) gateAudio.pause();
   }
   const audioError = $('audioError');
-  const headerEl = document.querySelector<HTMLElement>('.reader-header');
-  const playerEl = document.querySelector<HTMLElement>('.player');
 
   /* ---- 状態 ---- */
   let current = 0;
@@ -317,33 +315,16 @@ export function createReader(book: BookData): Reader {
     syncWakeLock();
   }
 
-  /* ---------- 操作UI（クローム）の表示・自動消去 ----------
-     普段は本文だけ。中央タップで出し、数秒で消える。モーダルを開いている間は消さない */
-  let chromeTimer: ReturnType<typeof setTimeout> | undefined;
-  function showChrome(autoHide = true): void {
-    readerView.classList.add('chrome-on');
-    if (chromeTimer !== undefined) clearTimeout(chromeTimer);
-    chromeTimer = undefined;
-    if (autoHide) chromeTimer = setTimeout(hideChrome, 3500);
-  }
-  function hideChrome(): void {
-    readerView.classList.remove('chrome-on');
-    if (chromeTimer !== undefined) clearTimeout(chromeTimer);
-    chromeTimer = undefined;
-  }
-  function toggleChrome(): void {
-    if (readerView.classList.contains('chrome-on')) hideChrome();
-    else showChrome();
-  }
+  /* ---------- メニュー（入口はボタンだけ） ----------
+     操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置き、
+     本文タップはページめくり専用。本文タップでメニューが開くことはない */
   function openMenu(): void {
-    showChrome(false);
     // 「表紙に戻る」は読書画面から開いたときだけ出す（表紙で開いたメニューには不要）
     $('toCoverFromMenuBtn').hidden = readerView.hidden;
     $('menuModal').hidden = false;
   }
   function closeMenu(): void {
     $('menuModal').hidden = true;
-    if (!readerView.hidden) showChrome();
   }
   function audioSrc(idx: number): string {
     return 'book/audio/ch' + (idx + 1) + '.mp3';
@@ -602,7 +583,10 @@ export function createReader(book: BookData): Reader {
     saveBookmark();
   }
 
-  function turnPage(dir: number): void {
+  /* animDir は描画アニメーションの向き（0 でアニメーションなし）。
+     スワイプ確定時は指の動きに合わせた滑り込みをジェスチャ側で行うため、
+     通常のキーフレーム（タップ用）を重ねないよう 0 を渡す */
+  function turnPage(dir: number, animDir: number = dir): void {
     if (!PAGES.length || readerView.hidden) return;
     lastManualTurn = Date.now();
     if (endOpen) {
@@ -619,7 +603,7 @@ export function createReader(book: BookData): Reader {
       // 次ページ（左へ）
       if (curPage < pages.length - 1) {
         curPage++;
-        renderPage(1);
+        renderPage(animDir);
         schedulePageSeek();
       } else if (current < chapters.length - 1) {
         // 章をまたぐときも必ず章扉に止まる（扉を素通りして本文に入らない）
@@ -634,7 +618,7 @@ export function createReader(book: BookData): Reader {
       // 前ページ（右へ）
       if (curPage > 0) {
         curPage--;
-        renderPage(-1);
+        renderPage(animDir);
         schedulePageSeek();
       } else if (current > 0) {
         // 前章へ戻るときも章扉に止まる
@@ -920,9 +904,7 @@ export function createReader(book: BookData): Reader {
     current = idx;
     enterStamp = Date.now();
     showView('reader');
-    // 本を開いた直後は、操作UIを自動では出さない（出すのは中央タップだけ）。
-    // 自動で出すと、その間だけ有効になる右上の「メニュー」ボタンに、続くタップ
-    // （前ページ側のタップなど）が当たって、意図せずメニューが開くことがあるため
+    // 操作ボタンはページ下の帯に常時あるため、開いた直後に特別な表示はしない
     audio.src = audioSrc(idx);
     audio.playbackRate = SPEEDS[speedIdx];
     setPreservesPitch();
@@ -999,7 +981,6 @@ export function createReader(book: BookData): Reader {
     audio.pause();
     closeEndPage();
     saveBookmark();
-    hideChrome();
     showView('cover');
     refreshResume();
   }
@@ -1336,10 +1317,10 @@ export function createReader(book: BookData): Reader {
       if ((e.target as HTMLElement).closest('button')) return;
       const r = tocView.getBoundingClientRect();
       const ratio = (e.clientX - r.left) / r.width;
-      const onPrevSide = DIR.nextSide === 'left' ? ratio > 0.58 : ratio < 0.42;
-      const onNextSide = DIR.nextSide === 'left' ? ratio < 0.42 : ratio > 0.58;
-      if (onPrevSide) tocTapNav(-1);
-      else if (onNextSide) tocTapNav(1);
+      // 本文と同じく、左右の半分で進む／戻るの2択だけ（中央の無反応帯は置かない）
+      const onNextSide = DIR.nextSide === 'left' ? ratio < 0.5 : ratio > 0.5;
+      if (onNextSide) tocTapNav(1);
+      else tocTapNav(-1);
     });
     let tocSwipeX: number | null = null;
     tocView.addEventListener('pointerdown', (e) => {
@@ -1354,9 +1335,6 @@ export function createReader(book: BookData): Reader {
       const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
       tocTapNav(towardNext ? 1 : -1);
     });
-    /* 操作UIに触れている間は、自動消去のタイマーを仕切り直す */
-    if (headerEl) headerEl.addEventListener('pointerdown', () => showChrome());
-    if (playerEl) playerEl.addEventListener('pointerdown', () => showChrome());
     $('finalToCoverBtn').addEventListener('click', goCover);
     $('toCoverFromMenuBtn').addEventListener('click', () => {
       closeMenu();
@@ -1417,34 +1395,117 @@ export function createReader(book: BookData): Reader {
     document.addEventListener('pointerdown', () => {
       if (isBgmOn()) startBgm();
     });
-    /* ページめくり：タップ（小口側＝次／綴じ側＝前）とスワイプ。
+    /* ページめくり：タップとスワイプの併用。役割は「進む／戻る」だけに統一し、
+       メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
+       メニューや操作UIが出ることはない）。
+       - タップ：左右の半分で判定（小口側＝次／綴じ側＝前）。中央の無反応帯は置かない。
+         画面の端ぎわ（持つ手の指が触れやすい左右12px）は誤爆防止の無反応帯にする。
+       - スワイプ：ページが指に追随して滑り、閾値（幅の18%・最低48px）を超えたら
+         めくり確定（旧ページが滑り出し、新ページが反対側から滑り込む）、
+         未満なら元の位置へ滑り戻る。カラオケ方式は文単位の送りなので、
+         ページ全体の滑り込みはせず、その場で送る。
        「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右） */
-    let pDown: { x: number; y: number } | null = null;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let swipedAt = 0;
+    let dragSeq = 0;
+    let drag: { id: number; x: number; y: number; active: boolean } | null = null;
+    const dragReset = (): void => {
+      pageEl.classList.remove('dragging');
+      pageEl.style.transition = '';
+      pageEl.style.transform = '';
+    };
     pageWrap.addEventListener('pointerdown', (e) => {
-      pDown = { x: e.clientX, y: e.clientY };
-    });
-    pageWrap.addEventListener('pointerup', (e) => {
-      if (!pDown) return;
-      const dx = e.clientX - pDown.x;
-      const dy = e.clientY - pDown.y;
-      pDown = null;
-      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-        swipedAt = Date.now();
-        const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
-        turnPage(towardNext ? 1 : -1);
+      dragSeq++;
+      // ボタンの上と奥付ページ表示中は、めくりジェスチャの対象にしない
+      if ((e.target as HTMLElement).closest('button') || endOpen) {
+        drag = null;
+        return;
+      }
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, active: false };
+      try {
+        pageWrap.setPointerCapture(e.pointerId);
+      } catch {
+        // 捕捉できなくても、通常のイベントの流れで続行する
       }
     });
+    pageWrap.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      if (!drag.active) {
+        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          drag.active = true;
+          pageEl.classList.add('dragging');
+          pageEl.classList.remove('turn-next', 'turn-prev');
+        } else if (Math.abs(dy) > 10) {
+          drag = null; // 縦方向の動きはジェスチャにしない
+          return;
+        } else {
+          return;
+        }
+      }
+      if (!reduceMotion.matches) pageEl.style.transform = 'translateX(' + dx + 'px)';
+    });
+    const finishDrag = (e: PointerEvent, cancelled: boolean): void => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const wasActive = drag.active;
+      const dx = e.clientX - drag.x;
+      const seq = dragSeq;
+      drag = null;
+      if (!wasActive) return; // ただのタップは click 側で処理する
+      swipedAt = Date.now(); // 直後の click で二重にめくらない
+      const w = pageWrap.clientWidth || 1;
+      const towardNext = DIR.nextSide === 'left' ? dx < 0 : dx > 0;
+      const commit = !cancelled && Math.abs(dx) >= Math.max(48, w * 0.18);
+      if (reduceMotion.matches) {
+        dragReset();
+        if (commit) turnPage(towardNext ? 1 : -1);
+        return;
+      }
+      if (!commit) {
+        // 閾値未満：元の位置へ滑り戻る
+        pageEl.classList.remove('dragging');
+        pageEl.style.transition = 'transform .18s ease-out';
+        pageEl.style.transform = '';
+        setTimeout(() => {
+          if (seq === dragSeq) dragReset();
+        }, 200);
+        return;
+      }
+      if (displayMode === 'karaoke') {
+        // カラオケ方式は文単位の送りなので、ページ全体の滑り込みはせず即座に戻して送る
+        dragReset();
+        turnPage(towardNext ? 1 : -1);
+        return;
+      }
+      // 確定：旧ページを指の向きへ滑り出してから差し替え、新ページを反対側から滑り込ませる
+      const sign = dx < 0 ? -1 : 1;
+      pageEl.classList.remove('dragging');
+      pageEl.style.transition = 'transform .15s ease-out';
+      pageEl.style.transform = 'translateX(' + sign * w + 'px)';
+      setTimeout(() => {
+        if (seq !== dragSeq) return; // 間際に次のジェスチャが始まっていたら邪魔しない
+        turnPage(towardNext ? 1 : -1, 0);
+        pageEl.style.transition = '';
+        pageEl.style.transform = 'translateX(' + -sign * w + 'px)';
+        void pageEl.offsetWidth; // 反対側に置いた状態を確定させてから滑り込ませる
+        pageEl.style.transition = 'transform .18s ease-out';
+        pageEl.style.transform = '';
+        setTimeout(() => {
+          if (seq === dragSeq) dragReset();
+        }, 200);
+      }, 160);
+    };
+    pageWrap.addEventListener('pointerup', (e) => finishDrag(e, false));
+    pageWrap.addEventListener('pointercancel', (e) => finishDrag(e, true));
     pageWrap.addEventListener('click', (e) => {
       if (Date.now() - swipedAt < 350) return;
       if ((e.target as HTMLElement).closest('button')) return;
       const r = pageWrap.getBoundingClientRect();
-      const ratio = (e.clientX - r.left) / r.width;
-      const onNextSide = DIR.nextSide === 'left' ? ratio < 0.42 : ratio > 0.58;
-      const onPrevSide = DIR.nextSide === 'left' ? ratio > 0.58 : ratio < 0.42;
-      if (onNextSide) turnPage(1);
-      else if (onPrevSide) turnPage(-1);
-      else toggleChrome(); // 中央タップは操作UIの表示・非表示
+      const x = e.clientX - r.left;
+      if (x < 12 || x > r.width - 12) return; // 端ぎわは誤爆防止の無反応帯
+      const onNextSide = DIR.nextSide === 'left' ? x / r.width < 0.5 : x / r.width > 0.5;
+      turnPage(onNextSide ? 1 : -1);
     });
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
