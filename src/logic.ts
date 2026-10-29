@@ -13,6 +13,10 @@ export interface ChapterData {
   spoken?: string;
   chars?: number;
   spokenChars?: number;
+  /** 文単位の実開始時刻（秒）。buildUnits の単位列と並行（区切り単位は次の文の開始時刻）。
+      生成時の文セグメント尺から実測した値（work/build_timings.py）。無い本では
+      アプリ側が文字数比例の推定にフォールバックする */
+  unitTimes?: number[];
 }
 
 export interface BookData {
@@ -180,6 +184,25 @@ export function groupClass(u: Unit, paraBegun: ReadonlySet<number>): string {
 export interface Page {
   startChar: number;
   units: Unit[];
+}
+
+/** 時刻 t（秒）に読まれている文の番号。unitTimes は単調非減少で、
+    時刻ちょうどに次の文が始まっていれば、その文を返す（区間は [開始, 次の開始)）。
+    先頭より前は 0、最後の文より後は最後の文に留まる */
+export function unitIndexAtTime(times: number[], t: number): number {
+  let lo = 0;
+  let hi = times.length - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= t) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
 }
 
 /** 文字位置（章の先頭からの表示文字数）が、どのページに入るか */

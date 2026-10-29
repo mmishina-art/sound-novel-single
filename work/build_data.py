@@ -87,6 +87,18 @@ for idx, ch in enumerate(chapters, 1):
     ch['spokenChars'] = len(ch['spoken'].replace('\n', ''))
     total += ch['chars']
 
+# unitTimes（文ごとの実開始時刻）は音声由来のデータで、このスクリプトでは作らない。
+# 原稿（paragraphs と spoken）が前回と変わっていない章は、前回の値を引き継ぐ。
+# 変わった章は落ちるので、そのときは work/build_timings.py を実行し直すこと。
+_prev_path = os.path.join(ROOT, 'data', 'chapters.json')
+if os.path.exists(_prev_path):
+    _prev = {c.get('id'): c for c in json.load(open(_prev_path)).get('chapters', [])}
+    for ch in chapters:
+        old = _prev.get(ch['id'])
+        if (old and old.get('unitTimes') and old.get('paragraphs') == ch['paragraphs']
+                and old.get('spoken') == ch['spoken']):
+            ch['unitTimes'] = old['unitTimes']
+
 data = {
     'title': '空の郵便が届くまで',
     'author': '水瀬 葵',

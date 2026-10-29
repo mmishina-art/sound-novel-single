@@ -18,7 +18,7 @@ PWA アプリ(ツール/ゲーム)の共通テンプレート。**新しいア�
   - 章背景にはアニメーション層(`#pageAnim`)があり、ノンブルは常時表示。バックグラウンド再生の設定(保存キー `bgplay`、既定オン)と Media Session 対応、画面を暗くしない設定(保存キー `wakelock`、既定オン。Screen Wake Lock で読書画面の間だけスリープを抑止)も `src/reader.ts` にある(詳細は `docs/HANDOVER.md`)。本を開いた直後は操作UIを自動表示しない(出すのは中央タップだけ)。
   - 男性パートの声は avocado_v2:MAI_03・speed 90 + 章ごとに決める atempo で、完成音声の実測300字/分にそろえる(`work/gen_mai.py`)。女性パートは Lily・speed 112、後処理なし。
   - デフォルトブランチは `master`(このリポジトリの従来どおり)。テンプレートの記述で `main` とあるところは `master` に読み替える。公開は GitHub Actions ではなく `gh-pages` ブランチへの手作業の反映(このリポジトリの Pages 設定がブランチ配信のため)。`pages.yml` は入れていない。
-  - 本のデータ生成(`work/build_data.py` など)は Python の著作用パイプラインで、アプリのビルドとは別。生成物は `data/chapters.json` と `public/book/data.json`(同一内容)、音声は `audio/` と `public/book/audio/` に置く。
+  - 本のデータ生成(`work/build_data.py` など)は Python の著作用パイプラインで、アプリのビルドとは別。生成物は `data/chapters.json` と `public/book/data.json`(同一内容)、音声は `audio/` と `public/book/audio/` に置く。音声を作り直したら `work/build_timings.py` で `unitTimes`(文ごとの実開始時刻)も作り直すこと(朗読位置の対応付けは実時刻が正で、無い場合は文字数比例の推定に落ちてずれる)。
 
 ## 基本方針
 

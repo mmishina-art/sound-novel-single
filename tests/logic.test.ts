@@ -10,6 +10,7 @@ import {
   rubyToHtml,
   splitSentences,
   speedIndexOf,
+  unitIndexAtTime,
   type ChapterData,
 } from '../src/logic';
 
@@ -109,6 +110,25 @@ describe('directionOf', () => {
   });
   it('horizontal は左綴じ（次ページは右）', () => {
     expect(directionOf('horizontal')).toMatchObject({ mode: 'horizontal', bound: 'left', nextSide: 'right' });
+  });
+});
+
+describe('unitIndexAtTime', () => {
+  const times = [0, 4.2, 9.5, 15.0];
+  it('文の区間 [開始, 次の開始) で現在の文を返す', () => {
+    expect(unitIndexAtTime(times, 0)).toBe(0);
+    expect(unitIndexAtTime(times, 4.19)).toBe(0);
+    expect(unitIndexAtTime(times, 4.2)).toBe(1); // ちょうど始まった文が現在
+    expect(unitIndexAtTime(times, 12.3)).toBe(2);
+  });
+  it('最後の文より後は最後の文に留まり、先頭より前は 0', () => {
+    expect(unitIndexAtTime(times, 999)).toBe(3);
+    expect(unitIndexAtTime(times, -5)).toBe(0);
+  });
+  it('同じ開始時刻が続く（区切り単位）場合は後の単位を返す', () => {
+    // 区切り単位は次の文と同じ開始時刻を持つ。読まれているのは実文のほう
+    expect(unitIndexAtTime([0, 5, 5, 11], 5)).toBe(2);
+    expect(unitIndexAtTime([0, 5, 5, 11], 4.9)).toBe(0);
   });
 });
 

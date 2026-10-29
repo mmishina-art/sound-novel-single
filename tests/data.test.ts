@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { BookData } from '../src/logic';
+import { buildUnits, type BookData } from '../src/logic';
 
 const root = resolve(__dirname, '..');
 const book = JSON.parse(readFileSync(resolve(root, 'public/book/data.json'), 'utf8')) as BookData;
@@ -39,6 +39,18 @@ describe('本のデータ', () => {
       expect(statSync(p).size).toBeGreaterThan(1_000_000);
     });
     expect(existsSync(resolve(root, 'public/book/cover.svg'))).toBe(true);
+  });
+
+  it('unitTimes（文ごとの実開始時刻）が全章にあり、単位列と対応する', () => {
+    for (const ch of book.chapters) {
+      const units = buildUnits(ch);
+      expect(ch.unitTimes, ch.num).toHaveLength(units.length);
+      const times = ch.unitTimes as number[];
+      expect(times[0]).toBe(0);
+      for (let i = 1; i < times.length; i++) {
+        expect(times[i], ch.num).toBeGreaterThanOrEqual(times[i - 1]);
+      }
+    }
   });
 
   it('生成元（data/chapters.json）と配信データが一致する', () => {

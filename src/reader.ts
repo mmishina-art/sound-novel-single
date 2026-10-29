@@ -9,6 +9,7 @@ import {
   rubyToHtml,
   speedIndexOf,
   speedLabel,
+  unitIndexAtTime,
   type BookData,
   type Bookmark,
   type ChapterData,
@@ -88,6 +89,102 @@ export function createReader(book: BookData): Reader {
   let pendingSeek = 0;
   const UNITS: Unit[][] = chapters.map((ch) => buildUnits(ch));
   const CH_CHARS: number[] = UNITS.map((us) => us.reduce((a, u) => a + u.len, 0));
+  /* ---------- 朗読位置の対応付け（時刻⇔文） ----------
+     章データに unitTimes（文ごとの実開始時刻、work/build_timings.py が実測）が
+     ある章では、時刻⇔文の対応を実時刻で決める。無い章では文字数比例の推定に
+     落とす（推定は文間の無音や読み速度のばらつきで実位置から数秒ずれることが
+     実測で分かっているため、あくまで予備）。
+     ハイライト・ページ追従・カラオケ表示は、すべてここの関数を通して位置を
+     決める（別々に推定すると、操作の組み合わせで互いにずれていくため） */
+  const UNIT_TIMES: (number[] | null)[] = chapters.map((ch, i) => {
+    const t = ch.unitTimes;
+    if (!t || t.length !== UNITS[i].length) return null;
+    for (let j = 1; j < t.length; j++) if (t[j] < t[j - 1]) return null;
+    return t;
+  });
+  const UNIT_START_CHARS: number[][] = UNITS.map((us) => {
+    const out: number[] = [];
+    let pos = 0;
+    for (const u of us) {
+      out.push(pos);
+      pos += u.len;
+    }
+    return out;
+  });
+  /** 時刻（秒）に読まれている文の、章通しの番号 */
+  function unitIndexAtPos(chIdx: number, t: number): number {
+    const times = UNIT_TIMES[chIdx];
+    if (times) return unitIndexAtTime(times, t);
+    const total = CH_CHARS[chIdx] || 0;
+    if (!total || !isFinite(audio.duration) || audio.duration <= 0) return 0;
+    const target = Math.floor((t / audio.duration) * total) + 1; // 境界の往復誤差対策（推定時のみ）
+    return unitIndexForChar(chIdx, Math.min(target, total - 1));
+  }
+  /** 文の開始時刻（秒）。実時刻が無い章では文字位置からの推定。分からない場合は null */
+  function timeAtUnitStart(chIdx: number, unitIdx: number): number | null {
+    const times = UNIT_TIMES[chIdx];
+    if (times) return times[Math.max(0, Math.min(unitIdx, times.length - 1))];
+    return timeAtCharPos(chIdx, UNIT_START_CHARS[chIdx][unitIdx] ?? 0);
+  }
+  /** 文字位置に対応する時刻（秒）。文の内側は、その文の区間の中で比例させる */
+  function timeAtCharPos(chIdx: number, charPos: number): number | null {
+    const times = UNIT_TIMES[chIdx];
+    if (times) {
+      const ui = unitIndexForChar(chIdx, charPos);
+      const start = times[ui];
+      const end =
+        ui + 1 < times.length
+          ? times[ui + 1]
+          : isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : start;
+      const u = UNITS[chIdx][ui];
+      const frac =
+        u && u.len > 0 ? Math.max(0, Math.min(1, (charPos - UNIT_START_CHARS[chIdx][ui]) / u.len)) : 0;
+      return start + frac * Math.max(0, end - start);
+    }
+    const total = CH_CHARS[chIdx] || 0;
+    if (!total || !isFinite(audio.duration) || audio.duration <= 0) return null;
+    return (charPos / total) * audio.duration;
+  }
+  /** 時刻に対応する文字位置（表示方式の切替アンカー用）。文の内側は比例で近似する */
+  function charAtTimePos(chIdx: number, t: number): number {
+    const times = UNIT_TIMES[chIdx];
+    if (times) {
+      const ui = unitIndexAtTime(times, t);
+      const start = times[ui];
+      const end =
+        ui + 1 < times.length
+          ? times[ui + 1]
+          : isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : start;
+      const frac = end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
+      return UNIT_START_CHARS[chIdx][ui] + Math.floor(frac * (UNITS[chIdx][ui]?.len || 0));
+    }
+    const total = CH_CHARS[chIdx] || 0;
+    if (!total || !isFinite(audio.duration) || audio.duration <= 0) return 0;
+    return Math.floor((t / audio.duration) * total);
+  }
+  /** 文の属するページ番号（ページ割りが済んでいる前提） */
+  function pageOfUnit(chIdx: number, unitIdx: number): number {
+    const pages = PAGES[chIdx];
+    if (!pages || !pages.length) return 0;
+    let acc = 0;
+    for (let p = 0; p < pages.length; p++) {
+      acc += pages[p].units.length;
+      if (unitIdx < acc) return p;
+    }
+    return pages.length - 1;
+  }
+  /** ページの先頭の文の、章通しの番号 */
+  function firstUnitOfPage(chIdx: number, pageIdx: number): number {
+    const pages = PAGES[chIdx];
+    if (!pages) return 0;
+    let acc = 0;
+    for (let p = 0; p < pageIdx && p < pages.length; p++) acc += pages[p].units.length;
+    return acc;
+  }
   /* 本文の最終ページで、最後の文のあとに改列して置く「おわり」。
      流れに混ぜると列をまたいで割れるため、独立したブロックとして置き、
      その列の中央に寄せる */
@@ -115,9 +212,8 @@ export function createReader(book: BookData): Reader {
   function setDisplayMode(mode: 'page' | 'karaoke'): void {
     if (mode === displayMode) return;
     let anchor = currentAnchorChar();
-    const total = CH_CHARS[current] || 0;
-    if (total && isFinite(audio.duration) && audio.duration > 0) {
-      anchor = Math.floor((audio.currentTime / audio.duration) * total);
+    if (isFinite(audio.duration) && audio.duration > 0) {
+      anchor = charAtTimePos(current, audio.currentTime);
     }
     displayMode = mode;
     save('display', mode);
@@ -158,11 +254,7 @@ export function createReader(book: BookData): Reader {
   function updateKaraoke(): void {
     if (displayMode !== 'karaoke') return;
     if (!karaokeSeekPending && isFinite(audio.duration) && audio.duration > 0) {
-      const total = CH_CHARS[current] || 0;
-      if (total) {
-        const target = Math.floor((audio.currentTime / audio.duration) * total) + 1; // 境界の往復誤差対策（他と同）
-        karaokeIdx = unitIndexForChar(current, Math.min(target, total - 1));
-      }
+      karaokeIdx = unitIndexAtPos(current, audio.currentTime);
     }
     applyKaraokeReveal();
   }
@@ -176,30 +268,34 @@ export function createReader(book: BookData): Reader {
     const end = pageContent.querySelector('.story-end');
     if (end) end.classList.toggle('k-hide', karaokeIdx < UNITS[current].length - 1);
   }
-  /* 朗読中の文の強調：現ページの各文の文字範囲と、強調中の文番号 */
+  /* 朗読中の文の強調：現ページの各文の文字範囲（renderPage が埋める）と、
+     ページ内の文番号→章通しの文番号の対応（同じく renderPage が埋める） */
   let pageUnitRanges: { start: number; len: number }[] = [];
-  let nowUnitIdx = -1;
+  /* 強調の付け替えは冪等にする：「現在の音声位置から決まる1文だけに .now が
+     付いている」状態を正とし、DOM がそれと食い違っていたら（消し残し・付け残し・
+     再描画直後など）すべて外してから付け直す。位置は unitIndexAtPos（実時刻）で
+     一意に決める。
+     ページ主導シークの保留中（260msデバウンスの間）は音声位置がまだ旧ページを
+     指すので付け替えず、シーク確定（seeked）で正しい文に付ける。カラオケ方式の
+     手動ステップ保留中は、すでに歩を進めた karaokeIdx の文を正とする */
   function updateNowHighlight(): void {
-    if (!pageUnitRanges.length || !isFinite(audio.duration) || audio.duration <= 0) return;
-    const total = CH_CHARS[current] || 0;
-    if (!total) return;
-    const target = Math.floor((audio.currentTime / audio.duration) * total) + 1; // 境界の往復誤差対策に +1（syncPageToAudio と同じ）
-    let idx = -1;
-    for (let i = 0; i < pageUnitRanges.length; i++) {
-      const r = pageUnitRanges[i];
-      if (target >= r.start && target < r.start + r.len) {
-        idx = i;
-        break;
+    const spans = pageContent.querySelectorAll('.unit');
+    let desired = -1;
+    if (pageUnitRanges.length && isFinite(audio.duration) && audio.duration > 0) {
+      if (displayMode === 'karaoke' && karaokeSeekPending) {
+        desired = pageUnitIdx.indexOf(karaokeIdx);
+      } else if (pageSeekTimer === undefined) {
+        desired = pageUnitIdx.indexOf(unitIndexAtPos(current, audio.currentTime));
       }
     }
-    if (idx === nowUnitIdx) return;
-    const prev = pageContent.querySelector('.unit.now');
-    if (prev) prev.classList.remove('now');
-    nowUnitIdx = idx;
-    if (idx >= 0) {
-      const spans = pageContent.querySelectorAll('.unit');
-      if (spans[idx]) spans[idx].classList.add('now');
-    }
+    const marked: number[] = [];
+    spans.forEach((sp, i) => {
+      if (sp.classList.contains('now')) marked.push(i);
+    });
+    if (marked.length === 1 && marked[0] === desired) return;
+    if (marked.length === 0 && desired === -1) return;
+    marked.forEach((i) => spans[i].classList.remove('now'));
+    if (desired >= 0 && spans[desired]) spans[desired].classList.add('now');
   }
   let enterStamp = 0;
   let measurer: HTMLDivElement | null = null;
@@ -404,7 +500,6 @@ export function createReader(book: BookData): Reader {
     closeP();
     if (isFinalPage) html += END_MARK_HTML;
     setHtml(pageContent, html);
-    nowUnitIdx = -1;
     updateNowHighlight();
     applyKaraokeReveal(); // カラオケ方式では、まだ読まれていない文を隠す（ページ形式では無動作）
     $('pageFolio').textContent = '― ' + bookPageOf(current, curPage) + ' ―';
@@ -425,12 +520,10 @@ export function createReader(book: BookData): Reader {
   let pageSeekTimer: ReturnType<typeof setTimeout> | undefined;
   let pageSeekPending = false;
   function pageStartTime(): number | null {
-    if (!isFinite(audio.duration) || audio.duration <= 0) return null;
-    const total = CH_CHARS[current] || 0;
     const pages = PAGES[current];
-    if (!total || !pages || !pages.length) return null;
-    // ページ先頭きっかりではなく1文字分だけ内側に落とす（境界の往復誤差対策）
-    return ((pages[curPage].startChar + 1) / total) * audio.duration;
+    if (!pages || !pages.length) return null;
+    // ページ先頭の文の開始時刻（実時刻がある章ではそのもの、無い章では推定）
+    return timeAtUnitStart(current, firstUnitOfPage(current, curPage));
   }
   function applyPageSeek(): void {
     const t = pageStartTime();
@@ -464,11 +557,10 @@ export function createReader(book: BookData): Reader {
     karaokeSeekTimer = setTimeout(() => {
       karaokeSeekTimer = undefined;
       karaokeSeekPending = false;
-      if (!isFinite(audio.duration) || audio.duration <= 0) return;
-      const total = CH_CHARS[current] || 0;
-      if (!total) return;
+      const t = timeAtUnitStart(current, karaokeIdx);
+      if (t === null) return;
       try {
-        audio.currentTime = ((unitStartChar(current, karaokeIdx) + 1) / total) * audio.duration;
+        audio.currentTime = t;
       } catch {
         // 位置指定できなくても続行する
       }
@@ -503,8 +595,10 @@ export function createReader(book: BookData): Reader {
       const p = pageForChar(pages, unitStartChar(current, karaokeIdx));
       if (p !== curPage) curPage = p;
     }
-    renderPage(dir);
+    // シーク保留の印は描画より先に立てる（renderPage 内の強調付け替えが、
+    // まだ旧位置にいる音声ではなく、歩を進めた先の文を正とできるように）
     scheduleKaraokeSeek();
+    renderPage(dir);
     saveBookmark();
   }
 
@@ -561,10 +655,13 @@ export function createReader(book: BookData): Reader {
     if (!PAGES.length || !isFinite(audio.duration) || audio.duration <= 0) return;
     const total = CH_CHARS[current] || 0;
     if (!total) return;
-    // +1 は、ページ先頭へシークした直後の往復変換誤差で1つ前のページに
-    // 戻ってしまうのを防ぐための僅かな遊び（1文字分≒0.2秒）
-    const target = Math.floor((audio.currentTime / audio.duration) * total) + 1;
-    const p = pageForChar(PAGES[current], target);
+    // 実時刻がある章では「いま読まれている文の属するページ」へ合わせる。
+    // ページ先頭へシークした直後でも、その文は同じページの先頭の文なので戻らない。
+    // 実時刻が無い章では従来の推定（+1 は往復変換誤差で1つ前のページに戻るのを
+    // 防ぐ僅かな遊び、1文字分≒0.2秒）
+    const p = UNIT_TIMES[current]
+      ? pageOfUnit(current, unitIndexAtPos(current, audio.currentTime))
+      : pageForChar(PAGES[current], Math.floor((audio.currentTime / audio.duration) * total) + 1);
     if (p === curPage) return;
     if (force) {
       curPage = p;
@@ -846,7 +943,8 @@ export function createReader(book: BookData): Reader {
         const pages = PAGES[current];
         if (pages && pages.length) {
           try {
-            audio.currentTime = (pages[pages.length - 1].startChar / (CH_CHARS[current] || 1)) * audio.duration;
+            const t = timeAtCharPos(current, pages[pages.length - 1].startChar);
+            if (t !== null) audio.currentTime = t;
           } catch {
             // 同上
           }

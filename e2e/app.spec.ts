@@ -359,6 +359,134 @@ test('朗読中の文が1つだけ強調される', async ({ page }) => {
   await expect(page.locator('.unit.now')).toHaveCount(1, { timeout: 8000 });
 });
 
+/** 第一章から、旧来の「文字数比例」モデルでは強調を外す文を探す。
+    実時刻（unitTimes）で文の真ん中を指しても、比例モデルでは別の文になる文。
+    照合のため、ルビがなく本文がそのまま DOM のテキストになる文に限る */
+async function pickDriftUnit(
+  page: import('@playwright/test').Page,
+): Promise<{ mid: number; text: string }> {
+  await page.waitForFunction(() =>
+    Number.isFinite((document.getElementById('audioEl') as HTMLAudioElement).duration),
+  );
+  return page.evaluate(async () => {
+    const book = (await (await fetch('book/data.json')).json()) as {
+      chapters: { ruby: string[]; unitTimes: number[] }[];
+    };
+    const ch = book.chapters[0];
+    const times = ch.unitTimes;
+    const duration = (document.getElementById('audioEl') as HTMLAudioElement).duration;
+    const plainLen = (t: string): number => t.replace(/｜/g, '').replace(/《[^》]*》/g, '').length;
+    const plainText = (t: string): string => t.replace(/｜([^《]*)《[^》]*》/g, '$1');
+    const split = (text: string): string[] => {
+      const out: string[] = [];
+      let buf = '';
+      let inRuby = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        buf += c;
+        if (c === '《') inRuby = true;
+        else if (c === '》') inRuby = false;
+        else if (c === '。' && !inRuby) {
+          while (i + 1 < text.length && '」』）】〉・…'.includes(text[i + 1])) buf += text[++i];
+          out.push(buf);
+          buf = '';
+        }
+      }
+      if (buf) out.push(buf);
+      return out;
+    };
+    const raws: string[] = [];
+    const lens: number[] = [];
+    for (const p of ch.ruby) {
+      if (p.trim() === '---') {
+        raws.push('');
+        lens.push(0);
+        continue;
+      }
+      for (const s of split(p)) {
+        raws.push(s);
+        lens.push(plainLen(s));
+      }
+    }
+    const total = lens.reduce((a, b) => a + b, 0);
+    const starts: number[] = [];
+    let pos = 0;
+    for (const l of lens) {
+      starts.push(pos);
+      pos += l;
+    }
+    const modelAt = (t: number): number => {
+      const target = Math.floor((t / duration) * total) + 1;
+      for (let i = 0; i < lens.length; i++) {
+        if (target >= starts[i] && target < starts[i] + lens[i]) return i;
+      }
+      return lens.length - 1;
+    };
+    const plainCounts = new Map<string, number>();
+    for (const r of raws) {
+      const p = plainText(r);
+      plainCounts.set(p, (plainCounts.get(p) ?? 0) + 1);
+    }
+    // 章の前半から探す（ページ送りの往復で章をまたがないように）
+    for (let k = 2; k < Math.floor(times.length / 2); k++) {
+      if (lens[k] === 0 || raws[k].includes('《') || times[k + 1] - times[k] < 1.2) continue;
+      const text = plainText(raws[k]);
+      if (text.length < 8 || plainCounts.get(text) !== 1) continue;
+      const mid = (times[k] + times[k + 1]) / 2;
+      if (modelAt(mid) !== k) return { mid, text };
+    }
+    throw new Error('比例モデルでずれる文が第一章の前半に見つからない');
+  });
+}
+
+test('進む・戻るの連打やメニュー開閉を繰り返しても、ハイライトが音声位置の文とずれない', async ({ page }) => {
+  await openReader(page);
+  await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).pause());
+  const nowText = (): Promise<string> =>
+    page.evaluate(() => document.querySelector('#pageContent .unit.now')?.textContent ?? '');
+  const seek = (t: number): Promise<void> =>
+    page.evaluate((tt) => {
+      (document.getElementById('audioEl') as HTMLAudioElement).currentTime = tt;
+    }, t);
+  const { mid, text } = await pickDriftUnit(page);
+  // 比例モデルでは外れる文の真ん中へシーク：実時刻なら、その文が強調され、
+  // ページもその文のページへ追従する（seeked の強制同期）
+  await seek(mid);
+  await expect.poll(nowText, { timeout: 8000 }).toBe(text);
+  await expect(page.locator('.unit.now')).toHaveCount(1);
+  // メニューを開いて閉じる／表示方式を往復させても、強調は同じ文に留まる
+  await openMenuInReader(page);
+  await page.locator('#menuCloseBtn').click();
+  await openMenuInReader(page);
+  await page.locator('#displayModeBtn').click();
+  await expect(page.locator('#displayModeBtn')).toHaveText('カラオケ方式');
+  await page.locator('#menuCloseBtn').click();
+  await expect.poll(nowText, { timeout: 8000 }).toBe(text);
+  await openMenuInReader(page);
+  await page.locator('#displayModeBtn').click();
+  await expect(page.locator('#displayModeBtn')).toHaveText('ページ形式');
+  await page.locator('#menuCloseBtn').click();
+  await expect.poll(nowText, { timeout: 8000 }).toBe(text);
+  // 進む×2→戻る×2の連打（ページ主導シークのデバウンスを挟む）でも、
+  // 強調は常に1つだけで、食い違った場所に残らない
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  for (let i = 0; i < 2; i++) {
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.waitForTimeout(60);
+  }
+  for (let i = 0; i < 2; i++) {
+    await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
+    await page.waitForTimeout(60);
+  }
+  await page.waitForTimeout(900); // 最後のページシークが確定するまで
+  await expect(page.locator('.unit.now')).toHaveCount(1);
+  // もう一度同じ文へシークしても、変わらずその文が強調される
+  await seek(mid);
+  await expect.poll(nowText, { timeout: 8000 }).toBe(text);
+  await expect(page.locator('.unit.now')).toHaveCount(1);
+});
+
 test('表示方式をカラオケ方式に切り替えると、まだ読まれていない文が見えなくなり、文単位で送れる', async ({ page }) => {
   await openReader(page);
   // 止めてから確かめる（再生の進行で frontier が動くと数が定まらないため）
