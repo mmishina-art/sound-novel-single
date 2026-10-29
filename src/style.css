@@ -570,10 +570,6 @@ body.dir-horizontal .page-content p.story-end { text-indent: 0; text-align: cent
 /* 朗読中の文の強調：本らしさを壊さないよう、ごく薄い背景とわずかな濃さだけ */
 .unit.now { background: rgba(163, 130, 62, .13); border-radius: 3px; color: #17130c; }
 body.hl-off .unit.now { background: none; color: inherit; }
-/* カラオケ方式：まだ読まれていない文は完全に見えない（文字の姿は出さない）。
-   場所だけは確保する（visibility）ことで、文が現れるたびに組版が揺れない。
-   「おわり」も、最後の文が読まれるまで同じく隠す */
-body.mode-karaoke .unit.k-hide, body.mode-karaoke .story-end.k-hide { visibility: hidden; }
 /* 独立した奥付ページ（本のいちばん最後のページ）。本文ページと同じ紙の体裁で、
    枠いっぱいに広がる。奥付と表紙への導線だけを、下部にゆったり置く。
    ノンブルは付けない（扉など他の非本文ページと同じ作法。本文ページを不透明に

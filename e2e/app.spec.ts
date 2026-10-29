@@ -441,17 +441,11 @@ test('進む・戻るの連打やメニュー開閉を繰り返しても、ハ�
   await seek(mid);
   await expect.poll(nowText, { timeout: 8000 }).toBe(text);
   await expect(page.locator('.unit.now')).toHaveCount(1);
-  // メニューを開いて閉じる／表示方式を往復させても、強調は同じ文に留まる
+  // メニューを開いて閉じる操作を繰り返しても、強調は同じ文に留まる
   await openMenuInReader(page);
-  await page.locator('#menuCloseBtn').click();
-  await openMenuInReader(page);
-  await page.locator('#displayModeBtn').click();
-  await expect(page.locator('#displayModeBtn')).toHaveText('カラオケ方式');
   await page.locator('#menuCloseBtn').click();
   await expect.poll(nowText, { timeout: 8000 }).toBe(text);
   await openMenuInReader(page);
-  await page.locator('#displayModeBtn').click();
-  await expect(page.locator('#displayModeBtn')).toHaveText('ページ形式');
   await page.locator('#menuCloseBtn').click();
   await expect.poll(nowText, { timeout: 8000 }).toBe(text);
   // 進む×2→戻る×2の連打（ページ主導シークのデバウンスを挟む）でも、
@@ -474,72 +468,21 @@ test('進む・戻るの連打やメニュー開閉を繰り返しても、ハ�
   await expect(page.locator('.unit.now')).toHaveCount(1);
 });
 
-test('表示方式をカラオケ方式に切り替えると、まだ読まれていない文が見えなくなり、文単位で送れる', async ({ page }) => {
+test('旧設定でカラオケ方式が保存されていても、ページ形式で開き、設定項目も残っていない', async ({ page }) => {
+  // 起動前に、旧バージョンが保存していた方式指定（カラオケ）を仕込む
+  await page.addInitScript((appId) => {
+    localStorage.setItem(`${appId}-display`, JSON.stringify('karaoke'));
+  }, APP_ID);
   await openReader(page);
-  // 止めてから確かめる（再生の進行で frontier が動くと数が定まらないため）
-  await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).pause());
-  await expect(page.locator('.unit.k-hide')).toHaveCount(0); // ページ形式では隠さない
-  await openMenuInReader(page);
-  const btn = page.locator('#displayModeBtn');
-  await expect(btn).toHaveText('ページ形式');
-  await btn.click();
-  await expect(btn).toHaveText('カラオケ方式');
-  await page.locator('#menuCloseBtn').click();
-  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
-  // まだ読まれていない文は見えない（.k-hide が付く）。読んでいる文は見えて強調される
-  const hiddenBefore = await page.locator('.unit.k-hide').count();
-  expect(hiddenBefore).toBeGreaterThan(0);
-  await expect(page.locator('.unit.now')).toHaveCount(1);
-  await expect(page.locator('.unit.now')).not.toHaveClass(/k-hide/);
-  const nowIndex = (): Promise<number> =>
-    page.evaluate(() => [...document.querySelectorAll('#pageContent .unit')].findIndex((e) => e.classList.contains('now')));
-  const nowBefore = await nowIndex();
-  expect(nowBefore).toBeGreaterThanOrEqual(0);
-  const tBefore = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
-  // 次側タップで1文送る：強調が次の文へ移り、隠れている文が1つ減り、音声もその文へ移る
-  // （音声シークは260msデバウンスのあと。固定待ちではなく条件で待つ）
-  const box = await page.locator('#pageWrap').boundingBox();
-  if (!box) throw new Error('pageWrap not found');
-  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
-  await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore + 1);
-  expect(await page.locator('.unit.k-hide').count()).toBe(hiddenBefore - 1);
-  // 音声の移動は260msデバウンスのあとなので、即時読みではなく条件で待つ
-  await expect
-    .poll(() => page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime), { timeout: 8000 })
-    .toBeGreaterThan(tBefore);
-  // 前側タップで1文戻る：強調が戻り、隠れている文が1つ増える
-  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
-  await expect.poll(nowIndex, { timeout: 8000 }).toBe(nowBefore);
-  expect(await page.locator('.unit.k-hide').count()).toBe(hiddenBefore);
-  // ページ形式へ戻すと、隠れている文はなくなり、読んでいる章は失われない
-  await openMenuInReader(page);
-  await page.locator('#displayModeBtn').click();
-  await expect(page.locator('#displayModeBtn')).toHaveText('ページ形式');
-  await page.locator('#menuCloseBtn').click();
+  // 文が隠れたりはせず（.k-hide は付かない）、本文がそのまま読める
   await expect(page.locator('.unit.k-hide')).toHaveCount(0);
-  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
-});
-
-test('カラオケ方式で連打して送っても、手動ステップが音声位置に上書きされず進み続ける', async ({ page }) => {
-  await openReader(page);
-  await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).pause());
+  await expect(page.locator('#pageContent .unit').first()).toBeVisible();
+  // 保存済みの方式指定は起動時の移行で消えている
+  const saved = await page.evaluate((appId) => localStorage.getItem(`${appId}-display`), APP_ID);
+  expect(saved).toBeNull();
+  // メニューに「表示方式」の項目はない
   await openMenuInReader(page);
-  await page.locator('#displayModeBtn').click();
-  await expect(page.locator('#displayModeBtn')).toHaveText('カラオケ方式');
-  await page.locator('#menuCloseBtn').click();
-  const box = await page.locator('#pageWrap').boundingBox();
-  if (!box) throw new Error('pageWrap not found');
-  const t0 = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
-  // 間隔を空けずに6回送る（シークのデバウンスが切れる前に押し続ける）
-  for (let i = 0; i < 6; i++) {
-    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
-    await page.waitForTimeout(60);
-  }
-  // 6文ぶん先の位置へ音声が移っている（止めたままなので、自然な進行では増えない）
-  await expect
-    .poll(() => page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime), { timeout: 8000 })
-    .toBeGreaterThan(t0 + 8);
-  await expect(page.locator('.unit.now')).toHaveCount(1);
+  await expect(page.locator('#displayModeBtn')).toHaveCount(0);
 });
 
 test('ページを戻っていくと、第一章の扉→目次→表紙まで辿り着ける', async ({ page }) => {

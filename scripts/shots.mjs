@@ -9,12 +9,8 @@ import { mkdirSync, rmSync } from 'node:fs';
 /** 撮る画面。open は、ページを開いたあと、その画面を出すための操作。 */
 // 本のデータ（book/data.json）が届いて目次が組み上がると、表紙の操作が効くようになる
 const waitBook = async (page) => page.waitForSelector('#tocList li', { state: 'attached', timeout: 10000 });
-// 表示方式は画面間で localStorage に残るため、ページ形式で撮りたい画面は先に固定する
+// 画面間で状態が localStorage に残るため、撮る前に読み込み直して素の状態に戻す
 const forcePageMode = async (page) => {
-  await page.evaluate(() => {
-    const appId = globalThis.document.querySelector('meta[name="app-id"]')?.content || '';
-    globalThis.localStorage.setItem(`${appId}-display`, 'page');
-  });
   await page.reload();
   await page.waitForFunction(() => globalThis.__appStarted === true);
   await waitBook(page);
@@ -98,17 +94,6 @@ const SCREENS = [
     open: async (page) => {
       await openReader(page);
       // 朗読中の文に強調が付くまで待つ
-      await page.waitForSelector('.unit.now', { timeout: 10000 });
-      await page.waitForTimeout(200);
-    },
-  },
-  {
-    name: 'karaoke',
-    open: async (page) => {
-      await openReader(page);
-      await page.click('#menuBtn');
-      await page.click('#displayModeBtn'); // ページ形式 → カラオケ方式
-      await page.click('#menuCloseBtn');
       await page.waitForSelector('.unit.now', { timeout: 10000 });
       await page.waitForTimeout(200);
     },

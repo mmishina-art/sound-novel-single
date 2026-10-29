@@ -92,7 +92,7 @@ export function createReader(book: BookData): Reader {
      ある章では、時刻⇔文の対応を実時刻で決める。無い章では文字数比例の推定に
      落とす（推定は文間の無音や読み速度のばらつきで実位置から数秒ずれることが
      実測で分かっているため、あくまで予備）。
-     ハイライト・ページ追従・カラオケ表示は、すべてここの関数を通して位置を
+     ハイライト・ページ追従は、すべてここの関数を通して位置を
      決める（別々に推定すると、操作の組み合わせで互いにずれていくため） */
   const UNIT_TIMES: (number[] | null)[] = chapters.map((ch, i) => {
     const t = ch.unitTimes;
@@ -145,25 +145,6 @@ export function createReader(book: BookData): Reader {
     if (!total || !isFinite(audio.duration) || audio.duration <= 0) return null;
     return (charPos / total) * audio.duration;
   }
-  /** 時刻に対応する文字位置（表示方式の切替アンカー用）。文の内側は比例で近似する */
-  function charAtTimePos(chIdx: number, t: number): number {
-    const times = UNIT_TIMES[chIdx];
-    if (times) {
-      const ui = unitIndexAtTime(times, t);
-      const start = times[ui];
-      const end =
-        ui + 1 < times.length
-          ? times[ui + 1]
-          : isFinite(audio.duration) && audio.duration > 0
-            ? audio.duration
-            : start;
-      const frac = end > start ? Math.max(0, Math.min(1, (t - start) / (end - start))) : 0;
-      return UNIT_START_CHARS[chIdx][ui] + Math.floor(frac * (UNITS[chIdx][ui]?.len || 0));
-    }
-    const total = CH_CHARS[chIdx] || 0;
-    if (!total || !isFinite(audio.duration) || audio.duration <= 0) return 0;
-    return Math.floor((t / audio.duration) * total);
-  }
   /** 文の属するページ番号（ページ割りが済んでいる前提） */
   function pageOfUnit(chIdx: number, unitIdx: number): number {
     const pages = PAGES[chIdx];
@@ -201,35 +182,11 @@ export function createReader(book: BookData): Reader {
   let curPage = 0;
 
   let lastManualTurn = 0;
-  /* 表示方式：'page'＝ページ形式（従来）／'karaoke'＝カラオケ方式。
-     カラオケ方式は、ページ割りはページ形式と共通のまま、朗読の進行に合わせて
-     文が1つずつ姿を現す（まだ読まれていない文は完全に見えない）。
-     ページ割りが共通なので、切り替えても読んでいる位置（章・文・しおり）は失われない。
-     ※ v1.6.0 のセンテンス形式（2〜3文の塊）は v1.7.0 で廃止し、カラオケ方式に置き換えた */
-  let displayMode: 'page' | 'karaoke' = 'page';
-  function setDisplayMode(mode: 'page' | 'karaoke'): void {
-    if (mode === displayMode) return;
-    let anchor = currentAnchorChar();
-    if (isFinite(audio.duration) && audio.duration > 0) {
-      anchor = charAtTimePos(current, audio.currentTime);
-    }
-    displayMode = mode;
-    save('display', mode);
-    document.body.classList.toggle('mode-karaoke', mode === 'karaoke');
-    $('displayModeBtn').textContent = mode === 'page' ? 'ページ形式' : 'カラオケ方式';
-    if (!readerView.hidden && PAGES.length) {
-      curPage = pageForChar(PAGES[current], anchor);
-      if (mode === 'karaoke') karaokeIdx = unitIndexForChar(current, anchor);
-      renderPage(0);
-      refreshTocCurrent();
-      saveBookmark();
-    }
-  }
-  /* ---------- カラオケ方式の状態 ----------
-     karaokeIdx＝いま読まれている文の、章通しでの番号。表示中のページの各文は、
-     この番号より後なら隠し（.k-hide）、以前と本人は見せる */
-  let karaokeIdx = 0;
-  let pageUnitIdx: number[] = []; // 表示中ページの各文の、章通しでの番号（renderPage が埋める）
+  /* 表示はページ形式のみ。表示方式の切替は廃止した（v1.6.0 のセンテンス形式、
+     v1.7.0〜のカラオケ方式はいずれも廃止）。保存済みの方式指定（キー display）が
+     残っている端末でもページ形式で開くよう、起動時に読み捨てて消す（初期化側） */
+  /* 表示中ページの各文の、章通しでの番号（renderPage が埋める。強調の対応付けに使う） */
+  let pageUnitIdx: number[] = [];
   function unitIndexForChar(chIdx: number, charPos: number): number {
     const units = UNITS[chIdx];
     let pos = 0;
@@ -239,33 +196,6 @@ export function createReader(book: BookData): Reader {
     }
     return units.length - 1;
   }
-  function unitStartChar(chIdx: number, unitIdx: number): number {
-    const units = UNITS[chIdx];
-    let pos = 0;
-    for (let i = 0; i < unitIdx && i < units.length; i++) pos += units[i].len;
-    return pos;
-  }
-  /* 朗読位置から karaokeIdx を更新し、出現状態を画面へ反映する。
-     ただし、手動ステップのシークが保留中（デバウンスの間）は、音声位置から
-     逆算しない（連打した分が、まだ古い位置にいる音声に上書きされて消えてしまうため） */
-  let karaokeSeekPending = false;
-  function updateKaraoke(): void {
-    if (displayMode !== 'karaoke') return;
-    if (!karaokeSeekPending && isFinite(audio.duration) && audio.duration > 0) {
-      karaokeIdx = unitIndexAtPos(current, audio.currentTime);
-    }
-    applyKaraokeReveal();
-  }
-  function applyKaraokeReveal(): void {
-    if (displayMode !== 'karaoke') return;
-    const spans = pageContent.querySelectorAll('.unit');
-    spans.forEach((sp, i) => {
-      sp.classList.toggle('k-hide', (pageUnitIdx[i] ?? 0) > karaokeIdx);
-    });
-    // 「おわり」は、最後の文が読まれるまで隠す
-    const end = pageContent.querySelector('.story-end');
-    if (end) end.classList.toggle('k-hide', karaokeIdx < UNITS[current].length - 1);
-  }
   /* 朗読中の文の強調：現ページの各文の文字範囲（renderPage が埋める）と、
      ページ内の文番号→章通しの文番号の対応（同じく renderPage が埋める） */
   let pageUnitRanges: { start: number; len: number }[] = [];
@@ -274,15 +204,12 @@ export function createReader(book: BookData): Reader {
      再描画直後など）すべて外してから付け直す。位置は unitIndexAtPos（実時刻）で
      一意に決める。
      ページ主導シークの保留中（260msデバウンスの間）は音声位置がまだ旧ページを
-     指すので付け替えず、シーク確定（seeked）で正しい文に付ける。カラオケ方式の
-     手動ステップ保留中は、すでに歩を進めた karaokeIdx の文を正とする */
+     指すので付け替えず、シーク確定（seeked）で正しい文に付ける */
   function updateNowHighlight(): void {
     const spans = pageContent.querySelectorAll('.unit');
     let desired = -1;
     if (pageUnitRanges.length && isFinite(audio.duration) && audio.duration > 0) {
-      if (displayMode === 'karaoke' && karaokeSeekPending) {
-        desired = pageUnitIdx.indexOf(karaokeIdx);
-      } else if (pageSeekTimer === undefined) {
+      if (pageSeekTimer === undefined) {
         desired = pageUnitIdx.indexOf(unitIndexAtPos(current, audio.currentTime));
       }
     }
@@ -418,7 +345,6 @@ export function createReader(book: BookData): Reader {
     const h = pageContent.clientHeight;
     if (!w || !h) return false;
     ensureMeasurer(w, h);
-    // ページ割りは表示方式によらず共通（カラオケ方式も同じページ割りの上で文を出し分ける）
     PAGES = chapters.map((_, i) => paginateChapter(i));
     CUM_PAGES = [];
     TOTAL_PAGES = 0;
@@ -482,7 +408,6 @@ export function createReader(book: BookData): Reader {
     if (isFinalPage) html += END_MARK_HTML;
     setHtml(pageContent, html);
     updateNowHighlight();
-    applyKaraokeReveal(); // カラオケ方式では、まだ読まれていない文を隠す（ページ形式では無動作）
     $('pageFolio').textContent = '― ' + bookPageOf(current, curPage) + ' ―';
     $('pageChapterPos').textContent = curPage + 1 + ' / ' + pages.length;
     $('readerChapterLabel').textContent = ch.num + ' ' + ch.title;
@@ -527,62 +452,6 @@ export function createReader(book: BookData): Reader {
     }, 260);
   }
 
-  /* ---------- カラオケ方式の手動ステップ ----------
-     送る/戻すは文単位。表示は即時に切り替え、音声はページ主導のときと同じく
-     260ms デバウンスして最終位置へ1回だけシークする（連打で音が乱れないように）。
-     章の境目ではページ形式と同じ扉の連鎖に入る（次章の扉／前章の扉／第一章では前へ辿る連鎖） */
-  let karaokeSeekTimer: ReturnType<typeof setTimeout> | undefined;
-  function scheduleKaraokeSeek(): void {
-    karaokeSeekPending = true;
-    if (karaokeSeekTimer !== undefined) clearTimeout(karaokeSeekTimer);
-    karaokeSeekTimer = setTimeout(() => {
-      karaokeSeekTimer = undefined;
-      karaokeSeekPending = false;
-      const t = timeAtUnitStart(current, karaokeIdx);
-      if (t === null) return;
-      try {
-        audio.currentTime = t;
-      } catch {
-        // 位置指定できなくても続行する
-      }
-    }, 260);
-  }
-  function stepKaraoke(dir: number): void {
-    const units = UNITS[current];
-    if (dir > 0) {
-      if (karaokeIdx < units.length - 1) {
-        karaokeIdx++;
-      } else if (current < chapters.length - 1) {
-        showGate(current + 1, { autoplay: !audio.paused });
-        return;
-      } else {
-        openEndPage(false); // 最終章の最後の文の次は、独立した奥付ページ
-        return;
-      }
-    } else {
-      if (karaokeIdx > 0) {
-        karaokeIdx--;
-      } else if (current > 0) {
-        showGate(current - 1, { page: 'last', autoplay: !audio.paused });
-        return;
-      } else {
-        showGateBack(); // 第一章の先頭の文から前へ：扉→目次→表紙の連鎖
-        return;
-      }
-    }
-    // 文の属するページを表示し、出現状態と強調を合わせる
-    const pages = PAGES[current];
-    if (pages && pages.length) {
-      const p = pageForChar(pages, unitStartChar(current, karaokeIdx));
-      if (p !== curPage) curPage = p;
-    }
-    // シーク保留の印は描画より先に立てる（renderPage 内の強調付け替えが、
-    // まだ旧位置にいる音声ではなく、歩を進めた先の文を正とできるように）
-    scheduleKaraokeSeek();
-    renderPage(dir);
-    saveBookmark();
-  }
-
   /* animDir は描画アニメーションの向き（0 でアニメーションなし）。
      スワイプ確定時は指の動きに合わせた滑り込みをジェスチャ側で行うため、
      通常のキーフレーム（タップ用）を重ねないよう 0 を渡す */
@@ -592,10 +461,6 @@ export function createReader(book: BookData): Reader {
     if (endOpen) {
       // 奥付ページにいる間は、前へで本文の最終ページへ戻るだけ（先はない）
       if (dir < 0) closeEndPage();
-      return;
-    }
-    if (displayMode === 'karaoke') {
-      stepKaraoke(dir);
       return;
     }
     const pages = PAGES[current];
@@ -888,11 +753,6 @@ export function createReader(book: BookData): Reader {
     else if (opts.page === 'last') curPage = PAGES[current].length - 1;
     else if (typeof opts.page === 'number') curPage = opts.page;
     else curPage = 0;
-    if (displayMode === 'karaoke') {
-      // 出現の frontier は、入った位置（アンカー／ページ先頭）の文に合わせる。
-      // 時刻指定のシーク（再開など）がある場合は、seeked／timeupdate で音声位置に追いつく
-      karaokeIdx = unitIndexForChar(current, opts.anchor != null ? opts.anchor : PAGES[current][curPage].startChar);
-    }
     renderPage(0);
     refreshTocCurrent();
   }
@@ -1366,9 +1226,6 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
     });
-    $('displayModeBtn').addEventListener('click', () => {
-      setDisplayMode(displayMode === 'page' ? 'karaoke' : 'page');
-    });
     $<HTMLInputElement>('hlToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('hl-off', !checked);
@@ -1402,8 +1259,7 @@ export function createReader(book: BookData): Reader {
          画面の端ぎわ（持つ手の指が触れやすい左右12px）は誤爆防止の無反応帯にする。
        - スワイプ：ページが指に追随して滑り、閾値（幅の18%・最低48px）を超えたら
          めくり確定（旧ページが滑り出し、新ページが反対側から滑り込む）、
-         未満なら元の位置へ滑り戻る。カラオケ方式は文単位の送りなので、
-         ページ全体の滑り込みはせず、その場で送る。
+         未満なら元の位置へ滑り戻る。
        「どちらが次か」は DIR.nextSide が決める（右綴じ＝左、左綴じ＝右） */
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let swipedAt = 0;
@@ -1470,12 +1326,6 @@ export function createReader(book: BookData): Reader {
         setTimeout(() => {
           if (seq === dragSeq) dragReset();
         }, 200);
-        return;
-      }
-      if (displayMode === 'karaoke') {
-        // カラオケ方式は文単位の送りなので、ページ全体の滑り込みはせず即座に戻して送る
-        dragReset();
-        turnPage(towardNext ? 1 : -1);
         return;
       }
       // 確定：旧ページを指の向きへ滑り出してから差し替え、新ページを反対側から滑り込ませる
@@ -1547,13 +1397,11 @@ export function createReader(book: BookData): Reader {
       }
       syncPageToAudio(false);
       updateNowHighlight();
-      updateKaraoke();
     });
     audio.addEventListener('seeked', () => {
       syncPageToAudio(true);
       syncMediaPosition();
       updateNowHighlight();
-      updateKaraoke();
     });
     audio.addEventListener('loadedmetadata', () => {
       syncMediaPosition();
@@ -1601,10 +1449,9 @@ export function createReader(book: BookData): Reader {
   const hlOn = load<boolean>('hl', true);
   $<HTMLInputElement>('hlToggle').checked = hlOn;
   document.body.classList.toggle('hl-off', !hlOn);
-  // v1.6.0 で保存された 'sentence' は廃止した方式なので、ページ形式として読み直す
-  displayMode = load<string>('display', 'page') === 'karaoke' ? 'karaoke' : 'page';
-  document.body.classList.toggle('mode-karaoke', displayMode === 'karaoke');
-  $('displayModeBtn').textContent = displayMode === 'page' ? 'ページ形式' : 'カラオケ方式';
+  // 表示方式の切替は廃止した（ページ形式のみ）。旧設定で 'karaoke' や 'sentence' が
+  // 保存されていてもページ形式で開くよう、保存済みの方式指定はここで消しておく
+  remove('display');
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;
   $<HTMLInputElement>('wakeLockToggle').checked = wakeLockOn;
