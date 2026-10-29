@@ -93,7 +93,17 @@ export function createReader(book: BookData): Reader {
   // 扉でのスワイプ遷移先（showGate／showGateBack が表示のたびに差し替える）
   let gateNav: { next: () => void; prev: () => void } | null = null;
   // 「前へ辿る」モードの扉（showGateBack）は専用フラグを持たず、自動タイマーを
-  // 張らないことと、専用の onclick で通常の扉と区別する
+  // 張らないことと、gateNav の中身で通常の扉と区別する
+  /* 読書モード（v1.12.0）：'ear'＝耳で読む（朗読あり、従来どおり）／'eye'＝目で
+     読む（音なし：朗読・章題コール・BGM・めくり音をすべて止め、手動送りのみ、
+     ハイライト追随なし、再生ボタンを出さない）。表紙で選ぶ、その場かぎりの
+     選択で、設定には保存しない（表紙に戻れば選び直せる） */
+  let readMode: 'ear' | 'eye' = 'ear';
+  const isEye = (): boolean => readMode === 'eye';
+  /* めくり音は目で読むモードでは鳴らさない（呼び出し側はこのラッパーを使う） */
+  const turnSound = (): void => {
+    if (!isEye()) playPageTurn();
+  };
   let pendingSeek = 0;
   const UNITS: Unit[][] = chapters.map((ch) => buildUnits(ch));
   const CH_CHARS: number[] = UNITS.map((us) => us.reduce((a, u) => a + u.len, 0));
@@ -239,6 +249,11 @@ export function createReader(book: BookData): Reader {
      指すので付け替えず、シーク確定（seeked）で正しい文に付ける */
   function updateNowHighlight(): void {
     const spans = pageContent.querySelectorAll('.unit');
+    if (isEye()) {
+      // 目で読むモードでは文ハイライトを使わない
+      spans.forEach((sp) => sp.classList.remove('now'));
+      return;
+    }
     let desired = -1;
     if (pageUnitRanges.length && isFinite(audio.duration) && audio.duration > 0) {
       if (pageSeekTimer === undefined) {
@@ -277,7 +292,66 @@ export function createReader(book: BookData): Reader {
   /* ---------- メニュー（入口はボタンだけ） ----------
      操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置き、
      本文タップはページめくり専用。本文タップでメニューが開くことはない */
+  /* メニューの組み替え（v1.12.0）：開いた場所と読書モードで、行の所属と見出しを
+     変える。表紙では全項目を見せ、所属が分かる見出しを付ける（共通／「耳で読む」
+     の設定／「目で読む」の設定。両モードに効く「画面を暗くしない」は共通側）。
+     本文中はモード別：耳で読むは従来どおり（見出しは 音／表示）、目で読むでは
+     音のグループごと出さない（朗読中の文を強調も、音に連動するので出さない） */
+  function arrangeMenu(ctx: 'cover' | 'ear' | 'eye'): void {
+    const nav = $('menuGroupNav');
+    const aud = $('menuGroupAudio');
+    const dis = $('menuGroupDisplay');
+    const headNav = $('menuHeadNav');
+    const headAud = $('menuHeadAudio');
+    const headDis = $('menuHeadDisplay');
+    const rows = {
+      toc: $('tocFromMenuBtn'),
+      toCover: $('toCoverFromMenuBtn'),
+      speed: $('rowSpeed'),
+      pageSound: $('rowPageSound'),
+      bgm: $('rowBgm'),
+      bgPlay: $('rowBgPlay'),
+      font: $('rowFont'),
+      ruby: $('rowRuby'),
+      hl: $('rowHl'),
+      bg: $('rowBg'),
+      wake: $('rowWake'),
+    };
+    const put = (parent: HTMLElement, els: HTMLElement[]): void => {
+      els.forEach((el) => parent.appendChild(el));
+    };
+    if (ctx === 'cover') {
+      headNav.hidden = false;
+      headNav.textContent = '共通';
+      headAud.hidden = false;
+      headAud.textContent = '「耳で読む」の設定';
+      headDis.textContent = '「目で読む」の設定';
+      aud.hidden = false;
+      put(nav, [rows.toc, rows.toCover, rows.wake]);
+      put(aud, [rows.speed, rows.pageSound, rows.bgm, rows.bgPlay, rows.hl]);
+      put(dis, [rows.font, rows.ruby, rows.bg]);
+    } else if (ctx === 'ear') {
+      headNav.hidden = true;
+      headAud.hidden = false;
+      headAud.textContent = '音';
+      headDis.textContent = '表示';
+      aud.hidden = false;
+      put(nav, [rows.toc, rows.toCover]);
+      put(aud, [rows.speed, rows.pageSound, rows.bgm, rows.bgPlay]);
+      put(dis, [rows.font, rows.ruby, rows.hl, rows.bg, rows.wake]);
+    } else {
+      headNav.hidden = true;
+      headAud.hidden = true;
+      headDis.textContent = '表示';
+      aud.hidden = true;
+      put(nav, [rows.toc, rows.toCover]);
+      put(aud, [rows.speed, rows.pageSound, rows.bgm, rows.bgPlay, rows.hl]);
+      put(dis, [rows.font, rows.ruby, rows.bg, rows.wake]);
+    }
+  }
   function openMenu(): void {
+    // 表紙から開いたら全項目＋見出し、本文中はモード別の構成にする
+    arrangeMenu(coverView.hidden ? readMode : 'cover');
     // 「表紙に戻る」は読書画面から開いたときだけ出す（表紙で開いたメニューには不要）
     $('toCoverFromMenuBtn').hidden = readerView.hidden;
     $('menuModal').hidden = false;
@@ -533,6 +607,9 @@ export function createReader(book: BookData): Reader {
      手でめくった場合は上のページ→音声シークで位置が合うため、ここが手で開いた
      ページを勝手に引き戻すことはない。念のため、手動操作直後は干渉しない */
   function syncPageToAudio(force: boolean): void {
+    // 目で読むモードでは音声位置でページを決めない（位置の正は手動送りと
+    // 文字アンカー。音声は鳴っていないので、seeked 等に引きずられない）
+    if (isEye()) return;
     if (!PAGES.length || !isFinite(audio.duration) || audio.duration <= 0) return;
     const total = CH_CHARS[current] || 0;
     if (!total) return;
@@ -566,6 +643,13 @@ export function createReader(book: BookData): Reader {
       title: chapters[current].num + ' ' + chapters[current].title,
       savedAt: Date.now(),
     };
+    if (isEye() && PAGES.length) {
+      // 目で読むモードでは音声位置が無いので、ページ先頭の文字位置から
+      // 対応する朗読時刻を引いて保存する（耳で読むで再開しても同じ場所に来る。
+      // 位置の正は従来どおり文字アンカー）
+      const t = timeAtCharPos(current, currentAnchorChar());
+      if (t !== null) bm.time = t;
+    }
     if (PAGES.length) {
       bm.anchor = currentAnchorChar();
       bm.page = bookPageOf(current, curPage);
@@ -731,6 +815,11 @@ export function createReader(book: BookData): Reader {
         else showGateBack();
       },
     };
+    if (isEye()) {
+      // 目で読むモードの扉は無音で、自動でも進まない（後方扉と同じく、
+      // タップ／スワイプの操作でだけ本文へ入る）
+      return;
+    }
     if (opts.autoplay === false) {
       // 朗読を自動で始めない入り方（停止中にページ送りで章をまたいだ等）は、
       // コールも鳴らさず、従来どおり少し置いて本文へ進む
@@ -813,6 +902,8 @@ export function createReader(book: BookData): Reader {
     current = idx;
     enterStamp = Date.now();
     showView('reader');
+    // 目で読むモードでは再生ボタンを出さない（音の入口を画面に残さない）
+    $('playPauseBtn').hidden = isEye();
     // 操作ボタンはページ下の帯に常時あるため、開いた直後に特別な表示はしない
     audio.src = audioSrc(idx);
     audio.playbackRate = SPEEDS[speedIdx];
@@ -865,6 +956,7 @@ export function createReader(book: BookData): Reader {
     syncMediaState();
   }
   function playAudio(): void {
+    if (isEye()) return; // 目で読むモードでは、どの経路からも朗読を始めない
     // 停止中にめくって位置合わせが保留になっていたら、再生前にそのページへ合わせる
     if (pageSeekPending) applyPageSeek();
     audio.playbackRate = SPEEDS[speedIdx];
@@ -1073,7 +1165,7 @@ export function createReader(book: BookData): Reader {
       if (hiddenStoppedBgm) stopBgm();
     } else {
       if (hiddenPausedAudio) playAudio();
-      if (hiddenStoppedBgm && isBgmOn()) startBgm();
+      if (hiddenStoppedBgm && isBgmOn() && !isEye()) startBgm();
       hiddenPausedAudio = false;
       hiddenStoppedBgm = false;
       if (bgPlay) resumeBgmContext();
@@ -1209,13 +1301,30 @@ export function createReader(book: BookData): Reader {
 
   /* ---------- events ---------- */
   function bind(): void {
-    $('coverTap').addEventListener('click', () => showGate(0));
+    $('coverTap').addEventListener('click', () => {
+      readMode = 'ear'; // 表紙タップは従来どおり「耳で読む」で第1章から
+      showGate(0);
+    });
+    /* 読書モードの入口（表紙）：モードを決めてから本へ入る。しおりがあれば、
+       どちらの入口でも続きから再開する（位置は文字アンカーで保持されるので、
+       モードをまたいでも同じ場所に来る） */
+    const enterFromCover = (mode: 'ear' | 'eye'): void => {
+      readMode = mode;
+      if (mode === 'eye') stopBgm(); // 鳴っていた BGM も止めてから入る
+      if (loadBookmark()) resumeFromBookmark();
+      else showGate(0);
+    };
+    $('earModeBtn').addEventListener('click', () => enterFromCover('ear'));
+    $('eyeModeBtn').addEventListener('click', () => enterFromCover('eye'));
     /* メニュー（入口は読書画面の「メニュー」と表紙の「メニュー」の2か所、中身は1つ。
        目次・設定はこの中にある。再開だけは表紙のボタン） */
     $('menuBtn').addEventListener('click', openMenu);
     $('coverMenuBtn').addEventListener('click', openMenu);
     /* 再開は表紙のボタンから（メニューの中には入れない） */
-    $('resumeBtn').addEventListener('click', resumeFromBookmark);
+    $('resumeBtn').addEventListener('click', () => {
+      readMode = 'ear'; // 「しおりから再開」は従来どおり「耳で読む」
+      resumeFromBookmark();
+    });
     $('menuCloseBtn').addEventListener('click', closeMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
     /* ---------- ページ操作の共通ジェスチャー（本文・扉・目次で完全共通） ----------
@@ -1343,7 +1452,7 @@ export function createReader(book: BookData): Reader {
         const flick =
           dist >= SWIPE_FLICK_MIN_PX && Math.abs(vx) >= SWIPE_FLICK_VELOCITY && Math.sign(vx) === Math.sign(dx);
         const commit = !cancelled && (dist >= swipeCommitPx(w) || flick);
-        if (commit) playPageTurn(); // 確定した瞬間に1回だけ鳴らす
+        if (commit) turnSound(); // 確定した瞬間に1回だけ鳴らす
         if (reduceMotion.matches || !el) {
           reset();
           if (commit) o.onNav(dir);
@@ -1407,7 +1516,7 @@ export function createReader(book: BookData): Reader {
       if ((e.target as HTMLElement).closest('button')) return; // 章項目と「戻る」はボタン側の処理
       const dir = tapDirFor(tocView, e.clientX);
       if (!dir) return;
-      playPageTurn();
+      turnSound();
       tocTapNav(dir);
     });
     $('finalToCoverBtn').addEventListener('click', goCover);
@@ -1456,8 +1565,9 @@ export function createReader(book: BookData): Reader {
     $<HTMLInputElement>('bgmToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       // オフは即停止、オンは（この操作自体がジェスチャなので）すぐ鳴らし始める
+      // （目で読むモード中は、表紙メニューでオンにしても鳴らさない）
       setBgmOn(checked);
-      if (checked) startBgm();
+      if (checked && !isEye()) startBgm();
     });
     $<HTMLInputElement>('bgPlayToggle').addEventListener('change', (e) => {
       bgPlay = (e.target as HTMLInputElement).checked;
@@ -1470,9 +1580,10 @@ export function createReader(book: BookData): Reader {
     });
     document.addEventListener('visibilitychange', onVisibilityChange);
     /* BGM は最初のタップ以降に鳴らせる（ブラウザの自動再生の制約）。
-       表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く */
+       表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く
+       （目で読むモードでは鳴らさない） */
     document.addEventListener('pointerdown', () => {
-      if (isBgmOn()) startBgm();
+      if (isBgmOn() && !isEye()) startBgm();
     });
     /* 本文のページめくり（共通ジェスチャー）。役割は「進む／戻る」だけに統一し、
        メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
@@ -1493,7 +1604,7 @@ export function createReader(book: BookData): Reader {
       if ((e.target as HTMLElement).closest('button')) return;
       const dir = tapDirFor(pageWrap, e.clientX);
       if (!dir) return;
-      playPageTurn(); // タップめくりでも、確定した瞬間に1回鳴らす
+      turnSound(); // タップめくりでも、確定した瞬間に1回鳴らす
       turnPage(dir);
     });
     document.addEventListener('keydown', (e) => {
@@ -1522,7 +1633,7 @@ export function createReader(book: BookData): Reader {
       if ((e.target as HTMLElement).closest('button')) return;
       const dir = tapDirFor(gateView, e.clientX);
       if (!dir || !gateNav) return;
-      playPageTurn();
+      turnSound();
       if (dir > 0) gateNav.next();
       else gateNav.prev();
     });

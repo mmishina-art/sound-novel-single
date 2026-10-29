@@ -30,6 +30,15 @@
       <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
       <p id="coverHint" class="cover-hint" hidden>表紙をタップすると 第1章の朗読が始まります</p>
 
+      <!-- 読書モードの入口（v1.12.0）。「耳で読む」＝朗読つき（従来どおり）、
+           「目で読む」＝音なし（朗読・章題コール・BGM・めくり音なし、手動送りのみ）。
+           モードは本を開いている間だけの選択で、設定には保存しない。
+           しおりがあるときは、どちらの入口からでも続きから再開する -->
+      <div class="cover-modes">
+        <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small>朗読つき</small></button>
+        <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small>音なし</small></button>
+      </div>
+
       <!-- 表紙に出すのは、しおりがあるときだけの「再開」ボタンと、入口の「メニュー」だけ。
            再開は表紙に置く（メニューの中には入れない）。
            目次ページへの入口はメニューの「目次を開く」に一本化する（表紙に目次ボタンは置かない）。
@@ -115,28 +124,39 @@
           <button id="menuCloseBtn" class="btn btn-small">閉じる</button>
         </div>
 
+        <!-- メニューの中身は開いた場所と読書モードで組み替える（reader.ts の
+             arrangeMenu）：表紙では全項目を見出し付き（共通／「耳で読む」の設定／
+             「目で読む」の設定）で出し、本文中はモード別（目で読むでは音の項目を
+             出さない）。行要素は id で引いてグループ間を移すので、ここでの並びは
+             耳で読む（本文）の初期形としておく -->
         <div class="menu-section">
-          <button id="tocFromMenuBtn" class="btn menu-wide">目次を開く</button>
-          <button id="toCoverFromMenuBtn" class="btn menu-wide" hidden>表紙に戻る</button>
-          <div class="menu-row">
-            <span>再生速度</span>
-            <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
+          <h4 class="setting-group" id="menuHeadNav" hidden>共通</h4>
+          <div id="menuGroupNav">
+            <button id="tocFromMenuBtn" class="btn menu-wide">目次を開く</button>
+            <button id="toCoverFromMenuBtn" class="btn menu-wide" hidden>表紙に戻る</button>
           </div>
-          <!-- トグルは「音」「表示」で軽く括る（煩雑にならない範囲のグループ化） -->
-          <h4 class="setting-group">音</h4>
-          <label class="menu-row toggle-label"><span>ページめくり音</span><input type="checkbox" id="pageSoundToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
-          <h4 class="setting-group">表示</h4>
-          <!-- 方式の切替は廃止した（ページ形式のみ。旧カラオケは v1.10.2 で撤去） -->
-          <div class="menu-row">
-            <span>文字サイズ</span>
-            <button id="fontSizeBtn" class="btn" aria-label="文字サイズ">標準</button>
+          <h4 class="setting-group" id="menuHeadAudio">音</h4>
+          <div id="menuGroupAudio">
+            <div class="menu-row" id="rowSpeed">
+              <span>再生速度</span>
+              <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
+            </div>
+            <label class="menu-row toggle-label" id="rowPageSound"><span>ページめくり音</span><input type="checkbox" id="pageSoundToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowBgm"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowBgPlay"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
           </div>
-          <label class="menu-row toggle-label"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
-          <label class="menu-row toggle-label"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>
+          <h4 class="setting-group" id="menuHeadDisplay">表示</h4>
+          <div id="menuGroupDisplay">
+            <!-- 方式の切替は廃止した（ページ形式のみ。旧カラオケは v1.10.2 で撤去） -->
+            <div class="menu-row" id="rowFont">
+              <span>文字サイズ</span>
+              <button id="fontSizeBtn" class="btn" aria-label="文字サイズ">標準</button>
+            </div>
+            <label class="menu-row toggle-label" id="rowRuby"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowHl"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowBg"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowWake"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>
+          </div>
         </div>
 
         <div class="menu-section">

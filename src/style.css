@@ -258,11 +258,12 @@ button.link {
    角丸は小口側を大きく、綴じ側を小さくする */
 .book-cover {
   /* 縦横比は四六判（127mm × 188mm）と同じ 127:188。
-     幅の3つ目は高さの上限ガード：表紙の高さが 100dvh - 190px を超えない幅
-     （(100dvh - 190px) × 127/188 = 67.55dvh - 128px）で、入口のボタンまで
-     含めて画面内に収める（表紙の下に常時出すのは入口だけなので余裕がある） */
+     幅の3つ目は高さの上限ガード：表紙の高さが 100dvh - 258px を超えない幅
+     （(100dvh - 258px) × 127/188 = 67.55dvh - 174px）で、モード入口と
+     入口のボタンまで含めて画面内に収める（v1.12.0 でモード入口が増えた分、
+     190px から 258px に広げた） */
   position: relative; display: block;
-  width: min(88vw, 420px, calc(67.55dvh - 128px)); aspect-ratio: 127/188;
+  width: min(88vw, 420px, calc(67.55dvh - 174px)); aspect-ratio: 127/188;
   overflow: hidden; background: #10182b;
   container-type: inline-size;
 }
@@ -684,3 +685,8 @@ body.bound-left .toc-sheet {
 /* 表紙の「しおりから再開」：しおりがあるときだけ出す。表紙の静けさを壊さないよう、
    入口（メニュー）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
 .cover-resume { background: rgba(201,184,122,.13); border: 1px solid rgba(201,184,122,.45); color: var(--desk-text); border-radius: 999px; padding: .35em 1.4em; font-size: .85rem; letter-spacing: .14em; min-height: 44px; }
+/* 読書モードの入口（v1.12.0）：本の装丁に合わせ、藍の地に淡い金の罫で2枚の
+   小さなプレートを並べる。主表記「耳で読む／目で読む」の下に、違いを一言添える */
+.cover-modes { display: flex; gap: 12px; justify-content: center; margin-top: 4px; }
+.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 128px; min-height: 52px; justify-content: center; background: rgba(201,184,122,.07); border: 1px solid rgba(201,189,160,.45); color: var(--desk-text); border-radius: 4px; padding: .5em 1.2em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
+.cover-mode small { font-size: .68rem; letter-spacing: .1em; opacity: .75; }

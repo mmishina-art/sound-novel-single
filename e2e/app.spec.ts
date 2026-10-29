@@ -1471,3 +1471,135 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
     await expect(page.locator('#coverView')).toBeVisible();
   });
 });
+
+test.describe('読書モード（耳で読む／目で読む）', () => {
+  test('表紙に2つの入口があり、目で読むでは音が一切鳴らず再生ボタンも出ない', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await expect(page.locator('#earModeBtn')).toBeVisible();
+    await expect(page.locator('#eyeModeBtn')).toBeVisible();
+    // 音の発音フックと音声要素の再生を監視する
+    await page.evaluate(() => {
+      const w = window as unknown as { __sounds: number };
+      w.__sounds = 0;
+      document.addEventListener('app:sound', () => w.__sounds++);
+    });
+    await page.locator('#eyeModeBtn').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    // 扉は無音で自動でも進まない（少し待っても扉のまま）
+    await page.waitForTimeout(2500);
+    await expect(page.locator('#gateView')).toBeVisible();
+    await expect(page.locator('#readerView')).toBeHidden();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible();
+    // 再生ボタンは出ない。本文の見た目は通常どおり（ページが組まれている）
+    await expect(page.locator('#playPauseBtn')).toBeHidden();
+    await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+    const silent = await page.evaluate(() => {
+      const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const g = document.getElementById('gateAudio') as HTMLAudioElement;
+      return {
+        bodyPaused: a.paused,
+        gatePaused: g.paused,
+        sounds: (window as unknown as { __sounds: number }).__sounds,
+        nowCount: document.querySelectorAll('.unit.now').length,
+        bgm: document.body.dataset.bgm || 'off',
+      };
+    });
+    expect(silent.bodyPaused).toBe(true);
+    expect(silent.gatePaused).toBe(true);
+    expect(silent.sounds).toBe(0);
+    expect(silent.nowCount).toBe(0);
+    expect(silent.bgm).not.toBe('on');
+    // 手動でページを送っても、音は鳴らず、ハイライトも付かない
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+    const after = await page.evaluate(() => ({
+      sounds: (window as unknown as { __sounds: number }).__sounds,
+      nowCount: document.querySelectorAll('.unit.now').length,
+      bodyPaused: (document.getElementById('audioEl') as HTMLAudioElement).paused,
+    }));
+    expect(after.sounds).toBe(0);
+    expect(after.nowCount).toBe(0);
+    expect(after.bodyPaused).toBe(true);
+    // メニューはモード別：音の項目（BGM・めくり音・速度など）を出さない
+    await openMenuInReader(page);
+    await expect(page.locator('#bgmToggle')).toBeHidden();
+    await expect(page.locator('#pageSoundToggle')).toBeHidden();
+    await expect(page.locator('#bgPlayToggle')).toBeHidden();
+    await expect(page.locator('#speedBtn')).toBeHidden();
+    await expect(page.locator('#hlToggle')).toBeHidden();
+    await expect(page.locator('#fontSizeBtn')).toBeVisible();
+    await expect(page.locator('#rubyToggle')).toBeVisible();
+    await expect(page.locator('#wakeLockToggle')).toBeVisible();
+    await expect(page.locator('#tocFromMenuBtn')).toBeVisible();
+  });
+
+  test('耳で読むは従来どおり：再生ボタンが出て朗読が始まり、メニューに音の項目がある', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#earModeBtn').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible();
+    await expect(page.locator('#playPauseBtn')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => !(document.getElementById('audioEl') as HTMLAudioElement).paused), { timeout: 8000 })
+      .toBe(true);
+    await openMenuInReader(page);
+    await expect(page.locator('#bgmToggle')).toBeVisible();
+    await expect(page.locator('#pageSoundToggle')).toBeVisible();
+    await expect(page.locator('#speedBtn')).toBeVisible();
+    await expect(page.locator('#menuHeadAudio')).toHaveText('音');
+    await expect(page.locator('#menuHeadDisplay')).toHaveText('表示');
+  });
+
+  test('モードをまたいでも、しおりの位置（同じページ）から再開できる', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    // 耳で読むで入り、2ページ目まで進める
+    await page.locator('#earModeBtn').click();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+    const box = await page.locator('#pageWrap').boundingBox();
+    if (!box) throw new Error('pageWrap not found');
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+    // 表紙へ戻り、目で読むで入り直す → 同じページから
+    await backToCover(page);
+    await page.locator('#eyeModeBtn').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible();
+    await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+    await expect(page.locator('#playPauseBtn')).toBeHidden();
+    // さらに目で読むで3ページ目へ進め、耳で読むで入り直しても同じページ
+    const box2 = await page.locator('#pageWrap').boundingBox();
+    if (!box2) throw new Error('pageWrap not found');
+    await page.mouse.click(box2.x + box2.width * 0.2, box2.y + box2.height * 0.5);
+    await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
+    await backToCover(page);
+    await page.locator('#earModeBtn').click();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible();
+    await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
+  });
+
+  test('表紙のメニューは全項目を見出しで分けて出す', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await openMenuOnCover(page);
+    await expect(page.locator('#menuHeadNav')).toHaveText('共通');
+    await expect(page.locator('#menuHeadAudio')).toHaveText('「耳で読む」の設定');
+    await expect(page.locator('#menuHeadDisplay')).toHaveText('「目で読む」の設定');
+    // 表紙では音の項目も表示項目もすべて見える
+    await expect(page.locator('#bgmToggle')).toBeVisible();
+    await expect(page.locator('#pageSoundToggle')).toBeVisible();
+    await expect(page.locator('#speedBtn')).toBeVisible();
+    await expect(page.locator('#fontSizeBtn')).toBeVisible();
+    await expect(page.locator('#wakeLockToggle')).toBeVisible();
+    await expect(page.locator('#hlToggle')).toBeVisible();
+  });
+});
