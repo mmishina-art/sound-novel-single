@@ -10,7 +10,7 @@ const APP_ID = (JSON.parse(readFileSync(new URL('../package.json', import.meta.u
 async function openReader(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' }); // 本のデータが届いてから
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#pageFolio')).not.toHaveText('');
 }
@@ -60,21 +60,29 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
   await expect(page.locator('#coverMenuBtn')).toBeVisible(); // 入口は1つ
-  await expect(page.locator('#resumeBtn')).toBeHidden(); // しおりはまだない
+  await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンは廃止（モードボタンに一本化）
+  await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // しおりはまだない（補足は通常形）
+  await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // しおりの案内行は置かない（廃止）
   await expect(page.locator('#coverTocBtn')).toHaveCount(0); // 表紙に目次ボタンは置かない（メニューに一本化）
-  // 読み始めて表紙に戻ると、ヒントは消え、再開ボタンだけが出る
-  await page.locator('#coverTap').click();
+  // 読み始めて表紙に戻ると、ヒントは消え、モードボタンの補足が「つづきから」になる
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await backToCover(page);
   await expect(page.locator('#coverHint')).toBeHidden();
-  await expect(page.locator('#resumeBtn')).toBeVisible();
+  await expect(page.locator('#earModeSub')).toContainText('つづきから');
+  await expect(page.locator('#eyeModeSub')).toContainText('つづきから');
 });
 
-test('表紙タップで章扉が出て、本文へ進む', async ({ page }) => {
+test('表紙タップでは開かず、「耳で読む」から章扉が出て本文へ進む', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#coverTap').click();
+  // 表紙の絵をタップしても本は開かない（入り口はモードの2ボタンだけ）
+  await page.locator('.cover-tap').click();
+  await page.waitForTimeout(600);
+  await expect(page.locator('#gateView')).toBeHidden();
+  await expect(page.locator('#coverView')).toBeVisible();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   await expect(page.locator('#gateTitle')).toHaveText('雨の日の客');
@@ -86,7 +94,7 @@ test('表紙タップで章扉が出て、本文へ進む', async ({ page }) => 
 test('章扉では語り手名が「語り・」なしで、タイトルと同じ列に続けて表示される', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateNarrator')).toHaveText('柏木 遥'); // 「語り・柏木 遥」ではない
   // 縦書きでは「同じ列」＝ x の帯が重なり、「続く」＝ 題より下（y が大きい）に名前がある
@@ -111,7 +119,7 @@ test('章扉の要素（章番号・題・語り手）は、かたまりとし�
     expect(Math.abs(textCx - sheetCx)).toBeLessThanOrEqual(4);
   };
   // 短い題（第一章）
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible();
   await expectCentered();
   // 長い題（第七章）：目次ページから開く
@@ -158,7 +166,7 @@ test('ページめくりで章をまたぐときも、必ず章扉に止まる�
 test('章扉の枠と本文ページの枠の大きさ・位置が一致する', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible();
   const gate = await page.locator('.gate-sheet').boundingBox();
   await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
@@ -244,18 +252,17 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開は表紙のボタンから（メニューの中には入れない）
-  await expect(page.locator('#resumeBtn')).toBeVisible();
-  await expect(page.locator('#resumeBtn')).toContainText('第一章');
-  await page.locator('#resumeBtn').click();
+  // 再開もモードボタンから（補足文が「つづきから（第一章）」を示す。メニューには入れない）
+  await expect(page.locator('#earModeSub')).toContainText('つづきから（第一章）');
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
 });
 
-test('しおりがないときは表紙に再開ボタンが出ず、メニューにも再開の項目はない', async ({ page }) => {
+test('しおりがないときは補足文が通常形で、メニューにも再開の項目はない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#resumeBtn')).toBeHidden();
+  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
   await openMenuOnCover(page);
   await expect(page.locator('#resumeFromMenuBtn')).toHaveCount(0);
   await expect(page.locator('#menuModal #version-line')).toHaveCount(0); // バージョン表記はメニューではなく表紙にある
@@ -505,7 +512,7 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   // 再読み込みしても「大」が保たれる
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   expect(await fontPx()).toBeCloseTo(largePx, 0);
   // 標準へ戻すと元の大きさに戻る
@@ -676,7 +683,7 @@ test('スワイプでめくれる：大きく払うと進み、小さい払い�
 test('扉でもスワイプで遷移できる：左で後方へ（後方扉→目次）、右で本文へ', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   const box = await page.locator('#gateView').boundingBox();
@@ -777,7 +784,7 @@ test('本を開いた直後は、メニューが勝手に出ない', async ({ pa
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#menuModal')).toBeHidden(); // 起動直後
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await page.locator('#gateView').click({ position: { x: 60, y: 300 } }); // 扉を即タップして本文へ（実機の速い操作を再現）
   await expect(page.locator('#readerView')).toBeVisible();
   await expect(page.locator('#pageFolio')).not.toHaveText('');
@@ -803,7 +810,7 @@ test('BGMは最初のタップで流れ始め、設定でオン/オフが切り�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('body')).not.toHaveAttribute('data-bgm', 'on'); // まだ操作していないので鳴らない
-  await page.locator('#coverTap').click(); // 最初のタップで流れ始める
+  await page.locator('#earModeBtn').click(); // 最初のタップで流れ始める
   await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await openMenuInReader(page);
@@ -879,7 +886,7 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#resumeBtn')).toBeVisible(); // しおりが残っている（再開ボタンが出る）
+  await expect(page.locator('#earModeSub')).toContainText('つづきから'); // しおりが残っている（補足文が再開を示す）
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
@@ -1005,6 +1012,38 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await setHidden(false);
     expect((await calls()).at(-1)).toBe('play'); // 戻ったら再開
   });
+
+  test('バックグラウンド再生は朗読中だけ効く: 表紙と目で読むでは背面化で BGM が止まる', async ({ page }) => {
+    const setHidden = (hidden: boolean): Promise<void> =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+    const bgmOn = (): Promise<boolean> => page.evaluate(() => document.body.dataset.bgm === 'on');
+
+    // 表紙：BGM が鳴っていても（バックグラウンド再生は既定オン）、背面化で止まる
+    await page.goto('/');
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await page.locator('#coverMenuBtn').click(); // 最初のタップで BGM が流れ始める
+    await expect.poll(bgmOn).toBe(true);
+    await page.locator('#menuCloseBtn').click();
+    await setHidden(true);
+    await expect.poll(bgmOn).toBe(false); // 表紙ではバックグラウンド再生は効かない
+    await setHidden(false);
+    await expect.poll(bgmOn).toBe(true); // 前面に戻れば設定どおり再開する
+
+    // 目で読む：BGM は鳴るが、背面化で止まる
+    await page.locator('#eyeModeBtn').click();
+    await expect(page.locator('#gateView')).toBeVisible();
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerView')).toBeVisible();
+    await expect.poll(bgmOn).toBe(true);
+    await setHidden(true);
+    await expect.poll(bgmOn).toBe(false); // 目で読むではバックグラウンド再生は効かない
+    await setHidden(false);
+    await expect.poll(bgmOn).toBe(true);
+  });
 });
 
 test('進み具合ラインは縦書き（右綴じ）では右から左へ伸びる', async ({ page }) => {
@@ -1035,7 +1074,7 @@ test.describe('安全領域のある画面（iPhone Air 相当）', () => {
     await applySafeAreaInsets(page);
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
     const gate = await page.locator('.gate-sheet').boundingBox();
     if (!gate) throw new Error('gate box not found');
@@ -1134,7 +1173,7 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   expect(await wlHeld()).toBe(false); // 表紙では取らない
   expect(await wlState()).toBe('off');
 
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#pageFolio')).not.toHaveText('');
   await expect.poll(wlHeld).toBe(true); // 読書画面では取得する
@@ -1151,7 +1190,7 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   await page.locator('#wakeLockToggle').click();
   await expect(page.locator('#wakeLockToggle')).not.toBeChecked();
   await page.locator('#menuCloseBtn').click();
-  await page.locator('#coverTap').click();
+  await page.locator('#earModeBtn').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await page.waitForTimeout(600);
   expect(await wlHeld()).toBe(false);
@@ -1274,7 +1313,7 @@ test.describe('章題コール（扉の朗読）', () => {
   test('扉では章題コールが鳴り、読み終わってから本文が始まる', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#gateAudio')).toHaveAttribute('src', /ch1-title\.mp3$/);
     // コール（約5秒）の途中では、まだ本文へ進んでいない
@@ -1287,7 +1326,7 @@ test.describe('章題コール（扉の朗読）', () => {
   test('扉をタップするとコールを止めてすぐ本文へ進む', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
     await page.waitForTimeout(400);
     await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
@@ -1298,7 +1337,7 @@ test.describe('章題コール（扉の朗読）', () => {
     await page.route('**/book/audio/*-title.mp3', (route) => route.abort());
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 8000 });
   });
@@ -1396,7 +1435,7 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
   test('扉でも短いフリックで遷移できる（本文と同じ判定）', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
     // 確定量に届かない短い速い払いでも、フリックとして入章できる
     await swipeOn(page, '#gateView', 0.46, 0.54);
@@ -1417,7 +1456,7 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
     await swipeOn(page, '#tocView', 0.7, 0.25, 6);
     await expect(page.locator('#coverView')).toBeVisible();
     // もう一度チェーンで目次まで来て、今度は短いフリックでも表紙へ戻れる
-    await page.locator('#coverTap').click();
+    await page.locator('#earModeBtn').click();
     await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
     const box2 = await page.locator('#pageWrap').boundingBox();
@@ -1472,8 +1511,44 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
   });
 });
 
+test('扉と目次にも本文と同じアイコン（再生・家マーク）があり、目で読むでは再生だけ消える', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  const playing = (): Promise<boolean> =>
+    page.evaluate(() => !(document.getElementById('audioEl') as HTMLAudioElement).paused);
+  // 耳で読む：扉に両アイコンがあり、再生アイコンで入章して朗読が始まる
+  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gatePlayBtn')).toBeVisible();
+  await expect(page.locator('#gateMenuBtn')).toBeVisible();
+  await page.locator('#gatePlayBtn').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await expect.poll(playing, { timeout: 8000 }).toBe(true);
+  // 朗読を止めてから目次を開く。目次にも両アイコンがあり、家マークでメニューが開く
+  await page.locator('#playPauseBtn').click();
+  await expect.poll(playing).toBe(false);
+  await openMenuInReader(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await expect(page.locator('#tocPlayBtn')).toBeVisible();
+  await expect(page.locator('#tocMenuBtn')).toBeVisible();
+  await page.locator('#tocMenuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await page.locator('#menuCloseBtn').click();
+  // 目次の再生アイコンで、現在位置の章の朗読が再開する
+  await page.locator('#tocPlayBtn').click();
+  await expect(page.locator('#readerView')).toBeVisible();
+  await expect.poll(playing, { timeout: 8000 }).toBe(true);
+  // 目で読む：扉では再生アイコンだけが消え、家マークは残る
+  await backToCover(page);
+  await page.locator('#eyeModeBtn').click();
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#gatePlayBtn')).toBeHidden();
+  await expect(page.locator('#gateMenuBtn')).toBeVisible();
+});
+
 test.describe('読書モード（耳で読む／目で読む）', () => {
-  test('表紙に2つの入口があり、目で読むでは音が一切鳴らず再生ボタンも出ない', async ({ page }) => {
+  test('表紙に2つの入口があり、目で読むでは人の声だけが鳴らず再生ボタンも出ない（BGMとめくり音はある）', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
     await expect(page.locator('#earModeBtn')).toBeVisible();
@@ -1486,7 +1561,7 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     });
     await page.locator('#eyeModeBtn').click();
     await expect(page.locator('#gateView')).toBeVisible();
-    // 扉は無音で自動でも進まない（少し待っても扉のまま）
+    // 扉はコールなしで自動でも進まない（少し待っても扉のまま）
     await page.waitForTimeout(2500);
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#readerView')).toBeHidden();
@@ -1506,12 +1581,12 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
         bgm: document.body.dataset.bgm || 'off',
       };
     });
+    // 人の声（朗読・章題コール）は鳴らない。BGM は設定どおり鳴っている
     expect(silent.bodyPaused).toBe(true);
     expect(silent.gatePaused).toBe(true);
-    expect(silent.sounds).toBe(0);
     expect(silent.nowCount).toBe(0);
-    expect(silent.bgm).not.toBe('on');
-    // 手動でページを送っても、音は鳴らず、ハイライトも付かない
+    expect(silent.bgm).toBe('on');
+    // 手動でページを送ると、めくり音は鳴る（朗読は始まらず、ハイライトも付かない）
     const box = await page.locator('#pageWrap').boundingBox();
     if (!box) throw new Error('pageWrap not found');
     await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
@@ -1521,13 +1596,13 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
       nowCount: document.querySelectorAll('.unit.now').length,
       bodyPaused: (document.getElementById('audioEl') as HTMLAudioElement).paused,
     }));
-    expect(after.sounds).toBe(0);
+    expect(after.sounds).toBeGreaterThan(silent.sounds);
     expect(after.nowCount).toBe(0);
     expect(after.bodyPaused).toBe(true);
-    // メニューはモード別：音の項目（BGM・めくり音・速度など）を出さない
+    // メニューはモード別：BGM とめくり音は出し、朗読に紐づく項目は出さない
     await openMenuInReader(page);
-    await expect(page.locator('#bgmToggle')).toBeHidden();
-    await expect(page.locator('#pageSoundToggle')).toBeHidden();
+    await expect(page.locator('#bgmToggle')).toBeVisible();
+    await expect(page.locator('#pageSoundToggle')).toBeVisible();
     await expect(page.locator('#bgPlayToggle')).toBeHidden();
     await expect(page.locator('#speedBtn')).toBeHidden();
     await expect(page.locator('#hlToggle')).toBeHidden();
@@ -1601,5 +1676,12 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#fontSizeBtn')).toBeVisible();
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#hlToggle')).toBeVisible();
+    // 分類（v1.12.2）：BGM とめくり音は共通へ、再生速度は「耳で読む」の設定に残る
+    const grouping = await page.evaluate(() => ({
+      bgmInNav: !!document.querySelector('#menuGroupNav #rowBgm'),
+      soundInNav: !!document.querySelector('#menuGroupNav #rowPageSound'),
+      speedInAud: !!document.querySelector('#menuGroupAudio #rowSpeed'),
+    }));
+    expect(grouping).toEqual({ bgmInNav: true, soundInNav: true, speedInAud: true });
   });
 });

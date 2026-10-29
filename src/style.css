@@ -580,6 +580,12 @@ body.bound-left .page-footer { flex-direction: row-reverse; }
 }
 .page-icon-btn svg { width: 19px; height: 19px; display: block; }
 .page-icon-btn:active { background: rgba(120, 100, 55, .10); transform: scale(.96); }
+/* 扉・目次の下の帯（v1.12.2）：本文の .page-footer と同じ家具・同じ位置づけ。
+   シート（position: relative）の下端に、ノンブルの帯と同じ高さで置く。
+   目次シートは縦書きなので、帯だけ横書きに戻す */
+.sheet-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--folio-band, 44px); z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; pointer-events: none; writing-mode: horizontal-tb; }
+.sheet-footer .page-icon-btn { pointer-events: auto; }
+body.bound-left .sheet-footer { flex-direction: row-reverse; }
 /* ページ送りの合図（常設の矢印）は置かない。送りはタップ（左右の半分）／スワイプだけ、
    操作ボタンは下の帯の両端に常時置く */
 /* スワイプで指に追随している間は、トランジションを切り、文字選択も止める */
@@ -659,11 +665,12 @@ body.bound-left .toc-sheet {
 .toc-item .toc-title { font-size: 1.08rem; margin-inline-start: .55em; }
 .toc-item.current { background: rgba(160, 128, 60, .12); }
 /* 目次が複数ページに分かれたときのページ番号（右下に控えめに） */
-.toc-pager { position: absolute; bottom: 16px; right: 18px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; font-size: .8rem; letter-spacing: .18em; color: #8a7c5f; }
+.toc-pager { position: absolute; bottom: 54px; right: 18px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; font-size: .8rem; letter-spacing: .18em; color: #8a7c5f; }
 /* 目次ページ割りの計測用（画面外に隠す。本文の .page-content.measurer と同じ流儀） */
 .toc-measurer { position: fixed; left: 0; top: 0; transform: translateX(-110%); visibility: hidden; pointer-events: none; z-index: -1; writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
 .toc-measurer .toc-inner { height: 100%; }
-.toc-back { position: absolute; bottom: 14px; left: 14px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; background: rgba(255,253,246,.85); border: 1px solid #d8cdb2; color: #6a5c33; border-radius: 999px; padding: 6px 16px; font-size: .85rem; cursor: pointer; }
+/* 戻るは下の帯（共通の家具、v1.12.2）の上へ逃がす */
+.toc-back { position: absolute; bottom: 52px; left: 14px; writing-mode: horizontal-tb; -webkit-writing-mode: horizontal-tb; background: rgba(255,253,246,.85); border: 1px solid #d8cdb2; color: #6a5c33; border-radius: 999px; padding: 6px 16px; font-size: .85rem; cursor: pointer; }
 
 /* ============ 奥付ページ（「おわり」の次の1ページ。紙の体裁は本文とそろえる） ============ */
 
@@ -672,21 +679,37 @@ body.bound-left .toc-sheet {
 .setting-group { font-size: .75rem; letter-spacing: .25em; color: #8a7c5f; margin: 12px 2px 2px; font-weight: 600; }
 
 /* メニューモーダル：機能の入口をここに集約する */
-.menu-panel .menu-section { margin-top: 16px; }
-.menu-panel .menu-section h4 { margin: 0 0 6px; font-size: .92rem; color: #6a6252; letter-spacing: .08em; }
-.menu-wide { width: 100%; margin-bottom: 6px; }
-.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 4px 2px; font-size: .95rem; }
+.menu-panel .menu-section { margin-top: 13px; }
+/* スクロールの示唆（v1.12.2）：パネル下端を穏やかにフェードさせ、「下に続く」
+   ことが分かるようにする（最下部の見出しだけが切れて見える状態を避ける）。
+   あわせて末尾に余白を持たせ、最後の行まで読み切れるようにする */
+.menu-panel { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); padding-bottom: 26px; }
+/* メニューの見出し（v1.12.2 で整理）：項目行と強さを分け、本の配色（金の茶系）の
+   小さなラベル＋細い罫線で区切る */
+.menu-panel .menu-section h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: .78rem; font-weight: 600; color: #8a6d2f; letter-spacing: .22em; }
+.menu-panel .menu-section h4::after { content: ''; flex: 1; border-top: 1px solid rgba(138, 109, 47, .35); }
+/* 移動の行（目次を開く／表紙に戻る）は、他の行と同じ体裁に揃える：
+   ラベル＋右端に進む印。大きなピルボタンにはしない */
+.menu-nav-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; padding: 3px 2px; background: none; border: none; border-bottom: 1px solid rgba(101, 84, 52, .14); font: inherit; font-size: .95rem; color: var(--text); cursor: pointer; text-align: start; }
+.menu-nav-row::after { content: '›'; color: #8a6d2f; font-size: 1.15rem; line-height: 1; }
+.menu-nav-row:active { background: rgba(163, 130, 62, .08); }
+/* 項目行は薄い区切り線で揃え、行間を詰める（間延びさせない） */
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 3px 2px; font-size: .95rem; border-bottom: 1px solid rgba(101, 84, 52, .14); }
 .menu-row.toggle-label { font-size: .95rem; }
-.menu-row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--navy); }
+/* チェックは iOS 標準の青に頼らず、本の配色で描く（v1.12.2）：オン＝藍で
+   塗って生成りの印、オフ＝輪郭だけ。色の意味は全行で一貫させる */
+.menu-row input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 22px; height: 22px; margin: 0; border-radius: 6px; border: 1.5px solid rgba(106, 92, 51, .55); background: transparent; cursor: pointer; }
+.menu-row input[type="checkbox"]:checked { background-color: var(--indigo2); border-color: var(--indigo2); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 13.5 10 18 19 7' fill='none' stroke='%23f3ecd9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-size: 15px; background-position: center; background-repeat: no-repeat; }
+.menu-row input[type="checkbox"]:focus-visible { outline: 2px solid rgba(138, 109, 47, .6); outline-offset: 2px; }
 .menu-panel .link { margin: 10px 0 0; color: var(--navy); }
 
 /* 表紙の「設定」入口：表紙そのものを中心にするため、目立たない小さな文字ボタンにする */
 .cover-settings { background: transparent; border: 1px solid rgba(201,189,160,.4); color: var(--desk-text); border-radius: 999px; padding: .3em 1.3em; font-size: .82rem; letter-spacing: .18em; opacity: .8; margin-top: 2px; }
 /* 表紙の「しおりから再開」：しおりがあるときだけ出す。表紙の静けさを壊さないよう、
    入口（メニュー）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
-.cover-resume { background: rgba(201,184,122,.13); border: 1px solid rgba(201,184,122,.45); color: var(--desk-text); border-radius: 999px; padding: .35em 1.4em; font-size: .85rem; letter-spacing: .14em; min-height: 44px; }
+/* （「しおりから再開」ボタンは v1.12.2 で廃止し、モードの2ボタンに一本化した） */
 /* 読書モードの入口（v1.12.0）：本の装丁に合わせ、藍の地に淡い金の罫で2枚の
    小さなプレートを並べる。主表記「耳で読む／目で読む」の下に、違いを一言添える */
-.cover-modes { display: flex; gap: 12px; justify-content: center; margin-top: 4px; }
-.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 128px; min-height: 52px; justify-content: center; background: rgba(201,184,122,.07); border: 1px solid rgba(201,189,160,.45); color: var(--desk-text); border-radius: 4px; padding: .5em 1.2em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
-.cover-mode small { font-size: .68rem; letter-spacing: .1em; opacity: .75; }
+.cover-modes { display: flex; gap: 12px; justify-content: center; margin-top: 4px; padding: 0 6px; }
+.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; max-width: 196px; min-width: 0; min-height: 52px; justify-content: center; background: rgba(201,184,122,.07); border: 1px solid rgba(201,189,160,.45); color: var(--desk-text); border-radius: 4px; padding: .5em .5em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
+.cover-mode small { font-size: .68rem; letter-spacing: .06em; opacity: .75; white-space: nowrap; }

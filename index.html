@@ -20,31 +20,32 @@
   <body>
     <!-- ============ COVER VIEW ============ -->
     <section id="coverView" class="view view-cover">
-      <button id="coverTap" class="cover-tap" aria-label="表紙をタップして第1章から読む">
+      <!-- 表紙の絵は表示だけ（タップでは開かない。入り口は下のモードボタンだけ：
+           v1.12.2 で表紙タップでの開始を廃止） -->
+      <div class="cover-tap">
         <span class="book-cover">
           <img src="book/cover.svg" alt="空の郵便が届くまで — 水瀬 葵" class="cover-img" />
           <span class="cover-colophon">サウンド単行本</span>
           <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
         </span>
-      </button>
+      </div>
       <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
-      <p id="coverHint" class="cover-hint" hidden>表紙をタップすると 第1章の朗読が始まります</p>
+      <p id="coverHint" class="cover-hint" hidden>「耳で読む」か「目で読む」を選んで開いてください</p>
 
       <!-- 読書モードの入口（v1.12.0）。「耳で読む」＝朗読つき（従来どおり）、
-           「目で読む」＝音なし（朗読・章題コール・BGM・めくり音なし、手動送りのみ）。
-           モードは本を開いている間だけの選択で、設定には保存しない。
-           しおりがあるときは、どちらの入口からでも続きから再開する -->
+           「目で読む」＝朗読なし（人の声だけを止める。BGM・めくり音は鳴る：
+           v1.12.2 で仕様変更）。モードは本を開いている間だけの選択で、設定には
+           保存しない。しおりがあるときは、どちらの入口からでも続きから再開し、
+           補足文（small）が「つづきから（第N章）」に変わる（v1.12.2 で入り口を
+           この2ボタンに一本化し、「しおりから再開」ボタンは廃止） -->
       <div class="cover-modes">
-        <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small>朗読つき</small></button>
-        <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small>音なし</small></button>
+        <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small id="earModeSub">朗読つき</small></button>
+        <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small id="eyeModeSub">朗読なし</small></button>
       </div>
 
-      <!-- 表紙に出すのは、しおりがあるときだけの「再開」ボタンと、入口の「メニュー」だけ。
-           再開は表紙に置く（メニューの中には入れない）。
-           目次ページへの入口はメニューの「目次を開く」に一本化する（表紙に目次ボタンは置かない）。
-           しおりの案内行（章／ページ数）は再開ボタンと情報が重なるので置かない -->
+      <!-- 表紙に出す入口は、モードの2ボタンと「メニュー」だけ。
+           目次ページへの入口はメニューの「目次を開く」に一本化する（表紙に目次ボタンは置かない） -->
       <div class="cover-entry">
-        <button id="resumeBtn" type="button" class="cover-resume" hidden>しおりから再開</button>
         <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
       </div>
       <!-- バージョン表記は表紙画面の下部中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
@@ -60,6 +61,12 @@
           <h2 class="gate-title"><span id="gateTitle"></span><span id="gateNarrator" class="gate-narrator"></span></h2>
         </div>
         <p id="gateHint" class="gate-hint">タップで本文へ</p>
+        <!-- 下の帯は本文と共通の家具（v1.12.2）：左下＝再生（入章して朗読開始）、
+             右下＝家マーク（メニュー）。位置・トーン・大きさは本文と同一 -->
+        <div class="sheet-footer">
+          <button id="gatePlayBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+          <button id="gateMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+        </div>
       </div>
     </section>
 
@@ -72,6 +79,12 @@
         </div>
         <div id="tocPager" class="toc-pager" hidden></div>
         <button id="tocBackBtn" type="button" class="toc-back">戻る</button>
+        <!-- 下の帯は本文と共通の家具（v1.12.2）：左下＝再生（現在位置の章から
+             朗読開始）、右下＝家マーク（メニュー）。位置・トーン・大きさは本文と同一 -->
+        <div class="sheet-footer">
+          <button id="tocPlayBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+          <button id="tocMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+        </div>
       </div>
     </section>
 
@@ -126,14 +139,14 @@
 
         <!-- メニューの中身は開いた場所と読書モードで組み替える（reader.ts の
              arrangeMenu）：表紙では全項目を見出し付き（共通／「耳で読む」の設定／
-             「目で読む」の設定）で出し、本文中はモード別（目で読むでは音の項目を
-             出さない）。行要素は id で引いてグループ間を移すので、ここでの並びは
-             耳で読む（本文）の初期形としておく -->
+             「目で読む」の設定）で出し、本文中はモード別（目で読むでは朗読に
+             紐づく項目を出さない）。行要素は id で引いてグループ間を移すので、
+             ここでの並びは耳で読む（本文）の初期形としておく -->
         <div class="menu-section">
           <h4 class="setting-group" id="menuHeadNav" hidden>共通</h4>
           <div id="menuGroupNav">
-            <button id="tocFromMenuBtn" class="btn menu-wide">目次を開く</button>
-            <button id="toCoverFromMenuBtn" class="btn menu-wide" hidden>表紙に戻る</button>
+            <button id="tocFromMenuBtn" class="menu-nav-row">目次を開く</button>
+            <button id="toCoverFromMenuBtn" class="menu-nav-row" hidden>表紙に戻る</button>
           </div>
           <h4 class="setting-group" id="menuHeadAudio">音</h4>
           <div id="menuGroupAudio">
@@ -160,7 +173,7 @@
         </div>
 
         <div class="menu-section">
-          <h4>設定</h4>
+          <h4 class="setting-group">設定</h4>
           <!-- 記録のバックアップ（ファイルへの持ち出し）は、このアプリには置かない
                （納品される単行本には不要というユーザー判断。保存自体は localStorage に残る） -->
           <button id="install-open" type="button" class="link">📲 アプリとしてインストールする方法</button>

@@ -24,15 +24,16 @@ const openToc = async (page) => {
 };
 const openReader = async (page) => {
   await waitBook(page);
-  await page.click('#coverTap');
-  // 章扉は約1.8秒で自動で本文へ進む
+  await page.click('#earModeBtn');
+  // 章扉は章題コールのあと自動で本文へ進む
   await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
   await page.waitForTimeout(400);
 };
 const SCREENS = [
   { name: 'cover' },
   {
-    // しおりがあるときの表紙（再開ボタンが出る状態）。しおりを置いて読み込み直す
+    // しおりがあるときの表紙（モードボタンの補足が「つづきから」になる状態）。
+    // しおりを置いて読み込み直す
     name: 'cover-resume',
     open: async (page) => {
       await page.evaluate(() => {
@@ -42,11 +43,11 @@ const SCREENS = [
       await page.reload();
       await page.waitForFunction(() => globalThis.__appStarted === true);
       await waitBook(page);
-      await page.waitForSelector('#resumeBtn:not([hidden])');
+      await page.waitForFunction(() => globalThis.document.getElementById('earModeSub')?.textContent?.includes('つづきから'));
     },
   },
   { name: 'toc-page', open: openToc },
-  { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#coverTap'); } },
+  { name: 'gate', open: async (page) => { await waitBook(page); await page.click('#earModeBtn'); } },
   {
     name: 'gate2',
     open: async (page) => {
