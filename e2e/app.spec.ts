@@ -654,6 +654,40 @@ test('スワイプでめくれる：大きく払うと進み、小さい払い�
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
 });
 
+test('画面は上下に引っ張れない：ドキュメントがスクロールしない', async ({ page }) => {
+  // 表紙で確認：body が固定され、ドキュメントがビューポートより大きくならない
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  const cover = await page.evaluate(() => ({
+    position: getComputedStyle(document.body).position,
+    scrollHeight: document.documentElement.scrollHeight,
+    innerHeight: window.innerHeight,
+  }));
+  expect(cover.position).toBe('fixed');
+  expect(cover.scrollHeight).toBeLessThanOrEqual(cover.innerHeight);
+
+  // 読書画面でも同じこと。縦方向にドラッグ（引っ張り）しても画面は動かない
+  await openReader(page);
+  const reader = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    innerHeight: window.innerHeight,
+  }));
+  expect(reader.scrollHeight).toBeLessThanOrEqual(reader.innerHeight);
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  const cx = box.x + box.width * 0.5;
+  await page.mouse.move(cx, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(cx, box.y + box.height * 0.75, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.wheel(0, 800);
+  await page.evaluate(() => window.scrollTo(0, 120));
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // 引っ張りでページがめくれたり、メニューが開いたりもしない（縦の動きはめくりの対象外）
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await expect(page.locator('#menuModal')).toBeHidden();
+});
+
 test('本を開いた直後は、メニューが勝手に出ない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
