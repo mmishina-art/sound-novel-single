@@ -295,7 +295,9 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   await expect(page.locator('#endPage')).toBeVisible();
   await expect(page.locator('.end-colophon')).toContainText('水瀬 葵');
   await expect(page.locator('.end-colophon')).toContainText('サウンド単行本');
-  await expect(page.locator('.end-colophon')).toContainText('Lily');
+  await expect(page.locator('.end-colophon')).toContainText('Leda');
+  await expect(page.locator('.end-colophon')).toContainText('Charon');
+  await expect(page.locator('.end-colophon')).toContainText('Gemini 3.8 Flash');
   // 奥付は枠の中に完全に収まる（はみ出し・見切れがない）
   const endBox = await page.locator('#endPage').boundingBox();
   const colophonBox = await page.locator('.end-colophon').boundingBox();
