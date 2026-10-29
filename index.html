@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-CFvlXnKy.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D2Md_Hs2.css">
+    <script type="module" crossorigin src="./assets/index-D6ngQ7N7.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CcJOKJsB.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -78,12 +78,13 @@
           <h2 id="tocHeading" class="toc-heading">目次</h2>
           <ul id="tocList" class="toc-list"></ul>
         </div>
-        <div id="tocPager" class="toc-pager" hidden></div>
-        <button id="tocBackBtn" type="button" class="toc-back">戻る</button>
-        <!-- 下の帯は本文と共通の家具（v1.12.2）：左下＝再生（現在位置の章から
-             朗読開始）、右下＝家マーク（メニュー）。位置・トーン・大きさは本文と同一 -->
+        <!-- 下の帯は本文と完全に共通の家具（v1.12.4 で体裁を統一）：左下＝再生
+             （現在位置の章から朗読開始）、中央＝ノンブル、右下＝家マーク
+             （メニュー）。「戻る」ピルは廃止し、開いた元への帰りは後方操作
+             （先頭ページでの前へ）に統合した -->
         <div class="sheet-footer">
           <button id="tocPlayBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+          <span id="tocPager" class="folio" hidden></span>
           <button id="tocMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
         </div>
       </div>
@@ -103,7 +104,15 @@
           <article id="pageContent" class="page-content" aria-label="本文"></article>
           <!-- 下の帯：ノンブルを中央に、操作ボタンは両端に（ボタン上のタップはめくりに使わない） -->
           <div class="page-footer">
-            <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+            <!-- 文単位の送り（v1.12.4）：耳で読むときだけ、再生の並びに
+                 [前の文][再生/停止][次の文] を薄いアイコンで置く（本文専用。
+                 扉・目次には付けない）。図柄はメディア標準のスキップ型
+                 （三角＋棒）で、向きの迷いをなくす -->
+            <div class="sent-group">
+              <button id="prevSentBtn" type="button" class="page-icon-btn" aria-label="前の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h2v13h-2z" fill="currentColor" /><path d="M18.5 5.5v13L8 12z" fill="currentColor" /></svg></button>
+              <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+              <button id="nextSentBtn" type="button" class="page-icon-btn" aria-label="次の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5v13L16 12z" fill="currentColor" /><path d="M17.5 5.5h2v13h-2z" fill="currentColor" /></svg></button>
+            </div>
             <span id="pageFolio" class="folio"></span>
             <button id="menuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
           </div>
@@ -116,7 +125,15 @@
         <div id="endPage" class="end-page" hidden>
           <div class="end-foot">
             <p class="end-colophon">『空の郵便が届くまで』　著者：水瀬 葵<br />朗読：AI音声（女性パート「Leda」・男性パート「Charon」／Gemini 3.8 Flash）／音楽：アプリ内で生成・再生される自作曲／形式：サウンド単行本／2026年10月 電子版</p>
-            <button id="finalToCoverBtn" type="button" class="final-cover-link">表紙に戻る</button>
+          </div>
+          <!-- 奥付の帯（v1.12.4 で仕様変更）：他のページと共通の帯を付け、
+               右下＝家マークのみ出す。再生は朗読対象が無いので出さない
+               （要素は置いて右下の位置を固定し、常時 hidden のまま）。
+               「表紙に戻る」文字リンクは廃止し、表紙へは前方向のスワイプ／
+               タップと、家マーク→メニューから行く -->
+          <div class="sheet-footer">
+            <button id="endPlayBtn" type="button" class="page-icon-btn" aria-label="再生" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
+            <button id="endMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
           </div>
         </div>
       </div>
