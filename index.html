@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-CbNgxKjX.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BFTWaGHu.css">
+    <script type="module" crossorigin src="./assets/index-BakASy5a.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-YUmGeoQa.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -70,21 +70,21 @@
 
     <!-- ============ READER VIEW ============ -->
     <!-- 操作はページの備品として常時置く：下の帯に再生／停止とメニュー、上の帯（柱）に
-         章題と章内位置。本文タップはページめくり（進む／戻る）だけに使い、メニューは
+         章題だけ。本文タップはページめくり（進む／戻る）だけに使い、メニューは
          ボタンからしか開かない。常時見えるのは他に、画面下端の極細の進み具合ラインだけ -->
     <section id="readerView" class="view view-reader" hidden>
       <div id="pageWrap" class="page-wrap">
         <div id="pageEl" class="page">
           <!-- 章背景のアニメーション層（線画の上に小さな動きだけを重ねる。reader.ts が章ごとに中身を作る） -->
           <div id="pageAnim" class="page-anim" aria-hidden="true"></div>
-          <!-- 柱：章題と章内位置（本の備品として常時表示。操作ボタンは置かない） -->
-          <div class="page-head"><span id="readerChapterLabel" class="page-head-title"></span><span id="pageChapterPos" class="page-head-pos"></span></div>
+          <!-- 柱：章題だけ（本の備品として常時表示。操作ボタンは置かない） -->
+          <div class="page-head"><span id="readerChapterLabel" class="page-head-title"></span></div>
           <article id="pageContent" class="page-content" aria-label="本文"></article>
           <!-- 下の帯：ノンブルを中央に、操作ボタンは両端に（ボタン上のタップはめくりに使わない） -->
           <div class="page-footer">
-            <button id="playPauseBtn" type="button" class="btn btn-primary btn-play" aria-label="再生・停止">▶ 再生</button>
+            <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg></button>
             <span id="pageFolio" class="folio"></span>
-            <button id="menuBtn" type="button" class="btn btn-small page-menu-btn">メニュー</button>
+            <button id="menuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
           </div>
           <p id="audioError" class="audio-error" hidden></p>
         </div>
@@ -126,6 +126,7 @@
           </div>
           <!-- トグルは「音」「表示」で軽く括る（煩雑にならない範囲のグループ化） -->
           <h4 class="setting-group">音</h4>
+          <label class="menu-row toggle-label"><span>ページめくり音</span><input type="checkbox" id="pageSoundToggle" checked /></label>
           <label class="menu-row toggle-label"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
           <label class="menu-row toggle-label"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
           <h4 class="setting-group">表示</h4>
