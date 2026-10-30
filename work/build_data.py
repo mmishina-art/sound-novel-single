@@ -87,6 +87,26 @@ for idx, ch in enumerate(chapters, 1):
     ch['spokenChars'] = len(ch['spoken'].replace('\n', ''))
     total += ch['chars']
 
+# 音声の実容量（バイト）：初回ダウンロード案内（アプリが総容量を表示する）の
+# 材料。配信コピー public/book/audio の実ファイルを測る。音声がまだ無い章は
+# 項目ごと省く（アプリ側は「全章そろっているときだけ総容量を出す」前提）。
+_audio_dir = os.path.join(ROOT, 'public', 'book', 'audio')
+_total_audio = 0
+_audio_complete = True
+for ch in chapters:
+    sizes = []
+    for name in (f"{ch['id']}.mp3", f"{ch['id']}-title.mp3"):
+        p = os.path.join(_audio_dir, name)
+        if not os.path.exists(p):
+            sizes = None
+            break
+        sizes.append(os.path.getsize(p))
+    if sizes is None:
+        _audio_complete = False
+    else:
+        ch['audioBytes'] = sum(sizes)
+        _total_audio += ch['audioBytes']
+
 # unitTimes（文ごとの実開始時刻）は音声由来のデータで、このスクリプトでは作らない。
 # 原稿（paragraphs と spoken）が前回と変わっていない章は、前回の値を引き継ぐ。
 # 変わった章は落ちるので、そのときは work/build_timings.py を実行し直すこと。
@@ -107,6 +127,8 @@ data = {
     'totalChars': total,
     'chapters': chapters,
 }
+if _audio_complete:
+    data['totalAudioBytes'] = _total_audio
 json.dump(data, open(os.path.join(ROOT, 'data', 'chapters.json'), 'w'), ensure_ascii=False, indent=1)
 # アプリ（pwa-template 構成）の配信データは public/book/data.json（data/chapters.json と同一内容）
 _pub = os.path.join(ROOT, 'public', 'book', 'data.json')

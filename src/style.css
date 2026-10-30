@@ -642,6 +642,10 @@ body.hl-off .unit.now { background: none; color: inherit; }
 .modal-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(92vw, 480px); max-height: 82dvh; overflow: auto; overscroll-behavior: contain; background: #fff; color: var(--text); border-radius: 14px; padding: 16px; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .modal-head h3 { margin: 0; }
+/* 初回案内（音声の総容量・Wi-Fi 推奨）は、本文をゆったり読ませて閉じるだけの小さいパネル */
+.dl-notice-panel { width: min(92vw, 420px); }
+.dl-notice-body { line-height: 1.9; margin: 10px 0 18px; }
+.dl-notice-actions { display: flex; justify-content: flex-end; }
 /* ============ 目次ページ（本の1ページ。枠・紙は扉とそろえる） ============ */
 .view-toc { height: 100dvh; display: flex; align-items: stretch; justify-content: center; background: radial-gradient(ellipse at 50% 30%, var(--desk2), var(--desk) 75%); padding: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); touch-action: pan-y pinch-zoom; }
 /* 目次をドラッグしている間はテキスト選択を止める（扉の .gate-dragging と同じ作法） */

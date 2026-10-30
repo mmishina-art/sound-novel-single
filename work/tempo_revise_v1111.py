@@ -32,7 +32,7 @@ OLD_REPORT = json.load(open(os.path.join(STAGE, 'build-report.json')))
 
 def encode(normed_wav, out_mp3):
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', normed_wav,
-                    '-b:a', '96k', out_mp3], check=True)
+                    '-b:a', '64k', out_mp3], check=True)
 
 
 def process(tag, src, chars, atempo, trim):

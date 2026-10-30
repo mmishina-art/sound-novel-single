@@ -109,6 +109,23 @@ need(readerHtml.includes('page-footer') && readerHtml.includes('page-icon-btn'),
 need(endHtml.includes('sheet-footer') && endHtml.includes('endMenuBtn'), '奥付の帯が共通部品（.sheet-footer）で構成されていません');
 need(!/toc-back|toc-pager|final-cover-link|finalToCoverBtn/.test(html + css), '廃止した画面専用部品（.toc-back / .toc-pager / 奥付の文字リンク）が残っています');
 
+// 音声は「初回に全部取り込む」一括方式なので、全章の音声が SW の precache に
+// 入っていることがオフライン再生の前提。1ファイルが vite.config.ts の上限
+// （maximumFileSizeToCacheInBytes）を超えると、その章だけ静かに precache から
+// 外れる。成果物側でも、実ファイルと sw.js の突き合わせで先に気づく
+const audioDir = join(dist, 'book/audio');
+if (existsSync(audioDir)) {
+  const cfgText = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+  const capMatch = /maximumFileSizeToCacheInBytes:\s*(\d+)\s*\*\s*1024\s*\*\s*1024/.exec(cfgText);
+  need(capMatch !== null, 'vite.config.ts の maximumFileSizeToCacheInBytes が「N * 1024 * 1024」の形で読めません（precache 上限の検査ができません）');
+  const cap = capMatch ? Number(capMatch[1]) * 1024 * 1024 : 0;
+  for (const name of readdirSync(audioDir).filter((f) => f.endsWith('.mp3'))) {
+    const size = statSync(join(audioDir, name)).size;
+    need(size <= cap, `book/audio/${name}（${(size / 1048576).toFixed(1)}MB）が precache 上限（${cap / 1048576}MB）を超えています`);
+    need(swJs.includes(`book/audio/${name}`), `sw.js の precache に book/audio/${name} が入っていません（上限超過で外れた可能性があります）`);
+  }
+}
+
 if (errors.length) {
   console.error(errors.map((e) => `✗ ${e}`).join('\n'));
   process.exit(1);

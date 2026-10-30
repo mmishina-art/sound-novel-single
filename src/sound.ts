@@ -85,9 +85,13 @@ export function playPageTurn(): void {
     const t = c.currentTime;
     const dur = 0.3;
     const len = Math.max(1, Math.floor(c.sampleRate * dur));
-    const buf = c.createBuffer(1, len, c.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    // 紙擦れは左右で別のノイズにする（紙の音はもともと左右で相関が低く、
+    // そのまま広がりになる）。定位はめくるたびにわずかに振る
+    const buf = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    }
     const src = c.createBufferSource();
     src.buffer = buf;
     // 紙擦れの「シュッ」という動き：バンドパスの中心を時間で掃引する
@@ -107,7 +111,10 @@ export function playPageTurn(): void {
     g.gain.linearRampToValueAtTime(0.022, t + 0.13); // 紙が離れかける谷
     g.gain.linearRampToValueAtTime(0.04, t + 0.19); // めくり終わりの小さな盛り上がり
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(bp).connect(lp).connect(g).connect(c.destination);
+    // 定位は静止したわずかな振りだけ（時間で揺らす要素は付けない）
+    const pan = c.createStereoPanner();
+    pan.pan.value = (Math.random() * 2 - 1) * 0.18;
+    src.connect(bp).connect(lp).connect(g).connect(pan).connect(c.destination);
     src.start(t);
     src.stop(t + dur + 0.05);
     // テストが発音を確認できるようにイベントを出す（beep と同じ作法）
@@ -207,11 +214,37 @@ function bassTone(c: BaseAudioContext, dest: AudioNode, midi: number, at: number
   harm(2, gain * 0.13, 0.33);
 }
 
+/** ピアノの定位: 鍵盤の並びに見立てて、低い音はわずかに左・高い音はわずかに
+    右へ寄せる。静止した定位だけで、時間で揺らす要素（ビブラート／トレモロ）は
+    いっさい付けない（朗読がモノラルになった分、BGM 側にだけ少し広がりを出す） */
+function pianoPan(midi: number, spread = 1): number {
+  const p = (midi - 66) * 0.016 * spread;
+  return Math.max(-0.22, Math.min(0.22, p));
+}
+
 /** 1イベントを鳴らす（オフライン描画での音量測定と作りをそろえるため、引数は時刻渡し） */
 export function scheduleBgmEvent(c: BaseAudioContext, dest: AudioNode, ev: BgmEvent, at: number, beatSec: number): void {
   if (ev.kind === 'bass') bassTone(c, dest, ev.midi, at, ev.durBeats * beatSec, ev.gain);
-  else if (ev.kind === 'pad') pianoTone(c, dest, ev.midi, at + ev.staggerSec, 3.2, ev.gain, -0.03);
-  else pianoTone(c, dest, ev.midi, at, Math.max(2.0, ev.lenBeats * beatSec * 1.05), ev.gain, 0.05);
+  else if (ev.kind === 'pad') pianoTone(c, dest, ev.midi, at + ev.staggerSec, 3.2, ev.gain, pianoPan(ev.midi, 0.6));
+  else pianoTone(c, dest, ev.midi, at, Math.max(2.0, ev.lenBeats * beatSec * 1.05), ev.gain, pianoPan(ev.midi));
+}
+
+/** BGM の残響の混ぜ量（原音に対して）。部屋の気配が分かる程度に低く抑える */
+const BGM_WET_GAIN = 0.12;
+
+/** 短い部屋の残響のインパルス応答をその場で生成する（約0.8秒のノイズ減衰。
+    左右で減衰の速さをわずかに変え、その差が空間の広がりになる。揺らす要素はない） */
+function makeRoomImpulse(c: BaseAudioContext): AudioBuffer {
+  const len = Math.max(1, Math.floor(c.sampleRate * 0.8));
+  const buf = c.createBuffer(2, len, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    const tau = ch === 0 ? 0.14 : 0.115;
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-(i / c.sampleRate) / tau);
+    }
+  }
+  return buf;
 }
 
 /** 世代を1つ立てる（呼び出し側で「生きている世代は無い」ことを保証する）。
@@ -227,6 +260,14 @@ function startGeneration(fadeInSec: number): void {
   lp.frequency.value = 4200;
   lp.Q.value = 0.3;
   master.connect(lp).connect(c.destination);
+  // 残響は世代の一部として master から分岐させる（世代を畳むとき master の
+  // 切り離しで一緒に無音になる。残響側のノードが単独で残ることはない）
+  const verb = c.createConvolver();
+  verb.buffer = makeRoomImpulse(c);
+  const wet = c.createGain();
+  wet.gain.value = BGM_WET_GAIN;
+  master.connect(verb);
+  verb.connect(wet).connect(lp);
 
   const gen: BgmGeneration = {
     master,

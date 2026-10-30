@@ -235,6 +235,22 @@
       <button type="button" data-close>とじる</button>
     </dialog>
 
+    <!-- 初回だけの案内（音声の総容量と Wi-Fi でのダウンロード推奨）。
+         一括ダウンロードは Service Worker の登録と一緒に始まるため、登録より
+         前に出す（main.ts / src/download-notice.ts）。一度見たら二度と出ない -->
+    <div id="dlNotice" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlNoticeTitle">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel dl-notice-panel">
+        <div class="modal-head">
+          <h3 id="dlNoticeTitle">はじめに</h3>
+        </div>
+        <p id="dlNoticeBody" class="dl-notice-body"></p>
+        <div class="dl-notice-actions">
+          <button id="dlNoticeClose" type="button" class="primary">わかりました</button>
+        </div>
+      </div>
+    </div>
+
     <!-- デバッグモードのときだけ出る操作（src/debug.ts。バージョンの表示を続けて 5 回タップで切り替え） -->
     <div id="debug-panel" class="debug-panel" hidden></div>
 

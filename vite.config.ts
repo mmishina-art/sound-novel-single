@@ -52,8 +52,16 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2,mp3,json,webmanifest}'],
         // 版数ファイル（version.json）は precache しない。更新確認が古い版数を見てしまうため
         globIgnores: ['**/version.json'],
-        // 章音声（1ファイル約3〜4MB）を precache するため、既定の2MB上限を引き上げる（このアプリの拡張）
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // 章音声を precache するための上限（既定は2MB）。配信は「初回に全部
+        // 取り込む」一括方式を維持する（分割・ストリーミングにはしない）ため、
+        // 長い本でも章ファイルが上限に当たって静かに precache から外れることが
+        // ないよう、実測に余裕を持たせて 12MB に置く。根拠（v1.13.0 で設定）:
+        // 朗読は 24kHz モノラル 64kbps で、20,000字級（朗読 約68分・総量
+        // 約33MB）の本では章あたり最大でも 7〜8MB 程度（7章構成の実測換算）。
+        // 10MB 超の章でも通るよう、その約1.5倍に置いた。際限なく大きくは
+        // しない（上限を超える章が出たら、check:dist が「章が上限を超えて
+        // いる」ことを知らせるので、そこで初めて見直す）。
+        maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
         navigateFallback: 'index.html',
       },
     }),

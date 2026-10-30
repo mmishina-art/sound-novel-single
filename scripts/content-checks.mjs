@@ -4,7 +4,7 @@
 // 食い違っていないかを確かめる検査を、ここに { id, title, run } で足す。
 // run はエラーの文言の配列を返す（問題がなければ空）。ctx.root はリポジトリのルートのパス。
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const readJson = (root, rel) => JSON.parse(readFileSync(join(root, rel), 'utf8'));
@@ -124,6 +124,48 @@ export const checks = [
           if (tdur === null) errors.push(`${ch.id}: 章題コールの実尺を測れませんでした（ffprobe が必要です）`);
           else if (tdur < 1) errors.push(`${ch.id}: 章題コールが短すぎます（${tdur.toFixed(2)} 秒）`);
         }
+      }
+      return errors;
+    },
+  },
+  {
+    id: 'audio-size',
+    title: '音声の実容量が data.json の申告（audioBytes／totalAudioBytes）と合い、全章が precache 上限以下である',
+    // 初回案内に出る総容量は data.json の totalAudioBytes が材料なので、実ファイルと
+    // 食い違うと「表示と違う容量が落ちる」ことになる。あわせて、章ファイルが
+    // vite.config.ts の precache 上限（maximumFileSizeToCacheInBytes）を超えると
+    // その章だけ静かに precache から外れてオフラインで聞けなくなるため、ここで先に気づく。
+    run({ root }) {
+      const book = readJson(root, 'data/chapters.json');
+      const errors = [];
+      const cfg = readFileSync(join(root, 'vite.config.ts'), 'utf8');
+      const capMatch = /maximumFileSizeToCacheInBytes:\s*(\d+)\s*\*\s*1024\s*\*\s*1024/.exec(cfg);
+      const cap = capMatch ? Number(capMatch[1]) * 1024 * 1024 : null;
+      if (cap === null) {
+        errors.push('vite.config.ts の maximumFileSizeToCacheInBytes が「N * 1024 * 1024」の形で読めません（上限の検査ができません）');
+      }
+      let actualTotal = 0;
+      for (const ch of book.chapters) {
+        let sum = 0;
+        for (const name of [`${ch.id}.mp3`, `${ch.id}-title.mp3`]) {
+          const p = join(root, 'public/book/audio', name);
+          if (!existsSync(p)) continue; // 実在そのものは audio-duration 検査の担当
+          const size = statSync(p).size;
+          sum += size;
+          if (cap !== null && size > cap) {
+            errors.push(`${ch.id}: ${name}（${(size / 1048576).toFixed(1)}MB）が precache 上限（${cap / 1048576}MB）を超えています。この章はオフライン再生できません（vite.config.ts の上限か、章の分け方を見直してください）`);
+          }
+        }
+        actualTotal += sum;
+        if (ch.audioBytes !== undefined && ch.audioBytes !== sum) {
+          errors.push(`${ch.id}: audioBytes（${ch.audioBytes}）が実ファイルの合計（${sum}）と違います（work/build_data.py で作り直してください）`);
+        }
+        if (book.totalAudioBytes !== undefined && ch.audioBytes === undefined) {
+          errors.push(`${ch.id}: totalAudioBytes があるのに audioBytes がありません（work/build_data.py で作り直してください）`);
+        }
+      }
+      if (book.totalAudioBytes !== undefined && book.totalAudioBytes !== actualTotal) {
+        errors.push(`totalAudioBytes（${book.totalAudioBytes}）が実ファイルの総計（${actualTotal}）と違います（初回案内の容量表示がずれます。work/build_data.py で作り直してください）`);
       }
       return errors;
     },

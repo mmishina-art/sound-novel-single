@@ -4,6 +4,7 @@ import {
   buildUnits,
   directionOf,
   fmt,
+  formatAudioSize,
   groupClass,
   pageForChar,
   plainLen,
@@ -141,5 +142,18 @@ describe('fmt / speed', () => {
   it('速度の位置を引く（知らない速度は 1.0 の位置）', () => {
     expect(SPEEDS[speedIndexOf(1.25)]).toBe(1.25);
     expect(SPEEDS[speedIndexOf(3)]).toBe(1.0);
+  });
+});
+
+describe('formatAudioSize（初回案内の容量表示）', () => {
+  it('バイト数を「約◯MB」（10進・小数1桁）にする', () => {
+    expect(formatAudioSize(18_186_294)).toBe('約18.2MB');
+    expect(formatAudioSize(5_200_000)).toBe('約5.2MB');
+    expect(formatAudioSize(12_000_000)).toBe('約12MB');
+  });
+  it('容量が分からない本では null（案内に容量を出さない）', () => {
+    expect(formatAudioSize(undefined)).toBeNull();
+    expect(formatAudioSize(0)).toBeNull();
+    expect(formatAudioSize(NaN)).toBeNull();
   });
 });

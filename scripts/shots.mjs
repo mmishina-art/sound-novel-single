@@ -4,7 +4,10 @@
 // 画面を足すときは、下の SCREENS に足す（open で、その画面まで操作する）。
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+
+// 保存キーの接頭辞（package.json の name）。初回案内の「見た」印に使う
+const APP_ID = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).name;
 
 /** 撮る画面。open は、ページを開いたあと、その画面を出すための操作。 */
 // 本のデータ（book/data.json）が届いて目次が組み上がると、表紙の操作が効くようになる
@@ -51,6 +54,15 @@ const openReader = async (page) => {
   await page.waitForTimeout(400);
 };
 const SCREENS = [
+  {
+    // 初回案内（音声の総容量と Wi-Fi 推奨、v1.13.0〜）。ほかの画面は「見た」状態で
+    // 撮るため、この画面だけ素の状態（fresh: 別の新規コンテキスト）で開く
+    name: 'dl-notice',
+    fresh: true,
+    open: async (page) => {
+      await page.waitForSelector('#dlNotice:not([hidden])', { timeout: 10000 });
+    },
+  },
   { name: 'cover' },
   {
     // しおりがあるときの表紙（モードボタンの補足が「つづきから」になる状態）。
@@ -194,15 +206,22 @@ const files = [];
 try {
   for (const size of SIZES) {
     // Service Worker は止める（前の撮影のキャッシュが残らないように）。アニメーションは止めて、毎回同じ絵にする
-    const context = await browser.newContext({
+    const ctxOpts = {
       viewport: { width: size.width, height: size.height },
       deviceScaleFactor: 2,
       colorScheme: size.dark ? 'dark' : 'light',
       reducedMotion: 'reduce',
       serviceWorkers: 'block',
-    });
+    };
+    const context = await browser.newContext(ctxOpts);
+    // 撮影は「2回目以降の訪問」として進める：初回案内は見たことにしておく
+    // （案内そのものは fresh の別コンテキストで撮る）
+    await context.addInitScript((id) => {
+      localStorage.setItem(`${id}-dl-notice-seen`, 'true');
+    }, APP_ID);
     for (const screen of SCREENS) {
-      const page = await context.newPage();
+      const ownContext = screen.fresh ? await browser.newContext(ctxOpts) : null;
+      const page = await (ownContext ?? context).newPage();
       page.on('pageerror', (e) => errors.push(`${size.name}/${screen.name}: ${e.message}`));
       await page.goto(url);
       await page.waitForFunction(() => globalThis.__appStarted === true);
@@ -212,6 +231,7 @@ try {
       await page.screenshot({ path: file });
       files.push(file);
       await page.close();
+      if (ownContext) await ownContext.close();
     }
     await context.close();
   }

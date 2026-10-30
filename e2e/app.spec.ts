@@ -62,6 +62,15 @@ async function backToCover(page: import('@playwright/test').Page): Promise<void>
   await expect(page.locator('#coverView')).toBeVisible();
 }
 
+/* 既存のテストは「2回目以降の訪問」として扱う：初回だけ出るダウンロード案内
+   （v1.13.0〜）は見たことにしておく。案内そのもののテストは末尾の describe で、
+   このプリセットを打ち消して初回として開く */
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((id) => {
+    localStorage.setItem(`${id}-dl-notice-seen`, JSON.stringify(true));
+  }, APP_ID);
+});
+
 test('表紙が開き、タイトルと著者が見える', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#coverView')).toBeVisible();
@@ -1040,6 +1049,64 @@ test('更新バナーは「あとで」で閉じられる', async ({ page }) => 
   });
   await page.getByRole('button', { name: 'あとで' }).click();
   await expect(page.locator('#update-banner')).toBeHidden();
+});
+
+test.describe('初回案内（音声の総容量とWi-Fi推奨）と一括取り込み', () => {
+  /* この一連だけは初回として開く：beforeEach の「見た」プリセットを打ち消す
+     （init script は登録順に走るので、後から登録した方が勝つ） */
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((id) => {
+      localStorage.removeItem(`${id}-dl-notice-seen`);
+    }, APP_ID);
+  });
+
+  test('初回は案内が出て、閉じるまで一括ダウンロード（SW登録）は始まらない。閉じたら二度と出ない', async ({ page }) => {
+    await page.goto('/');
+    const notice = page.locator('#dlNotice');
+    await expect(notice).toBeVisible();
+    // 容量は本のデータ（totalAudioBytes）から動的に出る：この本は約18.2MB
+    await expect(page.locator('#dlNoticeBody')).toContainText('約18.2MB');
+    await expect(page.locator('#dlNoticeBody')).toContainText('Wi-Fi');
+    // 案内が開いている間は、Service Worker はまだ登録されていない
+    const regsBefore = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);
+    expect(regsBefore).toBe(0);
+    await page.locator('#dlNoticeClose').click();
+    await expect(notice).toBeHidden();
+    // 閉じて初めて登録が始まり、有効になる
+    const active = await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return !!reg.active;
+    });
+    expect(active).toBe(true);
+    // 再読み込みしても案内は出ない（見たことが保存されている）
+    await page.reload();
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await expect(notice).toBeHidden();
+  });
+
+  test('全章の音声（本文＋章題コール）がキャッシュに取り込まれ、オフライン再生の前提がそろう', async ({ page }) => {
+    test.setTimeout(90_000); // 約18MBの一括取り込みを待つので、既定の制限より長く取る
+    await page.goto('/');
+    await page.locator('#dlNoticeClose').click(); // 案内を閉じて登録を始める
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    // precache が終わるまで待ち、全14ファイルがキャッシュに実在することを数で確かめる
+    // （precache のキーはリビジョンのクエリ付きなので、検索部を無視して照合する）
+    const countCachedAudio = (): Promise<number> =>
+      page.evaluate(async () => {
+        let n = 0;
+        for (const key of await caches.keys()) {
+          const cache = await caches.open(key);
+          for (let i = 1; i <= 7; i++) {
+            if (await cache.match(`book/audio/ch${i}.mp3`, { ignoreSearch: true })) n++;
+            if (await cache.match(`book/audio/ch${i}-title.mp3`, { ignoreSearch: true })) n++;
+          }
+        }
+        return n;
+      });
+    await expect.poll(countCachedAudio, { timeout: 60_000 }).toBe(14);
+  });
 });
 
 test('最初の画面からインストール方法を開ける（使っている端末の説明が開いている）', async ({ page }) => {

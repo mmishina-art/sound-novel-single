@@ -17,6 +17,9 @@ export interface ChapterData {
       生成時の文セグメント尺から実測した値（work/build_timings.py）。無い本では
       アプリ側が文字数比例の推定にフォールバックする */
   unitTimes?: number[];
+  /** この章の音声（本文＋章題コール）の実容量（バイト）。work/build_data.py が
+      配信ファイルの実測で入れる。音声が揃っていない制作途中の本では無い */
+  audioBytes?: number;
 }
 
 export interface BookData {
@@ -24,7 +27,19 @@ export interface BookData {
   author: string;
   direction?: string;
   totalChars?: number;
+  /** 全章の音声の総容量（バイト）。初回ダウンロード案内の表示に使う。
+      work/build_data.py が全章そろっているときだけ入れる（無い本では案内文に
+      容量を出さない） */
+  totalAudioBytes?: number;
   chapters: ChapterData[];
+}
+
+/** 音声の総容量を、初回案内に出す「約◯MB」の形にする（10進MB・小数1桁まで）。
+    バイト数が分からない（undefined）場合は null（容量を出さない判断に使う） */
+export function formatAudioSize(bytes: number | undefined): string | null {
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes <= 0) return null;
+  const mb = (bytes / 1_000_000).toFixed(1).replace(/\.0$/, '');
+  return `約${mb}MB`;
 }
 
 /* ---- 本ごとの方向設定 ----

@@ -99,7 +99,7 @@ def trim_segment(cid, idx, raw):
         return raw
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', raw,
                     '-af', f'atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS',
-                    '-ar', '24000', '-ac', '1', '-b:a', '96k', out], check=True)
+                    '-ar', '24000', '-ac', '1', '-b:a', '64k', out], check=True)
     return out
 
 
@@ -112,7 +112,7 @@ def build_call(cid, narrator, segments):
             if not os.path.exists(stretched):
                 subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', raw,
                                 '-af', atempo_filter(MALE_ATEMPO[cid]),
-                                '-ar', '24000', '-ac', '1', '-b:a', '96k', stretched], check=True)
+                                '-ar', '24000', '-ac', '1', '-b:a', '64k', stretched], check=True)
             parts.append(stretched)
         else:
             parts.append(raw)
@@ -128,7 +128,7 @@ def build_call(cid, narrator, segments):
         f'concat=n={len(parts)}:v=0:a=1[out]'
     out = os.path.join(RAW, f'{cid}-title-joined.mp3')
     subprocess.run(['ffmpeg', '-y', '-v', 'error', *inputs, '-filter_complex', filt,
-                    '-map', '[out]', '-ar', '24000', '-ac', '1', '-b:a', '96k', out], check=True)
+                    '-map', '[out]', '-ar', '24000', '-ac', '1', '-b:a', '64k', out], check=True)
     return out
 
 

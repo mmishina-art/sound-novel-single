@@ -13,7 +13,7 @@ PWA アプリ(ツール/ゲーム)の共通テンプレート。**新しいア�
 - 配色: 暗い固定(机の上に置いた本、という世界観。`src/style.css` と theme-color は机色 `#17130e`)
 - 公開 URL: https://mmishina-art.github.io/sound-novel-single/
 - 追加した拡張:
-  - `vite.config.ts` の workbox: `globPatterns` に `json` を追加(本文データ `book/data.json` をオフライン用に持つため)。`maximumFileSizeToCacheInBytes` を 5MB に引き上げ(章音声が1ファイル約3〜4MBのため)。
+  - `vite.config.ts` の workbox: `globPatterns` に `json` を追加(本文データ `book/data.json` をオフライン用に持つため)。`maximumFileSizeToCacheInBytes` は 12MB(20,000字級の本で最長の章が来ても通す値。根拠と経緯は設定箇所のコメントと `docs/HANDOVER.md` の v1.13.0)。配信は初回に全部取り込む一括方式で、初回だけ容量と Wi-Fi 推奨の案内を登録前に出す(`src/download-notice.ts`)。朗読音声の形式はモノラル 24kHz 64kbps に統一(v1.13.0〜。エンコードは必ず正規化済み WAV から)。
   - `src/sound.ts` は読書用BGMの再生に使う(作曲データは本固有の `src/bgm-song.ts`。効果音の beep は未使用)。BGM の設定キーは `bgm`(既定オン)、音量は朗読の平均より約7dB下に固定(姉妹アプリ『サウンドノベル』のBGMの朗読比に合わせた値。根拠は `src/sound.ts` のコメントと `work/measure-bgm.mjs` / `work/measure-soundnovel-bgm.mjs`)。
   - 章背景にはアニメーション層(`#pageAnim`)があり、ノンブルは常時表示。バックグラウンド再生の設定(保存キー `bgplay`、既定オン)と Media Session 対応、画面を暗くしない設定(保存キー `wakelock`、既定オン。Screen Wake Lock で読書画面の間だけスリープを抑止)も `src/reader.ts` にある(詳細は `docs/HANDOVER.md`)。読書画面の操作(再生/停止・メニュー)はページの帯に常時置き、本文タップはページめくり専用(メニューはボタンからのみ。v1.10.0〜)。
   - 朗読の声は Gemini 3.8 Flash TTS(女性章=Leda+透明感スタイル/男性章=Charon+SOFTスタイル、スタイルは speechMetadata 分離)。1章=1コールで生成し、atempo で実測300字/分に補正、loudnorm で −25 LUFS に統一(素材と記録は `work/gemini38/`)。旧声(Lily/MAI_03)の生成系(`work/gen_mai.py` 等)は履歴として残置。

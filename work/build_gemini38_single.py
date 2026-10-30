@@ -10,6 +10,9 @@
   寄せてから正規化する（倍率は 0.85〜1.45 にクランプ）
 - 出力はステージング work/gemini38/audio/ch{N}.mp3 と ch{N}-title.mp3。
   アプリ側（public/book/）への差し替えは別作業で行う（この段階では触らない）
+- 最終エンコードは 24kHz モノラル 64kbps（v1.13.0 で 96k から変更。朗読は声
+  だけなのでモノラルで十分で、配信総量が約1/3減る。正規化済み WAV から
+  1回だけエンコードすること。MP3 からの再エンコードは音量が約0.4 LU 下がる）
 """
 import json, os, re, subprocess, sys
 
@@ -133,7 +136,7 @@ def build_one(src, chars, out_mp3, tag, trim=False):
     normed = os.path.join(PROC, f'{tag}-norm.wav')
     meas = normalize_wav(adj, normed)
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', normed,
-                    '-b:a', '96k', out_mp3], check=True)
+                    '-b:a', '64k', out_mp3], check=True)
     fin = duration(out_mp3)
     info = {'tag': tag, 'chars': chars, 'raw_duration': round(raw_dur, 2),
             'raw_cpm': round(cpm, 1), 'atempo': round(atempo, 4),
