@@ -422,9 +422,9 @@ body.dir-horizontal .read-progress { justify-content: flex-start; }
   overflow: hidden;
 }
 .page::before { /* 章背景（下帯）の専用層：ページ下端まで届く。
-     帯の寸法ルール（v1.13.7 で数値化・DESIGN.md 参照）：帯全体はページ高さの
-     最大30%、絵の本体は最下部22%以内、上の8%は紙へ溶けるフェード専用。
-     本文の表示域は .page-content 側で下限78%に制限し、本体と本文は重ならない */
+     帯の寸法ルール（v1.13.7 で数値化、v1.13.8 で改定・DESIGN.md 参照）：帯全体は
+     ページ高さの最大23%、絵の本体は最下部15%以内、上の8%は紙へ溶けるフェード専用。
+     本文の表示域は .page-content 側で下限85%に制限し、本体と本文は重ならない */
   content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
   background-image: var(--chapter-bg-bottom, none);
   background-size: 100% auto;
@@ -556,13 +556,15 @@ body.bg-off .page-anim { display: none; }
 body.font-large { --font-scale: 1.2; }
 /* 本文。組版方向は body.dir-* で決まり、余白はノド側（綴じ側）を広く取る */
 .page-content {
-  /* 本文の表示域は下限をページ高さの78%までとする（v1.13.7 の背景ルール：
-     章背景の下帯の本体は最下部22%以内に収め、本文とは重ねない。本文が
-     掛かってよいのは帯のフェード部（70〜78%）まで。ノンブルだけは例外
-     として従来どおり下の帯の中に置く——帯は .page-footer 側の要素で、
-     ここの制限の対象外）。組版の計測（measurer）はこの要素の
-     clientHeight を使うため、ページ割りは自動で追随する */
-  position: absolute; inset: 0 0 22% 0; z-index: 0;
+  /* 本文の表示域は下限をページ高さの85%までとする（背景ルール：章背景の
+     下帯の本体は最下部15%以内に収め、本文とは重ねない。本文が掛かって
+     よいのは帯のフェード部（77〜85%）まで。ノンブルだけは例外として
+     従来どおり下の帯の中に置く——帯は .page-footer 側の要素で、ここの
+     制限の対象外）。v1.13.7 では下限78%だったが、本文の終わりと絵の間に
+     空白の帯ができて空いて見えたため、v1.13.8 で85%に改定した。組版の
+     計測（measurer）はこの要素の clientHeight を使うため、ページ割りは
+     自動で追随する */
+  position: absolute; inset: 0 0 15% 0; z-index: 0;
   font-size: calc(1.12rem * var(--font-scale)); line-height: 2.1; letter-spacing: .04em; color: var(--ink);
   overflow: hidden;
 }
@@ -572,8 +574,8 @@ body.dir-horizontal .page-content { writing-mode: horizontal-tb; -webkit-writing
    （2026-10-29 実機指摘「上下が詰まっている」への対応で上は +16px。
    左右は従来どおりノド側を広く）。
    下は v1.13.7 で 58px → 10px に変更：本文域の下限そのものをページ高さの
-   78%に置くルール（.page-content の inset）に移したため、残りは文字が
-   表示域の端に触れないための僅かな逃げだけにする */
+   割合で置くルール（.page-content の inset。下限は v1.13.8 で85%）に
+   移したため、残りは文字が表示域の端に触れないための僅かな逃げだけにする */
 body.bound-right .page-content { padding: 46px 42px 10px 30px; }
 body.bound-left .page-content { padding: 46px 30px 10px 42px; }
 body.dir-vertical .page-content p { margin: 0 0 0 1.4em; text-indent: 1em; }
