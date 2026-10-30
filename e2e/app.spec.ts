@@ -1944,6 +1944,63 @@ test('目次の体裁は本文・扉と揃っている：戻るピルなし、�
   expect(m.menuBg).toBe('rgba(0, 0, 0, 0)');
 });
 
+test('デザインの約束事：帯の家具は全画面で同じ部品・寸法・色・浮き（DESIGN.md の自動検証）', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  type Band = { w: number; h: number; color: string; gap: number };
+  const measure = (btnSel: string, sheetSel: string): Promise<Band> =>
+    page.evaluate(
+      ([b, s]) => {
+        const btn = document.querySelector(b)!;
+        const sheet = document.querySelector(s)!.getBoundingClientRect();
+        const r = btn.getBoundingClientRect();
+        return { w: r.width, h: r.height, color: getComputedStyle(btn).color, gap: sheet.bottom - r.bottom };
+      },
+      [btnSel, sheetSel] as const,
+    );
+  const expectBand = (m: Band, refColor: string) => {
+    expect(Math.abs(m.w - 44)).toBeLessThanOrEqual(1); // タップ領域 44px
+    expect(Math.abs(m.h - 44)).toBeLessThanOrEqual(1);
+    expect(m.color).toBe(refColor); // 全画面で同じトーン
+    expect(Math.abs(m.gap - 10)).toBeLessThanOrEqual(1); // 帯の浮き --band-lift: 10px
+  };
+  // 目次（耳で読むの入口＝初回は目次から）
+  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  const tocMenu = await measure('#tocMenuBtn', '.toc-sheet');
+  const tocPlay = await measure('#tocPlayBtn', '.toc-sheet');
+  expectBand(tocMenu, tocMenu.color);
+  expectBand(tocPlay, tocMenu.color); // 再生と家は同じ色味
+  // 扉
+  await clickTocChapter(page, 0);
+  await expect(page.locator('#gateView')).toBeVisible();
+  expectBand(await measure('#gateMenuBtn', '.gate-sheet'), tocMenu.color);
+  expectBand(await measure('#gatePlayBtn', '.gate-sheet'), tocMenu.color);
+  // 本文
+  await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+  await expect(page.locator('#readerView')).toBeVisible();
+  expectBand(await measure('#menuBtn', '.page'), tocMenu.color);
+  expectBand(await measure('#playPauseBtn', '.page'), tocMenu.color);
+  // 奥付（第七章の最後まで送る）
+  await backToCover(page);
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await clickTocChapter(page, 6);
+  await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  for (let i = 0; i < 80; i++) {
+    if ((await page.locator('#pageContent .story-end').count()) > 0) break;
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+    await page.waitForTimeout(50);
+  }
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await expect(page.locator('#endPage')).toBeVisible();
+  expectBand(await measure('#endMenuBtn', '#endPage'), tocMenu.color);
+  await expect(page.locator('#endPlayBtn')).toBeHidden(); // 奥付に再生は出さない
+});
+
 test.describe('読書モード（耳で読む／目で読む）', () => {
   test('表紙に2つの入口があり、目で読むでは人の声だけが鳴らず再生ボタンも出ない（BGMとめくり音はある）', async ({ page }) => {
     await page.goto('/');

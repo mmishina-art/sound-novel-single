@@ -89,6 +89,26 @@ if (existsSync(dist)) {
   }
 }
 
+// デザインの共通部品が全画面で使われているか（docs/DESIGN.md の約束事の機械チェック）。
+// 帯を持つ画面は共通クラス（.sheet-footer / .page-footer と .page-icon-btn）で帯を
+// 構成すること。画面専用の帯・ボタンを新しく作ると、ここで落ちる
+const sliceFrom = (marker) => {
+  const i = html.indexOf(marker);
+  if (i < 0) return '';
+  const rest = html.slice(i);
+  const end = rest.indexOf('<section', 1);
+  return end < 0 ? rest : rest.slice(0, end);
+};
+const tocHtml = sliceFrom('id="tocView"');
+const gateHtml = sliceFrom('id="gateView"');
+const readerHtml = sliceFrom('id="readerView"');
+const endHtml = sliceFrom('id="endPage"');
+need(tocHtml.includes('sheet-footer') && tocHtml.includes('page-icon-btn'), '目次ページの帯が共通部品（.sheet-footer / .page-icon-btn）で構成されていません');
+need(gateHtml.includes('sheet-footer') && gateHtml.includes('page-icon-btn'), '扉の帯が共通部品（.sheet-footer / .page-icon-btn）で構成されていません');
+need(readerHtml.includes('page-footer') && readerHtml.includes('page-icon-btn'), '本文の帯が共通部品（.page-footer / .page-icon-btn）で構成されていません');
+need(endHtml.includes('sheet-footer') && endHtml.includes('endMenuBtn'), '奥付の帯が共通部品（.sheet-footer）で構成されていません');
+need(!/toc-back|toc-pager|final-cover-link|finalToCoverBtn/.test(html + css), '廃止した画面専用部品（.toc-back / .toc-pager / 奥付の文字リンク）が残っています');
+
 if (errors.length) {
   console.error(errors.map((e) => `✗ ${e}`).join('\n'));
   process.exit(1);
