@@ -395,6 +395,17 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   if (!endBox || !colophonBox) throw new Error('bounding box not found');
   expect(colophonBox.y).toBeGreaterThanOrEqual(endBox.y);
   expect(colophonBox.y + colophonBox.height).toBeLessThanOrEqual(endBox.y + endBox.height + 1);
+  // 版元ロゴ（公式ロゴ＝アプリアイコンと同じ角印）が奥付文の上に表示される
+  const logo = page.locator('.end-logo');
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute('alt', 'サウンド単行本');
+  expect(await logo.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+  const logoBox = await logo.boundingBox();
+  if (!logoBox) throw new Error('logo box not found');
+  expect(logoBox.width).toBe(56); // 奥付の体裁を壊さない控えめな大きさ（style.css の指定どおり）
+  expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(colophonBox.y); // 奥付文より上にある
+  expect(logoBox.y).toBeGreaterThanOrEqual(endBox.y);
+  expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(endBox.y + endBox.height);
   // 前へ戻ると本文の最終ページへ帰り、そこから表紙へも行ける
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.5);
   await expect(page.locator('#endPage')).toBeHidden();

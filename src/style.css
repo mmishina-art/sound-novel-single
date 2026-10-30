@@ -630,6 +630,7 @@ body.hl-off .unit.now { background: none; color: inherit; }
 .end-page { position: absolute; inset: 0; z-index: 11; touch-action: pan-y pinch-zoom; background-image: repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px), linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc); }
 .end-foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 30px 30px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .end-colophon { margin: 0; font-size: .72rem; line-height: 1.9; letter-spacing: .06em; color: #7d7260; text-align: center; }
+.end-logo { width: 56px; height: 56px; }
 /* 「表紙に戻る」文字リンクは v1.12.4 で廃止（帯の家マーク＋前方向の操作に一本化） */
 
 /* 音声エラーは、下の帯の上に重ねて知らせる（普段は隠れている） */

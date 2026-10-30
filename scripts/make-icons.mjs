@@ -1,90 +1,71 @@
-// アイコンを生成する（標準ライブラリのみ）: npm run icons
-// 色・形はここを書き換えて再実行する。PNG を直接編集しない。
-// maskable は端末が外側を円や角丸で切り抜くため、図柄を中央 60% に収める。
-import { deflateSync } from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+// アイコンを生成する: npm run icons
+// 正本は assets/logo-icon.svg（サウンド単行本の公式ロゴ：藍の角印に白抜きの
+// 「音」＋開いた本＋波紋）。PNG を直接編集せず、正本差し替え→この再実行で作り直す。
+// レンダリングは Chromium（@playwright/test）で行う（「音」の字はフォント描画が要るため）。
+//
+// 派生の作り分け（ホーム画面で印が欠けないように）:
+// - icon.svg / icon-192 / icon-512（purpose: any）: 正本そのまま（透過地に角印）
+// - apple-touch-icon（180px）: iOS が角を丸めるので、地を全面に広げた全面版。
+//   図柄は 1.12 倍にして他アイコンと大きさを揃える
+// - icon-maskable-512: Android が円・squircle 等で切り抜くので、全面版から
+//   内枠を外し、図柄を 0.85 倍にして安全領域（中央 80%）に収める
+import { chromium } from '@playwright/test';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
-// この本の色: 地は表紙の紺、図柄は紙色の「本」（右側に背の溝）
-const BG = [0x1b, 0x2a, 0x4a];
-const FG = [0xf5, 0xef, 0xdd];
+const src = readFileSync(new URL('../assets/logo-icon.svg', import.meta.url), 'utf8');
 
-function crc32(buf) {
-  let c;
-  const table = Array.from({ length: 256 }, (_, n) => {
-    c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  let crc = 0xffffffff;
-  for (const b of buf) crc = table[(crc ^ b) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
+// 地を全面に広げた版（印の背景 rect と質感クリップを全面に）
+const SEAL_RECT = '<rect x="24" y="24" width="192" height="192" rx="27" fill="url(#gx2)"/>';
+const CLIP_RECT = '<clipPath id="clipx2"><rect x="24" y="24" width="192" height="192" rx="27"/></clipPath>';
+if (!src.includes(SEAL_RECT) || !src.includes(CLIP_RECT)) {
+  throw new Error('assets/logo-icon.svg の構造が想定と違います（地の rect が見つかりません）');
+}
+const fullBleed = src
+  .replace(SEAL_RECT, '<rect x="0" y="0" width="240" height="240" fill="url(#gx2)"/>')
+  .replace(CLIP_RECT, '<clipPath id="clipx2"><rect x="0" y="0" width="240" height="240"/></clipPath>');
+
+// 図柄（内枠の rect 以降）を中心基準で拡縮した版
+function scaleArtwork(svg, s, cy = 122) {
+  const i = svg.indexOf('<rect x="35.5"');
+  if (i < 0) throw new Error('assets/logo-icon.svg の構造が想定と違います（内枠が見つかりません）');
+  const tail = svg.slice(i).replace(/<\/svg>\s*$/, '');
+  return `${svg.slice(0, i)}<g transform="translate(120 ${cy}) scale(${s}) translate(-120 ${-cy})">${tail}</g></svg>`;
 }
 
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length);
-  const body = Buffer.concat([Buffer.from(type), data]);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(body));
-  return Buffer.concat([len, body, crc]);
+// 内枠を外し、図柄（波紋以降）を拡縮した版（maskable 用）
+function scaleArtworkNoFrame(svg, s) {
+  const frame = /<rect x="35\.5"[^/]*\/>/;
+  if (!frame.test(svg)) throw new Error('assets/logo-icon.svg の構造が想定と違います（内枠が見つかりません）');
+  const noFrame = svg.replace(frame, '');
+  const marker = '<g fill="none" stroke="#f7f2e7" stroke-linecap="round"><path d="M 68.0 104';
+  const i = noFrame.indexOf(marker);
+  if (i < 0) throw new Error('assets/logo-icon.svg の構造が想定と違います（波紋が見つかりません）');
+  const tail = noFrame.slice(i).replace(/<\/svg>\s*$/, '');
+  return `${noFrame.slice(0, i)}<g transform="translate(120 122) scale(${s}) translate(-120 -122)">${tail}</g></svg>`;
 }
 
-// size: 一辺(px) / figure: 図柄の大きさ(一辺に対する割合) / fullBleed: 背景を全面に塗る
-function png(size, figure, fullBleed) {
-  const raw = Buffer.alloc(size * (size * 4 + 1));
-  const c = size / 2;
-  const half = (size * figure) / 2;
-  const radius = size * 0.22;
-  for (let y = 0; y < size; y++) {
-    const row = y * (size * 4 + 1);
-    raw[row] = 0;
-    for (let x = 0; x < size; x++) {
-      // 角丸の背景（fullBleed のときは全面）
-      const dx = Math.max(Math.abs(x - c) - (c - radius), 0);
-      const dy = Math.max(Math.abs(y - c) - (c - radius), 0);
-      const inBg = fullBleed || dx * dx + dy * dy <= radius * radius;
-      // 図柄: 中央の本（縦長の角丸四角）。右綴じなので、背の溝を右側に入れる
-      const bw = half * 0.62;
-      const bh = half * 0.92;
-      const br = size * 0.03;
-      const bx = Math.max(Math.abs(x - c) - (bw - br), 0);
-      const by = Math.max(Math.abs(y - c) - (bh - br), 0);
-      const inBook = bx * bx + by * by <= br * br;
-      const spine = x > c + bw - size * figure * 0.14 && x < c + bw - size * figure * 0.05;
-      const px = inBook ? (spine ? BG : FG) : BG;
-      const o = row + 1 + x * 4;
-      raw[o] = px[0];
-      raw[o + 1] = px[1];
-      raw[o + 2] = px[2];
-      raw[o + 3] = inBg ? 255 : 0;
-    }
-  }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // RGBA
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
+const variants = {
+  'icon-192.png': { svg: src, size: 192 },
+  'icon-512.png': { svg: src, size: 512 },
+  'apple-touch-icon.png': { svg: scaleArtwork(fullBleed, 1.12, 120), size: 180 },
+  'icon-maskable-512.png': { svg: scaleArtworkNoFrame(fullBleed, 0.85), size: 512 },
+};
 
 const out = new URL('../public/icons/', import.meta.url);
 mkdirSync(out, { recursive: true });
-const files = {
-  'icon-192.png': png(192, 0.7, false),
-  'icon-512.png': png(512, 0.7, false),
-  'icon-maskable-512.png': png(512, 0.6, true),
-  // apple-touch-icon は iOS が角を丸めるので全面塗りにする
-  'apple-touch-icon.png': png(180, 0.7, true),
-};
-for (const [name, data] of Object.entries(files)) writeFileSync(new URL(name, out), data);
 
-writeFileSync(
-  new URL('icon.svg', out),
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1b2a4a"/><rect x="166" y="92" width="180" height="328" rx="14" fill="#f5efdd"/><rect x="306" y="92" width="16" height="328" fill="#1b2a4a"/></svg>\n`,
-);
-console.log('icons generated:', [...Object.keys(files), 'icon.svg'].join(', '));
+const browser = await chromium.launch();
+for (const [name, { svg, size }] of Object.entries(variants)) {
+  const page = await browser.newPage({ viewport: { width: size, height: size } });
+  await page.setContent(
+    `<!doctype html><style>*{margin:0}svg{display:block;width:${size}px;height:${size}px}</style>${svg}`,
+  );
+  await page.waitForTimeout(250);
+  writeFileSync(new URL(name, out), await page.screenshot({ omitBackground: true }));
+  await page.close();
+}
+await browser.close();
+
+// favicon / manifest の SVG は正本そのまま
+writeFileSync(new URL('icon.svg', out), src.endsWith('\n') ? src : src + '\n');
+console.log('icons generated:', [...Object.keys(variants), 'icon.svg'].join(', '));
