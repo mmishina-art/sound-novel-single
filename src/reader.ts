@@ -645,8 +645,29 @@ export function createReader(book: BookData): Reader {
   }
 
   /* ---------- bookmark ---------- */
+  /* 読了の番兵（v1.13.7）。最終章の朗読が終わったら立て、以降のしおり保存を
+     止める。読了の消去自体は ended ハンドラが行うが、表紙へ戻る・奥付を
+     開くなどの後続処理が無条件に saveBookmark を呼ぶため、消した直後に
+     第七章の位置で保存し直されて「つづきから（第七章）」が復活していた
+     （実機報告）。再び読み始める操作（章へ入る／再生する／文を送る／
+     最終ページ以外へめくる）で下ろす */
+  let bookFinished = false;
+  /* 目モードの読了位置：最終章の最終ページ（「おわり」のページ）にいるか。
+     目モードには朗読の ended が無いので、位置そのものを読了の判定にする */
+  function atBookEndInEyeMode(): boolean {
+    if (!isEye() || !chapters.length) return false;
+    if (current !== chapters.length - 1) return false;
+    const pages = PAGES[current];
+    return !!pages && pages.length > 0 && curPage >= pages.length - 1;
+  }
   function saveBookmark(): void {
     if (!chapters.length) return;
+    // 読了後は保存しない（消去済みのしおりを復活させない）。目モードで
+    // 最終ページにいるときも、その位置を読了として保存ではなく消去にする
+    if (bookFinished || atBookEndInEyeMode()) {
+      remove('bookmark');
+      return;
+    }
     const bm: Bookmark = {
       chapter: current,
       time: audio.currentTime || 0,
@@ -941,6 +962,12 @@ export function createReader(book: BookData): Reader {
         curPage = target.page;
         renderPage(ctx.animDir ?? 0);
         schedulePageSeek();
+        // 最終ページ以外へめくった＝本の内側へ戻ったので、読了の番兵を
+        // 下ろして通常の保存に戻す（v1.13.7。読了直後に1ページ戻して
+        // 閉じても、位置がしおりに残るように）
+        if (!(current === chapters.length - 1 && target.page >= (PAGES[current]?.length ?? 1) - 1)) {
+          bookFinished = false;
+        }
         saveBookmark();
         break;
       case 'gate':
@@ -1036,6 +1063,7 @@ export function createReader(book: BookData): Reader {
   }
 
   function enterChapter(idx: number, opts: EnterOptions = {}): void {
+    bookFinished = false; // 章へ入る＝読み直し。読了の番兵を下ろす（v1.13.7）
     if (gateTimer !== undefined) clearTimeout(gateTimer);
     stopGateCall(); // 本文に入るときはコールを必ず止める（二重に鳴らさない）
     gateOpen = false;
@@ -1099,6 +1127,7 @@ export function createReader(book: BookData): Reader {
   }
   function playAudio(): void {
     if (isEye()) return; // 目で読むモードでは、どの経路からも朗読を始めない
+    bookFinished = false; // 再生を始める＝聴き直し。読了の番兵を下ろす（v1.13.7）
     // 停止中にめくって位置合わせが保留になっていたら、再生前にそのページへ合わせる
     if (pageSeekPending) applyPageSeek();
     audio.playbackRate = SPEEDS[speedIdx];
@@ -1158,6 +1187,7 @@ export function createReader(book: BookData): Reader {
      章はまたがない：章の最初／最後の文では、その文の頭に留まる */
   function stepSentence(dir: 1 | -1): void {
     if (isEye() || !chapters.length) return;
+    bookFinished = false; // 文を送る＝読み直し。読了の番兵を下ろす（v1.13.7）
     const count = UNITS[current]?.length ?? 0;
     if (!count) return;
     const idx = unitIndexAtPos(current, audio.currentTime);
@@ -1212,7 +1242,9 @@ export function createReader(book: BookData): Reader {
     updatePlayBtn();
     $('endPage').hidden = false;
     // 手動で開いた奥付ではしおりを保存する（位置の記録として残す）。
-    // 読了時のしおり消去は、朗読の ended ハンドラ側で行う（v1.13.1〜）
+    // 読了時のしおり消去は、朗読の ended ハンドラ側で行う（v1.13.1〜）。
+    // 読了後（番兵が立っている間）は saveBookmark 側で保存を止める：
+    // 読了後に奥付を開いても「つづきから」は復活しない（v1.13.7）
     saveBookmark();
   }
   function closeEndPage(): void {
@@ -1977,8 +2009,11 @@ export function createReader(book: BookData): Reader {
         // 以前は自動で奥付ページへ進んでいたが、読み終わりの余韻を最終ページで
         // 楽しめるよう、自動では進まない。奥付へは手動の前進操作で従来どおり
         // 行ける）。再生は ended で自然に止まる。BGM は従来の終了時挙動どおり
-        // 止めずに鳴らし続ける。読了の扱い（しおりを消す）も従来どおり
+        // 止めずに鳴らし続ける。読了の扱い（しおりを消す）も従来どおり。
+        // あわせて読了の番兵を立てる：この後の表紙へ戻る等の保存で、しおりが
+        // 第七章で復活しないようにする（v1.13.7）
         syncPageToAudio(true);
+        bookFinished = true;
         remove('bookmark');
         refreshResume();
         updatePlayBtn();

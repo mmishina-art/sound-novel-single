@@ -1,72 +1,124 @@
-# 章背景（生成イラスト）を上下の帯に切り分ける（v1.13.3〜）。
-# 使い方: python3 work/split-bg-bands.py <imagine_media のディレクトリ>
-# 出力: public/book/bg/ch{n}-top.webp / ch{n}-bottom.webp
-# 方針: モチーフは上下の端にしか無い（ゾーンルール）ので、真ん中の無地は捨てる。
-# 切り位置は章ごとに、インク行の計測（95パーセンタイル）＋目視補正で決めた表 CUTS に従う。
-# 切り口は余白帯の中でアルファをコサイン減衰させ、紙の上で継ぎ目が見えないようにする。
-import sys, os
-from PIL import Image
+#!/usr/bin/env python3
+"""章背景イラストの下帯を切り出す（v1.13.7〜：下帯のみ）。
+
+地絵（生成イラスト）から下の帯だけを切り出し、上端をコサイン・フェードで
+紙色へ溶かして public/book/bg/ch{n}-bottom.webp に出す。トップ帯は
+v1.13.4 で廃止済み（章タイトル行と絵が重なって「うるさい」という実機指摘）。
+
+下帯の寸法ルール（v1.13.7 で数値化。DESIGN.md の本文・章背景の項と対）:
+  - 帯全体の高さはページ高さの最大 30%
+  - 絵の本体（線・面のある部分、不透明のまま見える部分）は最下部の 22% 以内
+  - 帯の上の部分（本体より上の 8% 分）はフェード専用
+    （紙色へ溶けて、本文の行が掛かっても読みにくくならない濃さ）
+  - 本文の表示域は下限をページ高さの 78% までとし（src/style.css の
+    .page-content）、本体と本文は重ならない。ノンブルだけは例外として
+    従来どおり下の帯の中に置く。
+
+実装: 帯画像は alpha=0（切り位置）から alpha=1（本体開始）までコサインで
+立ち上げる。モチーフの自然な上端がフェード区間より下にあっても構わない
+（フェードはあくまで上限の決まりで、薄い絵はそのまま薄く見える）。
+
+ページ換算: ページの設計寸法は W:H = 600:1300。帯画像は background-size:
+100% auto でページ幅に合わせるため、表示される帯の高さ比は
+  (帯の高さpx / 帯の幅px) / (1300/600)
+で決まる。地絵の H/W が 1300/600 と同じ章（1056x2288）は換算係数 1、
+1120x2240 の章は 0.9231 になる。bodyStart / cut は地絵の行比で指定し、
+換算後のページ比でルールを満たすよう選ぶ。
+
+地色の統一: 生成イラストの地色（紙の部分）は章ごとに少し違うため、切り出しの
+ついでに「地色に近いピクセルだけ」をページの紙色 (250,242,228) へ寄せる
+（モチーフの線・面は地色から遠いので触れない）。v1.13.4 の帯で実績のある処理。
+
+使い方: python3 work/split-bg-bands.py
+"""
+import os
+
 import numpy as np
+from PIL import Image
 
-SRC = {
- 1:'media-generation-sora-no-yubin-bg-ch1-sample-0-bb2508c9-dd09-4667-8651-f531e7e61d20.webp',
- 2:'media-generation-sora-no-yubin-bg-ch2-umbrella-0-9f0eab9c-bc58-4ee0-9b35-986746a2e331.webp',
- 3:'media-generation-sora-no-yubin-bg-ch3-reserved-0-f69f7fac-50c9-4975-a60a-ba9f51fa0ece.webp',
- 4:'media-generation-sora-no-yubin-bg-ch4-homework-0-38488471-4544-4d2a-9671-2a2290d31de1.webp',
- 5:'media-generation-sora-no-yubin-bg-ch5-three-mon-0-ee3f2c97-75ff-40c5-8957-fd208d4386fc.webp',
- 6:'media-generation-sora-no-yubin-bg-ch6-empty-sho-0-222be8b8-faa8-4412-8a49-7050d7c2cd7b.webp',
- 7:'media-generation-sora-no-yubin-bg-ch7-new-shop-0-d8b8d806-a788-41ca-be0d-3a384bda0814.webp',
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(REPO, "public/book/bg")
+IMAGINE = os.path.expanduser("~/workspace/imagine_media")
+YOUR_FILES = os.path.expanduser("~/workspace/your_files")
+
+# ページの設計寸法比（W:H = 600:1300）
+PAGE_K = 1300 / 600
+# ルールの数値（ページ高さに対する比）
+BAND_MAX = 0.30   # 帯全体の上限
+BODY_MAX = 0.22   # 本体の上限（最下部から）
+FADE = 0.08       # フェード部の幅
+# ページの紙色（帯の地色を寄せる先）
+PAPER = np.array([250.0, 242.0, 228.0])
+# 地色とみなす距離（RGB ユークリッド）。これより近いピクセルほど強く寄せる
+GROUND_RANGE = 60.0
+
+# 章ごとの指定: (地絵ファイル, 本体の開始位置＝地絵の行比)
+# 本体開始は「その行から下が alpha=1」を意味する。切り位置はフェード幅から
+# 自動で決まる（本体開始 − フェード幅の地絵行比換算）。
+CHAPTERS = {
+    # ch1 は昭和版の作り直し（your_files/ch1-bg-remake）が正。2階と看板・庇は
+    # 帯に入れない（v1.13.7 実機指摘：本文の行が2階の窓・庇と重なって読めない）。
+    # テント庇はフェード区間で溶け、店先（引き戸・均一ワゴン・自転車・まる）だけが残る
+    1: (os.path.join(YOUR_FILES, "ch1-bg-remake/ch1-bg-showa-bookshop-v2.webp"), 0.800),
+    2: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch2-umbrella-0-9f0eab9c-bc58-4ee0-9b35-986746a2e331.webp"), 0.795),
+    3: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch3-reserved-0-f69f7fac-50c9-4975-a60a-ba9f51fa0ece.webp"), 0.828),
+    4: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch4-homework-0-38488471-4544-4d2a-9671-2a2290d31de1.webp"), 0.890),
+    # ch5: 本棚の最下段・カウンター（封筒）・丸座布団が本体。棚の上部は帯から外れる
+    5: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch5-three-mon-0-ee3f2c97-75ff-40c5-8957-fd208d4386fc.webp"), 0.780),
+    # ch6: 床と間取り図（巻物）の下部が本体。午後の光の面はフェードで溶ける
+    6: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch6-empty-sho-0-222be8b8-faa8-4412-8a49-7050d7c2cd7b.webp"), 0.762),
+    # ch7: 看板の下端はフェードで溶け、入口と植木が本体。自然な絵の上端
+    # （0.744）はフェード区間の中にあり、そのまま薄く見える
+    7: (os.path.join(IMAGINE, "media-generation-sora-no-yubin-bg-ch7-new-shop-0-d8b8d806-a788-41ca-be0d-3a384bda0814.webp"), 0.762),
 }
-# (上モチーフの下端, 上帯の切り位置, 下モチーフの上端, 下帯の切り位置) いずれも高さ比
-# ※第1章は v1.13.4 で地絵が昭和版v2（~/workspace/your_files/ch1-bg-remake/
-#   ch1-bg-showa-bookshop-v2.webp）に差し替わり、下帯のみ再生成した
-#   （上帯は v1.13.4 で廃止）。v2 の下帯: inkStart 0.555（電柱の頭）、
-#   botCut 0.500。以下の ch1 の行は旧地絵（sample）の記録として残す。
-CUTS = {
- 1:(0.120, 0.185, 0.826, 0.761),
- 2:(0.062, 0.127, 0.795, 0.730),
- 3:(0.066, 0.131, 0.828, 0.763),
- 4:(0.045, 0.110, 0.890, 0.825),
- 5:(0.109, 0.174, 0.545, 0.480),
- 6:(0.070, 0.135, 0.645, 0.580),
- 7:(0.100, 0.165, 0.744, 0.679),
-}
 
-def main(src_dir: str) -> None:
-    out_dir = os.path.join(os.path.dirname(__file__), '..', 'public', 'book', 'bg')
-    total = 0
-    for n, name in SRC.items():
-        im = Image.open(os.path.join(src_dir, name)).convert('RGB')
-        W, H = im.size
-        tie, tc, bis, bc = CUTS[n]
-        # 上帯: 0..topCut。フェードは inkEnd+1% 〜 topCut
-        top = im.crop((0, 0, W, int(H * tc))).convert('RGBA')
-        a = np.asarray(top).copy()
-        ys = np.arange(a.shape[0]) / H
-        ramp = np.ones(a.shape[0], dtype=np.float32)
-        m = ys > tie + 0.01
-        t = np.clip((ys[m] - (tie + 0.01)) / (tc - (tie + 0.01)), 0, 1)
-        ramp[m] = 0.5 * (1 + np.cos(np.pi * t))
-        a[..., 3] = (a[..., 3] * ramp[:, None]).astype(np.uint8)
-        Image.fromarray(a).save(os.path.join(out_dir, f'ch{n}-top.webp'),
-                                quality=85, alpha_quality=100, method=6)
-        # 下帯: botCut..H。フェードは botCut 〜 inkStart-1%
-        y0 = int(H * bc)
-        bot = im.crop((0, y0, W, H)).convert('RGBA')
-        b = np.asarray(bot).copy()
-        ys = (np.arange(b.shape[0]) + y0) / H
-        ramp = np.ones(b.shape[0], dtype=np.float32)
-        m = ys < bis - 0.01
-        t = np.clip((ys[m] - bc) / ((bis - 0.01) - bc), 0, 1)
-        ramp[m] = 0.5 * (1 - np.cos(np.pi * t))
-        b[..., 3] = (b[..., 3] * ramp[:, None]).astype(np.uint8)
-        Image.fromarray(b).save(os.path.join(out_dir, f'ch{n}-bottom.webp'),
-                                quality=85, alpha_quality=100, method=6)
-        for part in ('top', 'bottom'):
-            s = os.path.getsize(os.path.join(out_dir, f'ch{n}-{part}.webp'))
-            total += s
-            print(f'ch{n}-{part}.webp {s} bytes')
-    print('TOTAL', total, 'bytes')
 
-if __name__ == '__main__':
-    main(sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/workspace/imagine_media'))
+def unify_ground(rgb: np.ndarray) -> np.ndarray:
+    """地色に近いピクセルだけをページの紙色へ寄せる。
+
+    地色は本文域（中央の空白、行比 0.30〜0.45）の中央値で推定する。
+    """
+    h = rgb.shape[0]
+    mid = rgb[int(h * 0.30):int(h * 0.45)].reshape(-1, 3)
+    ground = np.median(mid, axis=0)
+    dist = np.linalg.norm(rgb - ground, axis=2)
+    w = np.clip(1.0 - dist / GROUND_RANGE, 0.0, 1.0)[..., None]
+    return rgb + (PAPER - ground) * w
+
+
+def make_band(ch: int, src_path: str, body_start: float) -> None:
+    im = Image.open(src_path).convert("RGB")
+    w, h = im.size
+    # 地絵の行比 → ページ高さ比の換算係数
+    conv = (h / w) / PAGE_K
+    fade_src = FADE / conv
+    cut = body_start - fade_src
+    rgb = unify_ground(np.asarray(im).astype(np.float64))
+    y0, y1 = int(h * cut), int(h * body_start)
+    band = rgb[y0:].copy()
+    # alpha: cut で 0 → body_start で 1（コサイン）、それ以下は 1
+    ramp = 0.5 * (1 - np.cos(np.pi * np.arange(y1 - y0) / max(1, (y1 - y0))))
+    alpha = np.ones(band.shape[0])
+    alpha[: y1 - y0] = ramp
+    alpha_full = np.broadcast_to(alpha[:, None, None], (band.shape[0], band.shape[1], 1))
+    out = np.dstack([band, alpha_full * 255]).astype(np.uint8)
+    path = os.path.join(OUT, f"ch{ch}-bottom.webp")
+    Image.fromarray(out, "RGBA").save(path, "WEBP", quality=88)
+    band_frac = (1 - cut) * conv
+    body_frac = (1 - body_start) * conv
+    ok = band_frac <= BAND_MAX + 1e-9 and body_frac <= BODY_MAX + 1e-9
+    print(
+        f"ch{ch}: cut={cut:.3f} bodyStart={body_start:.3f} "
+        f"帯={band_frac * 100:.1f}% 本体={body_frac * 100:.1f}% フェード={FADE * 100:.0f}% "
+        f"{'OK' if ok else 'NG ルール超過'} {os.path.getsize(path)} bytes"
+    )
+
+
+def main() -> None:
+    os.makedirs(OUT, exist_ok=True)
+    for ch, (src, body_start) in CHAPTERS.items():
+        make_band(ch, src, body_start)
+
+
+if __name__ == "__main__":
+    main()

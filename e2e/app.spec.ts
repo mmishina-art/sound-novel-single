@@ -653,6 +653,76 @@ test('最終章の朗読が終わっても、最終ページに留まり奥付�
   await expect(page.locator('#endPage')).toBeVisible();
 });
 
+test('読了したらしおりは消え、表紙から進むと目次に着く（耳で読む）', async ({ page }) => {
+  // 実機報告：最後まで聴いても「つづきから（第七章）」が表紙に残ってしまう。
+  // 読了（最終章の朗読終了）でしおりは消えるのが仕様。その後に奥付を
+  // 開いたり表紙へ戻ったりしても、しおりが第七章で保存し直されないこと
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await enterViaToc(page, '#earModeBtn', 6); // 最終章（第七章）を耳で読む
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 15000 });
+  await page.waitForFunction(() => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    return isFinite(a.duration) && a.duration > 0 && !a.paused;
+  });
+  await page.evaluate(() => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    a.currentTime = a.duration - 0.4;
+  });
+  await page.waitForFunction(() => (document.getElementById('audioEl') as HTMLAudioElement).ended);
+  await page.waitForTimeout(500);
+  // 読了直後：しおりは消えている
+  const bmAfterEnd = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bmAfterEnd).toBeNull();
+  // 奥付を開いて戻っても、しおりは復活しない
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  await swipeSurface(page, box, 'next');
+  await expect(page.locator('#endPage')).toBeVisible();
+  await swipeSurface(page, box, 'prev');
+  await expect(page.locator('#endPage')).toBeHidden();
+  // 表紙へ戻っても、しおりは消えたまま（「つづきから」が出ない）
+  await backToCover(page);
+  const bmOnCover = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bmOnCover).toBeNull();
+  await expect(page.locator('#coverResume')).toBeHidden();
+  // しおりが無い状態で表紙から進む先は目次ページ
+  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await expect(page.locator('#gateView')).toBeHidden();
+});
+
+test('読了したらしおりは消える（目で読む：最終ページ到達で読了）', async ({ page }) => {
+  // 目モードには朗読の ended が無いので、最終章の最終ページ（「おわり」の
+  // ページ）に着いたことが読了になる。その場でしおりは消え、表紙へ戻って
+  // も復活しないこと
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await enterViaToc(page, '#eyeModeBtn', 6); // 最終章（第七章）を目で読む（扉で止まる）
+  await swipeGate(page, 'next'); // 扉から本文へ
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  // 「おわり」のある最終ページまで送る
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  const endMark = page.locator('#pageContent .story-end');
+  for (let i = 0; i < 40 && (await endMark.count()) === 0; i++) {
+    await swipeSurface(page, box, 'next');
+    await page.waitForTimeout(150);
+  }
+  await expect(endMark).toHaveText('おわり');
+  // 最終ページに着いたら、しおりは消えている
+  const bmAtEnd = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bmAtEnd).toBeNull();
+  // 表紙へ戻っても復活せず、進む先は目次
+  await backToCover(page);
+  const bmOnCover = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bmOnCover).toBeNull();
+  await expect(page.locator('#coverResume')).toBeHidden();
+  await page.locator('#eyeModeBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await expect(page.locator('#gateView')).toBeHidden();
+});
+
 test('再生中にページをめくると、朗読がそのページの先頭へ移り、引き戻されない', async ({ page }) => {
   await openReader(page);
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
