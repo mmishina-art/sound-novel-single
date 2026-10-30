@@ -404,12 +404,14 @@ body.dir-horizontal .read-progress { justify-content: flex-start; }
 
 .page-wrap { position: relative; flex: 1; min-height: 0; margin: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); --folio-band: 44px; touch-action: pan-y pinch-zoom; }
 /* 1ページの紙。背（綴じ側）は右、 小口は左。
-   章ごとの背景イメージ（--chapter-bg-top / --chapter-bg-bottom、reader.ts が章ごとに
-   差し込む）は ::before の専用層に敷く。絵は生成イラストを上下の帯に切り分けたもの
-   （v1.13.3〜）で、上帯は天に、下帯は地に吸着させ、中央の本文域は紙のまま空ける。
-   切り口は画像側で紙色へフェードさせてあり、継ぎ目は見えない。下端はノンブルの帯
-   （--folio-band）の上で止め、ページ数の表示と絵が重ならないようにする
-   （本文の下余白42pxともほぼ揃う）。
+   章ごとの背景イメージ（--chapter-bg-bottom、reader.ts が章ごとに差し込む）は
+   ::before の専用層に敷く。絵は生成イラストの下帯（v1.13.3〜）で、ページの
+   一番下にぴったり吸着させ、中央の本文域は紙のまま空ける。切り口は画像側で
+   紙色へフェードさせてあり、継ぎ目は見えない。
+   上帯は廃止（v1.13.4〜。上端の絵が章タイトル行と重なりうるさいという実機指摘）。
+   下端は以前ノンブルの帯（--folio-band）の上で止めていたが、「絵が浮いて見える」
+   という実機指摘を受け、ページ下端まで届かせる（v1.13.4〜）。ノンブルは帯の
+   中央に絶対配置され、絵の足元（紙色にフェード済み）に重なっても読める。
    背景オフのときは body.bg-off で ::before とアニメーション層を消し、紙だけに戻す */
 .page {
   position: absolute; inset: 0;
@@ -418,12 +420,12 @@ body.dir-horizontal .read-progress { justify-content: flex-start; }
     linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
   overflow: hidden;
 }
-.page::before { /* 章背景（上下の帯）の専用層：ノンブルの帯には入り込まない */
-  content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: var(--folio-band);
-  background-image: var(--chapter-bg-top, none), var(--chapter-bg-bottom, none);
-  background-size: 100% auto, 100% auto;
-  background-position: center top, center bottom;
-  background-repeat: no-repeat, no-repeat;
+.page::before { /* 章背景（下帯）の専用層：ページ下端まで届く */
+  content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  background-image: var(--chapter-bg-bottom, none);
+  background-size: 100% auto;
+  background-position: center bottom;
+  background-repeat: no-repeat;
   pointer-events: none;
 }
 body.bg-off .page::before { display: none; }
@@ -445,7 +447,7 @@ body.bound-left .page::after {
   left: 0; background: linear-gradient(to right, rgba(101,84,52,.3), rgba(101,84,52,.1) 55%, transparent);
 }
 /* ============ 章背景のアニメーション層 ============
-   章背景の帯（--chapter-bg-top / --chapter-bg-bottom）の上に、章に合う小さな動きだけを重ねる。本文（.page-content）より
+   章背景の下帯（--chapter-bg-bottom）の上に、章に合う小さな動きだけを重ねる。本文（.page-content）より
    下の層に置き、動きは transform / opacity のみ・要素数も最小限にして描画負荷を抑える。
    中身は reader.ts の buildPageAnim() が章ごとに作る（--d=周期、--dl=遅延、--dx/--dy=漂う量）。
    背景オフ（body.bg-off）のときと、端末の「視覚効果を減らす」設定のときは層ごと出さない。

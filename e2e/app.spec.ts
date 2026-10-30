@@ -1431,13 +1431,20 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await openReader(page);
     const anim = page.locator('#pageAnim');
     await expect(anim).toHaveAttribute('data-chapter', '1');
-    // 章背景は生成イラストの上下帯（v1.13.3〜）：::before の2層が当該章の帯を指す
+    // 章背景は生成イラストの下帯のみ（v1.13.4〜。上帯は章タイトル行と重なり
+    // うるさいため廃止）：::before は下帯だけを指し、ページ下端まで届く
     const bgOf = () => page.evaluate(() => {
       const el = document.querySelector('#pageEl');
       return el ? getComputedStyle(el, '::before').backgroundImage : '';
     });
-    await expect.poll(bgOf).toContain('ch1-top.webp');
     await expect.poll(bgOf).toContain('ch1-bottom.webp');
+    await expect.poll(bgOf).not.toContain('-top.webp');
+    const beforeBox = await page.evaluate(() => {
+      const el = document.querySelector('#pageEl') as HTMLElement;
+      const cs = getComputedStyle(el, '::before');
+      return { bottom: cs.bottom, position: cs.backgroundPosition };
+    });
+    expect(beforeBox.bottom).toBe('0px'); // 下帯はページ最下端に吸着する
     // 雨は全てアニメーション（v1.13.2）：両端を全高で落ちる雨7＋上部の短い雨8。
     // 背景 SVG 側に静止した雨線は置かない（「止まって見える」実機指摘への対応）
     await expect(anim.locator('.anim-rain')).toHaveCount(15);
@@ -1449,8 +1456,8 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
     await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
     await expect(anim).toHaveAttribute('data-chapter', '2');
-    await expect.poll(bgOf).toContain('ch2-top.webp');
     await expect.poll(bgOf).toContain('ch2-bottom.webp');
+    await expect.poll(bgOf).not.toContain('-top.webp');
     // 第二章の雨も量感を第一章に統一（密度・薄さとも）。水たまりのきらめきは残る
     await expect(anim.locator('.anim-rain')).toHaveCount(15);
     await expect(anim.locator('.anim-rain.top')).toHaveCount(8);
