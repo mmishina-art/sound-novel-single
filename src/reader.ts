@@ -311,20 +311,24 @@ export function createReader(book: BookData): Reader {
   /* ---------- メニュー（入口はボタンだけ） ----------
      操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置き、
      本文タップはページめくり専用。本文タップでメニューが開くことはない */
-  /* メニューの組み替え（v1.12.0〜）：開いた場所と読書モードで、行の所属と見出しを
-     変える。表紙では全項目を見せ、所属が分かる見出しを付ける（共通／「耳で読む」
-     の設定／「目で読む」の設定）。BGM とページめくり音は両モード共通なので共通側
-     （v1.12.2 で「耳で読む」から移動）。「画面を暗くしない」も共通側。
-     本文中はモード別：耳で読むは従来どおり（見出しは 音／表示）、目で読むでは
-     音のグループに BGM とめくり音だけを残し、朗読に紐づく項目（再生速度・
-     バックグラウンド再生・朗読中の文を強調）は出さない */
+  /* メニューの組み替え：分類は開いた場所・モードによらず 音／表示／再生 の
+     3つで固定する（v1.13.3 で再編。旧 v1.12.0〜のモード別見出し「耳で読む」
+     の設定／「目で読む」の設定は廃止した——全設定は両モード共通という実態に
+     見せ方を合わせるため）。割り当て：音＝めくり音・BGM／表示＝文字サイズ・
+     フリガナ・朗読中の文を強調・背景イメージ・画面を暗くしない／再生＝再生
+     速度・バックグラウンド再生。「朗読中の文を強調」は文の見た目の設定なので
+     表示に置く（旧分類では「耳で読む」の設定側だった）。目で読むでは朗読に
+     紐づく行（再生速度・バックグラウンド再生・朗読中の文を強調）を隠し、
+     行が無くなる「再生」の見出しも一緒に隠す。ナビ行には見出しを付けない */
   function arrangeMenu(ctx: 'cover' | 'ear' | 'eye'): void {
     const nav = $('menuGroupNav');
     const aud = $('menuGroupAudio');
     const dis = $('menuGroupDisplay');
+    const play = $('menuGroupPlay');
     const headNav = $('menuHeadNav');
     const headAud = $('menuHeadAudio');
     const headDis = $('menuHeadDisplay');
+    const headPlay = $('menuHeadPlay');
     const rows = {
       toc: $('tocFromMenuBtn'),
       toCover: $('toCoverFromMenuBtn'),
@@ -346,42 +350,28 @@ export function createReader(book: BookData): Reader {
     rows.speed.hidden = false;
     rows.bgPlay.hidden = false;
     rows.hl.hidden = false;
-    if (ctx === 'cover') {
-      headNav.hidden = false;
-      headNav.textContent = '共通';
-      headAud.hidden = false;
-      headAud.textContent = '「耳で読む」の設定';
-      headDis.textContent = '「目で読む」の設定';
-      aud.hidden = false;
-      put(nav, [rows.toCover, rows.toc, rows.wake, rows.pageSound, rows.bgm, rows.install]);
-      put(aud, [rows.speed, rows.bgPlay, rows.hl]);
-      put(dis, [rows.font, rows.ruby, rows.bg]);
-    } else if (ctx === 'ear') {
-      headNav.hidden = true;
-      headAud.hidden = false;
-      headAud.textContent = '音';
-      headDis.textContent = '表示';
-      aud.hidden = false;
-      put(nav, [rows.toCover, rows.toc, rows.install]);
-      put(aud, [rows.speed, rows.pageSound, rows.bgm, rows.bgPlay]);
-      put(dis, [rows.font, rows.ruby, rows.hl, rows.bg, rows.wake]);
-    } else {
-      headNav.hidden = true;
-      headAud.hidden = false;
-      headAud.textContent = '音';
-      headDis.textContent = '表示';
-      aud.hidden = false;
-      put(nav, [rows.toCover, rows.toc, rows.install]);
-      put(aud, [rows.pageSound, rows.bgm]);
-      put(dis, [rows.font, rows.ruby, rows.bg, rows.wake]);
+    headNav.hidden = true;
+    headAud.hidden = false;
+    headAud.textContent = '音';
+    headDis.hidden = false;
+    headDis.textContent = '表示';
+    put(nav, [rows.toCover, rows.toc, rows.install]);
+    put(aud, [rows.pageSound, rows.bgm]);
+    put(dis, [rows.font, rows.ruby, rows.hl, rows.bg, rows.wake]);
+    put(play, [rows.speed, rows.bgPlay]);
+    if (ctx === 'eye') {
       // 朗読に紐づく項目は目で読むでは出さない（置き場所ではなく行ごと隠す）
       rows.speed.hidden = true;
       rows.bgPlay.hidden = true;
       rows.hl.hidden = true;
+      headPlay.hidden = true;
+    } else {
+      headPlay.hidden = false;
+      headPlay.textContent = '再生';
     }
   }
   function openMenu(): void {
-    // 表紙から開いたら全項目＋見出し、本文中（扉・目次を含む）はモード別の構成にする
+    // 分類（音／表示／再生）は全画面で共通。目で読むのときだけ朗読に紐づく行を隠す
     arrangeMenu(coverView.hidden ? readMode : 'cover');
     // 「表紙に戻る」は表紙以外から開いたときだけ出す（表紙で開いたメニューには不要）
     $('toCoverFromMenuBtn').hidden = !coverView.hidden;
@@ -695,17 +685,19 @@ export function createReader(book: BookData): Reader {
   }
   /* 表紙は「表紙だけが静かに出ている」状態が原則。入り口はモードの2ボタンと
      「メニュー」だけ（v1.12.2 で表紙タップでの開始と「しおりから再開」ボタンを
-     廃止し、2ボタンに一本化した）。しおりの案内行は出さない（情報は2ボタンの
-     補足文と重なるため）。
+     廃止し、2ボタンに一本化した）。
+     補足文は「朗読つき／朗読なし」固定（v1.13.3 で整理）。しおりがあるときの
+     再開情報は、補足文に混ぜずボタン上の小行 #coverResume で示す（どちらの
+     入口からでも同じ章から再開するので、行は1つで足りる）。
      ヒント文は初回（しおりがなく、まだ読み始めた記録もないとき）だけの控えめな案内 */
   function refreshResume(): void {
     const bm = loadBookmark();
     const has = !!(bm && chapters[bm.chapter]);
-    // 入り口はモードの2ボタンに一本化した（v1.12.2 で「しおりから再開」ボタンを
-    // 廃止）。しおりがある間は、2ボタンの補足文で「つづきから」だと分かるようにする
-    const suffix = has && bm ? '・つづきから（' + chapters[bm.chapter].num + '）' : '';
-    $('earModeSub').textContent = '朗読つき' + suffix;
-    $('eyeModeSub').textContent = '朗読なし' + suffix;
+    $('earModeSub').textContent = '朗読つき';
+    $('eyeModeSub').textContent = '朗読なし';
+    const resumeEl = $('coverResume');
+    resumeEl.hidden = !has;
+    resumeEl.textContent = has && bm ? 'つづきから（' + chapters[bm.chapter].num + '）' : '';
     $('coverHint').hidden = has || load<boolean>('seen', false);
   }
 
@@ -1104,8 +1096,21 @@ export function createReader(book: BookData): Reader {
       // 位置指定できなくても続行する
     }
   }
+  /* 再生速度の選択肢（文字の並び）の選択状態を、aria-pressed と藍色で示す */
+  function syncSpeedChoices(): void {
+    document.querySelectorAll<HTMLButtonElement>('#speedChoices .speed-choice').forEach((b) => {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.speedIdx) === speedIdx));
+    });
+  }
+  function setSpeed(idx: number): void {
+    speedIdx = idx;
+    audio.playbackRate = SPEEDS[speedIdx];
+    setPreservesPitch();
+    save('speed', SPEEDS[speedIdx]);
+    syncSpeedChoices();
+  }
   function updateNav(): void {
-    $('speedBtn').textContent = speedLabel(SPEEDS[speedIdx]);
+    syncSpeedChoices();
   }
   function goCover(): void {
     stopGateCall();
@@ -1716,12 +1721,26 @@ export function createReader(book: BookData): Reader {
     $('nextSentBtn').addEventListener('click', () => stepSentence(1));
     /* 章移動の入口は画面上のボタンではなく、ページめくり（章またぎ）と目次に一本化した。
        前章／次章は Media Session の previoustrack / nexttrack でも行える */
-    $('speedBtn').addEventListener('click', () => {
-      speedIdx = (speedIdx + 1) % SPEEDS.length;
-      audio.playbackRate = SPEEDS[speedIdx];
-      setPreservesPitch();
-      save('speed', SPEEDS[speedIdx]);
-      updateNav();
+    /* 再生速度の選択肢は SPEEDS から生成する（候補の正は logic.ts の SPEEDS。
+       楕円ピルの巡回式は廃止し、文字サイズと同じ文字の並びにした：v1.13.3） */
+    const speedChoicesEl = $('speedChoices');
+    SPEEDS.forEach((s, i) => {
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'speed-sep';
+        sep.textContent = '／';
+        sep.setAttribute('aria-hidden', 'true');
+        speedChoicesEl.appendChild(sep);
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'speed-choice';
+      b.dataset.speedIdx = String(i);
+      b.dataset.speed = String(s);
+      b.textContent = speedLabel(s);
+      b.setAttribute('aria-pressed', String(i === speedIdx));
+      b.addEventListener('click', () => setSpeed(i));
+      speedChoicesEl.appendChild(b);
     });
     $<HTMLInputElement>('rubyToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;

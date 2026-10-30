@@ -301,23 +301,36 @@ body.bound-left .book-cover::before {
   background: linear-gradient(105deg, transparent 55%, rgba(255,255,255,.06));
 }
 .cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cover-colophon { /* 奥付表記：小口側の上に小さく */
-  position: absolute; top: 4.6%; z-index: 3;
-  font-size: 2.9cqw; letter-spacing: .32em; color: rgba(242,233,216,.82);
-  text-shadow: 0 1px 4px rgba(0,0,0,.8); white-space: nowrap;
+.cover-logo { /* 版元の印：公式ロゴの線画（藍）を小口側の上に後付けする。
+  地絵には描き込まない（v1.13.3 で新装丁と同時に導入。旧「サウンド単行本」の
+  刷り込み文字は、印と重なるため廃止した）。
+  大きさ・位置は決定モックの実測：幅は表紙幅の約7%、左端 5.8%／上端 4.3%。
+  周囲の余白はロゴ幅の1/8以上を確保している（LOGO.md の規定） */
+  position: absolute; top: 4.3%; z-index: 3;
+  width: 7.1%; height: auto; display: block;
 }
-body.bound-right .cover-colophon { left: 6.5%; }
-body.bound-left .cover-colophon { right: 6.5%; }
-.cover-vtitle { /* 題字：背の内側に置く。縦書きでは縦書き題字、右の列から読む */
-  position: absolute; top: 5%; z-index: 3;
+body.bound-right .cover-logo { left: 5.8%; }
+body.bound-left .cover-logo { right: 5.8%; }
+.cover-vtitle { /* 題字：背の内側に置く。縦書きでは縦書き題字、右の列から読む。
+  位置は上 12%／背の余白 14%、色は地絵（淡い雨空）の上で読める濃藍（v1.13.3） */
+  position: absolute; top: 12%; z-index: 3;
   font-size: 8.4cqw; font-weight: 700; letter-spacing: .14em; line-height: 1.5;
-  color: #f5efdd; text-shadow: 0 2px 10px rgba(0,0,0,.9); white-space: nowrap;
+  color: #1e2d52; white-space: nowrap;
 }
 body.dir-vertical .cover-vtitle { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
-body.bound-right .cover-vtitle { right: 10.5%; }
-body.bound-left .cover-vtitle { left: 10.5%; }
+body.bound-right .cover-vtitle { right: 14%; }
+body.bound-left .cover-vtitle { left: 14%; }
+.cover-author { /* 著者名：地絵の家の中心（幅の約45%）に合わせて下部に置く。
+  地絵基準の位置なので、綴じ方向では反転させない */
+  position: absolute; bottom: 4.2%; left: 45%; transform: translateX(-50%); z-index: 3;
+  font-size: 3.6cqw; letter-spacing: .5em; margin-right: -.5em;
+  color: #1e2d52; white-space: nowrap;
+}
 .cover-vtitle .vt-line { display: block; }
 .cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }
+/* 再開の小行（v1.13.3）：しおりがあるときだけ、モードボタンの上に控えめに
+   「つづきから（第N章）」を示す。補足文（朗読つき／朗読なし）とは混ぜない */
+.cover-resume { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; letter-spacing: .08em; }
 /* 表紙の入口は1つだけ（小さな「メニュー」）。目次・設定はすべてメニューの中。
    しおりがあるときだけ、その上に再開ボタンが出る（案内行は置かない：章の情報は
    再開ボタンの文言と重なるため） */
@@ -751,6 +764,18 @@ body.bound-left .toc-sheet {
 .font-choice { font: inherit; font-size: .95rem; background: none; border: none; cursor: pointer; color: #9a8a64; min-height: 44px; padding: 0 10px; }
 .font-choice[aria-pressed="true"] { color: var(--indigo2); font-weight: 600; }
 .font-sep { color: rgba(101, 84, 52, .4); }
+/* 再生速度：楕円ピル（押すたび巡回）はやめ、文字サイズと同じ「文字の選択肢の
+   並び」にした（v1.13.3）。候補が5つある分、字と余白を一段詰める */
+.speed-choices { display: flex; align-items: center; }
+.speed-choice { font: inherit; font-size: .9rem; background: none; border: none; cursor: pointer; color: #9a8a64; min-height: 44px; padding: 0 5px; white-space: nowrap; }
+.speed-choice[aria-pressed="true"] { color: var(--indigo2); font-weight: 600; }
+.speed-sep { color: rgba(101, 84, 52, .4); font-size: .9rem; }
+/* 狭い画面では速度の選択肢をもう一段詰めて、行がはみ出さないようにする */
+@media (max-width: 380px) {
+  #rowSpeed { gap: 6px; }
+  .speed-choice { padding: 0 3px; font-size: .86rem; }
+  .speed-sep { font-size: .86rem; }
+}
 .menu-nav-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; padding: 3px 2px; background: none; border: none; border-bottom: 1px solid rgba(101, 84, 52, .14); font: inherit; font-size: .95rem; color: var(--text); cursor: pointer; text-align: start; }
 .menu-nav-row::after { content: '›'; color: #8a6d2f; font-size: 1.15rem; line-height: 1; }
 .menu-nav-row:active { background: rgba(163, 130, 62, .08); }

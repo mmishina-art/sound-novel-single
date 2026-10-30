@@ -72,7 +72,14 @@ export const DEFAULT_SPEED_INDEX = 1; // 1.0
 
 export function speedIndexOf(speed: number): number {
   const ix = SPEEDS.indexOf(speed);
-  return ix >= 0 ? ix : DEFAULT_SPEED_INDEX;
+  if (ix >= 0) return ix;
+  /* 候補に無い保存値（旧版で保存された 0.75 等）は、最も近い候補へ寄せる。
+     同距離なら既定（1.0×）を優先する */
+  let best = DEFAULT_SPEED_INDEX;
+  for (let i = 0; i < SPEEDS.length; i++) {
+    if (Math.abs(SPEEDS[i] - speed) < Math.abs(SPEEDS[best] - speed)) best = i;
+  }
+  return best;
 }
 
 export function speedLabel(speed: number): string {

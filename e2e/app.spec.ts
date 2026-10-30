@@ -75,7 +75,54 @@ test('表紙が開き、タイトルと著者が見える', async ({ page }) => 
   await page.goto('/');
   await expect(page.locator('#coverView')).toBeVisible();
   await expect(page.locator('.cover-vtitle')).toContainText('空の郵便が');
+  await expect(page.locator('.cover-author')).toContainText('水瀬');
   await expect(page).toHaveTitle(/空の郵便が届くまで/);
+});
+
+test('表紙は新装丁：地絵の上に題字・著者名・線画ロゴを後付けし、刷り込み文字は置かない', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#coverView')).toBeVisible();
+  // 地絵は生成イラスト（cover-art.webp）。旧装丁のベタ塗り cover.svg は使わない
+  await expect(page.locator('.cover-img')).toHaveAttribute('src', /cover-art\.webp/);
+  // 刷り込み文字「サウンド単行本」は廃止（印と重なるため）
+  await expect(page.locator('.cover-colophon')).toHaveCount(0);
+  // ロゴは公式の線画（藍）を小口側の上に後付け表示する
+  const logo = page.locator('.cover-logo');
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute('src', /logo-line-indigo\.svg/);
+  // 位置と大きさを表紙ボックスに対する割合で固定する（決定モックの実測値）
+  const geo = await page.evaluate(() => {
+    const box = document.querySelector('.book-cover')!.getBoundingClientRect();
+    const r = (sel: string) => {
+      const b = document.querySelector(sel)!.getBoundingClientRect();
+      return {
+        top: (b.top - box.top) / box.height,
+        left: (b.left - box.left) / box.width,
+        right: (box.right - b.right) / box.width,
+        bottom: (box.bottom - b.bottom) / box.height,
+        width: b.width / box.width,
+        centerX: (b.left + b.right) / 2 - box.left,
+      };
+    };
+    const cover = { w: box.width, h: box.height };
+    return { cover, logo: r('.cover-logo'), title: r('.cover-vtitle'), author: r('.cover-author') };
+  });
+  // ロゴ：左端 約5.8%・上端 約4.3%・幅 約7.1%（余白はロゴ幅の1/8以上）
+  expect(geo.logo.left).toBeGreaterThan(0.045);
+  expect(geo.logo.left).toBeLessThan(0.07);
+  expect(geo.logo.top).toBeGreaterThan(0.03);
+  expect(geo.logo.top).toBeLessThan(0.055);
+  expect(geo.logo.width).toBeGreaterThan(0.06);
+  expect(geo.logo.width).toBeLessThan(0.085);
+  // 題字：上 12%・右余白 14%（要素ボックスの指定値。実描画は行間ぶん内側）
+  expect(geo.title.top).toBeGreaterThan(0.10);
+  expect(geo.title.top).toBeLessThan(0.14);
+  expect(geo.title.right).toBeGreaterThan(0.03);
+  expect(geo.title.right).toBeLessThan(0.15);
+  // 著者名：中心が表紙幅の約45%（地絵の家に合わせる）、下部に置く
+  expect(Math.abs(geo.author.centerX / geo.cover.w - 0.45)).toBeLessThan(0.03);
+  expect(geo.author.bottom).toBeGreaterThan(0.02);
+  expect(geo.author.bottom).toBeLessThan(0.08);
 });
 
 test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だけで、読み始めると出なくなる', async ({ page }) => {
@@ -84,17 +131,20 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
   await expect(page.locator('#coverMenuBtn')).toBeVisible(); // 入口は1つ
   await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンは廃止（モードボタンに一本化）
-  await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // しおりはまだない（補足は通常形）
+  await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // 補足文は固定（v1.13.3）
   await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
-  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // しおりの案内行は置かない（廃止）
+  await expect(page.locator('#coverResume')).toBeHidden(); // しおりがなければ再開の小行は出ない
+  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // 旧しおり案内行の要素は置かない（廃止のまま）
   await expect(page.locator('#coverTocBtn')).toHaveCount(0); // 表紙に目次ボタンは置かない（メニューに一本化）
-  // 読み始めて表紙に戻ると、ヒントは消え、モードボタンの補足が「つづきから」になる
+  // 読み始めて表紙に戻ると、ヒントは消え、ボタン上の小行に「つづきから」が出る（補足文は固定のまま）
   await enterViaToc(page, '#earModeBtn');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await backToCover(page);
   await expect(page.locator('#coverHint')).toBeHidden();
-  await expect(page.locator('#earModeSub')).toContainText('つづきから');
-  await expect(page.locator('#eyeModeSub')).toContainText('つづきから');
+  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
+  await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
+  await expect(page.locator('#coverResume')).toBeVisible();
+  await expect(page.locator('#coverResume')).toContainText('つづきから');
 });
 
 test('表紙タップでは開かず、「耳で読む」からは目次→章扉と進んで本文へ入る', async ({ page }) => {
@@ -381,21 +431,23 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   await backToCover(page);
-  // 表紙の常時表示は入口と再開ボタンだけ。しおりの案内行は置かない
+  // 表紙の常時表示は入口だけ。旧しおり案内行の要素は置かない
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開もモードボタンから（補足文が「つづきから（第一章）」を示す。メニューには入れない）
-  await expect(page.locator('#earModeSub')).toContainText('つづきから（第一章）');
+  // 再開もモードボタンから（ボタン上の小行が「つづきから（第一章）」を示す。補足文は固定。メニューには入れない）
+  await expect(page.locator('#coverResume')).toHaveText('つづきから（第一章）');
+  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
   await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
 });
 
-test('しおりがないときは補足文が通常形で、メニューにも再開の項目はない', async ({ page }) => {
+test('しおりがないときは再開の小行が出ず、メニューにも再開の項目はない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
+  await expect(page.locator('#coverResume')).toBeHidden();
   await openMenuOnCover(page);
   await expect(page.locator('#resumeFromMenuBtn')).toHaveCount(0);
   await expect(page.locator('#menuModal #version-line')).toHaveCount(0); // バージョン表記はメニューではなく表紙にある
@@ -794,13 +846,29 @@ test('前へ辿る連鎖の目次から、次側タップで扉→本文へ進�
   await expect(page.locator('#readerChapterLabel')).toHaveText(/第一章/);
 });
 
-test('速度ボタンで再生速度が切り替わる', async ({ page }) => {
+test('速度の選択肢で再生速度が切り替わる', async ({ page }) => {
   await openReader(page);
   await openMenuInReader(page);
-  const btn = page.locator('#speedBtn');
-  await expect(btn).toHaveText('1.0×');
-  await btn.click();
-  await expect(btn).toHaveText('1.25×');
+  // 候補は文字の並び（0.8／1.0／1.25／1.5／2.0。0.75 は無い）。初期は 1.0× が選択中
+  const choices = page.locator('#speedChoices .speed-choice');
+  await expect(choices).toHaveText(['0.8×', '1.0×', '1.25×', '1.5×', '2.0×']);
+  await expect(page.locator('#speedChoices .speed-choice[aria-pressed="true"]')).toHaveText('1.0×');
+  await page.locator('#speedChoices .speed-choice[data-speed="1.25"]').click();
+  await expect(page.locator('#speedChoices .speed-choice[aria-pressed="true"]')).toHaveText('1.25×');
+  // 選択中は文字サイズと同じ藍（--indigo2）で示す
+  const color = await page.evaluate(
+    () => getComputedStyle(document.querySelector('#speedChoices .speed-choice[aria-pressed="true"]')!).color,
+  );
+  expect(color).toBe('rgb(30, 45, 82)');
+  // 選択肢の並びが行からはみ出していない
+  const overflow = await page.evaluate(() => {
+    const row = document.getElementById('rowSpeed')!;
+    return row.scrollWidth - row.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.locator('#menuCloseBtn').click();
+  const rate = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).playbackRate);
+  expect(rate).toBe(1.25);
 });
 
 test('フリガナのオン/オフが切り替わる', async ({ page }) => {
@@ -1330,7 +1398,7 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#earModeSub')).toContainText('つづきから'); // しおりが残っている（補足文が再開を示す）
+  await expect(page.locator('#coverResume')).toContainText('つづきから'); // しおりが残っている（ボタン上の小行が再開を示す）
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
@@ -2331,7 +2399,9 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
     await expect(page.locator('#bgPlayToggle')).toBeHidden();
-    await expect(page.locator('#speedBtn')).toBeHidden();
+    await expect(page.locator('#rowSpeed')).toBeHidden();
+    // 朗読に紐づく行が無くなるので「再生」の見出しも出ない
+    await expect(page.locator('#menuHeadPlay')).toBeHidden();
     await expect(page.locator('#hlToggle')).toBeHidden();
     await expect(page.locator('#fontStdBtn')).toBeVisible();
     await expect(page.locator('#rubyToggle')).toBeVisible();
@@ -2353,9 +2423,10 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await openMenuInReader(page);
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
-    await expect(page.locator('#speedBtn')).toBeVisible();
+    await expect(page.locator('#rowSpeed')).toBeVisible();
     await expect(page.locator('#menuHeadAudio')).toHaveText('音');
     await expect(page.locator('#menuHeadDisplay')).toHaveText('表示');
+    await expect(page.locator('#menuHeadPlay')).toHaveText('再生');
   });
 
   test('モードをまたいでも、しおりの位置（同じページ）から再開できる', async ({ page }) => {
@@ -2393,31 +2464,47 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
     await openMenuOnCover(page);
-    await expect(page.locator('#menuHeadNav')).toHaveText('共通');
-    await expect(page.locator('#menuHeadAudio')).toHaveText('「耳で読む」の設定');
-    await expect(page.locator('#menuHeadDisplay')).toHaveText('「目で読む」の設定');
-    // 表紙では音の項目も表示項目もすべて見える
+    // 分類は全画面で 音／表示／再生 の3つ（v1.13.3 再編：モード別見出しは廃止し、
+    // ナビ行には見出しを付けない）
+    await expect(page.locator('#menuHeadNav')).toBeHidden();
+    await expect(page.locator('#menuHeadAudio')).toHaveText('音');
+    await expect(page.locator('#menuHeadDisplay')).toHaveText('表示');
+    await expect(page.locator('#menuHeadPlay')).toHaveText('再生');
+    // 表紙では音の項目も表示項目も再生の項目もすべて見える
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
-    await expect(page.locator('#speedBtn')).toBeVisible();
+    await expect(page.locator('#rowSpeed')).toBeVisible();
     await expect(page.locator('#fontStdBtn')).toBeVisible();
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#hlToggle')).toBeVisible();
-    // 分類（v1.12.2）：BGM とめくり音は共通へ、再生速度は「耳で読む」の設定に残る
+    // 分類の中身：音＝めくり音・BGM／表示＝強調・画面を暗くしない ほか／
+    // 再生＝速度・バックグラウンド再生
     const grouping = await page.evaluate(() => ({
-      bgmInNav: !!document.querySelector('#menuGroupNav #rowBgm'),
-      soundInNav: !!document.querySelector('#menuGroupNav #rowPageSound'),
-      speedInAud: !!document.querySelector('#menuGroupAudio #rowSpeed'),
+      soundInAud: !!document.querySelector('#menuGroupAudio #rowPageSound'),
+      bgmInAud: !!document.querySelector('#menuGroupAudio #rowBgm'),
+      speedInPlay: !!document.querySelector('#menuGroupPlay #rowSpeed'),
+      bgPlayInPlay: !!document.querySelector('#menuGroupPlay #rowBgPlay'),
+      hlInDis: !!document.querySelector('#menuGroupDisplay #rowHl'),
+      wakeInDis: !!document.querySelector('#menuGroupDisplay #rowWake'),
     }));
-    expect(grouping).toEqual({ bgmInNav: true, soundInNav: true, speedInAud: true });
+    expect(grouping).toEqual({
+      soundInAud: true,
+      bgmInAud: true,
+      speedInPlay: true,
+      bgPlayInPlay: true,
+      hlInDis: true,
+      wakeInDis: true,
+    });
     // 棚卸し（v1.13.2）：末尾の「設定」グループは廃止され、インストール案内は
-    // ナビゲーションのグループに統合されている。「設定」という見出しは無い
+    // ナビゲーションのグループに統合されている。見える見出しは3分類だけ
     const audit = await page.evaluate(() => ({
       installInNav: !!document.querySelector('#menuGroupNav #install-open'),
-      heads: [...document.querySelectorAll('#menuModal .setting-group')].map((h) => h.textContent),
+      heads: [...document.querySelectorAll<HTMLElement>('#menuModal .setting-group')]
+        .filter((h) => !h.hidden)
+        .map((h) => h.textContent),
     }));
     expect(audit.installInNav).toBe(true);
-    expect(audit.heads).not.toContain('設定');
+    expect(audit.heads).toEqual(['音', '表示', '再生']);
     // 閉じるは楕円ピルではなく×アイコン（文字なし・44px・右上）
     const closeBtn = page.locator('#menuCloseBtn');
     await expect(closeBtn).toHaveText('');

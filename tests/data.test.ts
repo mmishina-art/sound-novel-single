@@ -38,7 +38,7 @@ describe('本のデータ', () => {
       expect(existsSync(p)).toBe(true);
       expect(statSync(p).size).toBeGreaterThan(1_000_000);
     });
-    expect(existsSync(resolve(root, 'public/book/cover.svg'))).toBe(true);
+    expect(existsSync(resolve(root, 'public/book/cover-art.webp'))).toBe(true);
   });
 
   it('unitTimes（文ごとの実開始時刻）が全章にあり、単位列と対応する', () => {

@@ -76,7 +76,7 @@ const SCREENS = [
       await page.reload();
       await page.waitForFunction(() => globalThis.__appStarted === true);
       await waitBook(page);
-      await page.waitForFunction(() => globalThis.document.getElementById('earModeSub')?.textContent?.includes('つづきから'));
+      await page.waitForFunction(() => globalThis.document.getElementById('coverResume')?.textContent?.includes('つづきから'));
     },
   },
   { name: 'toc-page', open: openToc },

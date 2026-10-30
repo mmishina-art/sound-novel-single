@@ -139,9 +139,13 @@ describe('fmt / speed', () => {
     expect(fmt(65)).toBe('1:05');
     expect(fmt(NaN)).toBe('0:00');
   });
-  it('速度の位置を引く（知らない速度は 1.0 の位置）', () => {
+  it('速度の位置を引く（候補に無い保存値は最も近い候補へ寄せる）', () => {
     expect(SPEEDS[speedIndexOf(1.25)]).toBe(1.25);
-    expect(SPEEDS[speedIndexOf(3)]).toBe(1.0);
+    // 旧版で保存されうる 0.75 は、最も近い 0.8 へ寄せる（候補は 0.8 から）
+    expect(SPEEDS).not.toContain(0.75);
+    expect(SPEEDS[speedIndexOf(0.75)]).toBe(0.8);
+    // 範囲外の値は端の候補へ寄せる（3 → 2.0）
+    expect(SPEEDS[speedIndexOf(3)]).toBe(2.0);
   });
 });
 
