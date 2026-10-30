@@ -668,12 +668,20 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   const pageTextLen = (): Promise<number> =>
     page.evaluate(() => (document.getElementById('pageContent') as HTMLElement).textContent?.length ?? 0);
   const lenBefore = await pageTextLen();
-  // メニュー → 文字サイズを「大」へ
+  // メニュー → 文字サイズを「大」へ（選択肢を文字で並べ、選択中は藍で示す）
   await openMenuInReader(page);
-  const btn = page.locator('#fontSizeBtn');
-  await expect(btn).toHaveText('標準');
-  await btn.click();
-  await expect(btn).toHaveText('大');
+  await expect(page.locator('#fontStdBtn')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#fontLargeBtn')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#fontLargeBtn').click();
+  await expect(page.locator('#fontLargeBtn')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#fontStdBtn')).toHaveAttribute('aria-pressed', 'false');
+  // 選択中の色は藍（--indigo2）。未選択は薄いトーンのまま
+  const choiceColors = await page.evaluate(() => ({
+    large: getComputedStyle(document.getElementById('fontLargeBtn')!).color,
+    std: getComputedStyle(document.getElementById('fontStdBtn')!).color,
+  }));
+  expect(choiceColors.large).toBe('rgb(30, 45, 82)');
+  expect(choiceColors.std).not.toBe('rgb(30, 45, 82)');
   await page.locator('#menuCloseBtn').click();
   // 本文が 1.15〜1.25 倍になっている
   const largePx = await fontPx();
@@ -703,8 +711,8 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   expect(await fontPx()).toBeCloseTo(largePx, 0);
   // 標準へ戻すと元の大きさに戻る
   await openMenuInReader(page);
-  await page.locator('#fontSizeBtn').click();
-  await expect(page.locator('#fontSizeBtn')).toHaveText('標準');
+  await page.locator('#fontStdBtn').click();
+  await expect(page.locator('#fontStdBtn')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#menuCloseBtn').click();
   expect(await fontPx()).toBeCloseTo(stdPx, 0);
 });
@@ -990,6 +998,50 @@ test('回帰：扉で後方スワイプすると前章に着地し、次章へ�
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
   await page.waitForTimeout(2500);
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
+});
+
+test('回帰：扉の後方スワイプに遅れて届く相方クリックが、新しい扉で「次へ」と誤認されない', async ({ page }) => {
+  // 実機報告の再現（第2経路）：iOS では、スワイプに伴う click が指を離してから
+  // 350ms（swipedRecently の窓）を超えて遅れて届くことがある。その click は
+  // スワイプ確定で切り替わった新しい扉の上で処理され、指を離した位置
+  // （左半分＝次側）が「入章タップ」と誤認されて、戻る操作なのに前方へ飛ぶ。
+  // 相方クリックは新しい pointerdown を伴わないので、click だけを直接
+  // dispatch して再現する（修正前はこのテストが「扉に留まる」で失敗する）
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await openMenuOnCover(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await clickTocChapter(page, 1); // 第二章の扉
+  await expect(page.locator('#gateNum')).toHaveText('第二章');
+  const box = await page.locator('#gateView').boundingBox();
+  if (!box) throw new Error('gateView not found');
+  const cy = box.y + box.height * 0.5;
+  // 左へ払う → 第一章の扉へ戻る（既存の回帰テストと同じ払い方）
+  await page.mouse.move(box.x + box.width * 0.7, cy);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.45, cy, { steps: 4 });
+  await page.mouse.move(box.x + box.width * 0.25, cy, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('#gateNum')).toHaveText('第一章');
+  // 抑止窓（350ms）を十分に過ぎてから、左半分（次側）へ相方クリックを届ける
+  await page.waitForTimeout(700);
+  await page.evaluate(
+    ({ x, y }) => {
+      document
+        .getElementById('gateView')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+    },
+    { x: box.x + box.width * 0.25, y: cy },
+  );
+  // 第一章の扉は自動入章タイマー（1.8秒）が来るまで扉に留まるはず
+  // （誤認されると、その場で第一章の本文へ入ってしまう）
+  await page.waitForTimeout(500);
+  await expect(page.locator('#gateView')).toBeVisible();
+  await expect(page.locator('#readerView')).toBeHidden();
+  // 本物のタップ（pointerdown を伴う）は従来どおり効く：次側タップで第一章へ入る
+  await page.mouse.click(box.x + box.width * 0.25, cy);
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#readerChapterLabel')).toHaveText('第一章 雨の日の客');
 });
 
@@ -1311,7 +1363,10 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await openReader(page);
     const anim = page.locator('#pageAnim');
     await expect(anim).toHaveAttribute('data-chapter', '1');
-    await expect(anim.locator('.anim-rain')).toHaveCount(7); // 第一章は雨（v1.2.1で静か側に半減）
+    // 雨は全てアニメーション（v1.13.2）：両端を全高で落ちる雨7＋上部の短い雨8。
+    // 背景 SVG 側に静止した雨線は置かない（「止まって見える」実機指摘への対応）
+    await expect(anim.locator('.anim-rain')).toHaveCount(15);
+    await expect(anim.locator('.anim-rain.top')).toHaveCount(8);
     await openMenuInReader(page);
     await page.locator('#tocFromMenuBtn').click();
     await page.locator('#tocList .toc-item').nth(1).click();
@@ -1319,8 +1374,19 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
     await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
     await expect(anim).toHaveAttribute('data-chapter', '2');
-    await expect(anim.locator('.anim-rain')).toHaveCount(4); // 第二章は雨上がりでさらにまばら
+    // 第二章の雨も量感を第一章に統一（密度・薄さとも）。水たまりのきらめきは残る
+    await expect(anim.locator('.anim-rain')).toHaveCount(15);
+    await expect(anim.locator('.anim-rain.top')).toHaveCount(8);
     await expect(anim.locator('.anim-glint')).toHaveCount(2);
+    // 背景 SVG に静止した雨の線が残っていないこと（傘や日差しの線画は対象外：
+    // 雨グループの目印コメントで判定する）
+    const svgTexts = await page.evaluate(async () => {
+      const get = async (n: number): Promise<string> => (await fetch('book/bg/ch' + n + '.svg')).text();
+      return { ch1: await get(1), ch2: await get(2) };
+    });
+    expect(svgTexts.ch1).not.toContain('雨（上部にまばらに）');
+    expect(svgTexts.ch2).not.toContain('まばらな雨');
+    expect(svgTexts.ch2).toContain('開いた傘'); // 傘のモチーフは残っている
   });
 
   test('背景をオフにするとアニメーションの層も消える', async ({ page }) => {
@@ -2267,7 +2333,7 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#bgPlayToggle')).toBeHidden();
     await expect(page.locator('#speedBtn')).toBeHidden();
     await expect(page.locator('#hlToggle')).toBeHidden();
-    await expect(page.locator('#fontSizeBtn')).toBeVisible();
+    await expect(page.locator('#fontStdBtn')).toBeVisible();
     await expect(page.locator('#rubyToggle')).toBeVisible();
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#tocFromMenuBtn')).toBeVisible();
@@ -2334,7 +2400,7 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
     await expect(page.locator('#speedBtn')).toBeVisible();
-    await expect(page.locator('#fontSizeBtn')).toBeVisible();
+    await expect(page.locator('#fontStdBtn')).toBeVisible();
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#hlToggle')).toBeVisible();
     // 分類（v1.12.2）：BGM とめくり音は共通へ、再生速度は「耳で読む」の設定に残る
@@ -2344,6 +2410,30 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
       speedInAud: !!document.querySelector('#menuGroupAudio #rowSpeed'),
     }));
     expect(grouping).toEqual({ bgmInNav: true, soundInNav: true, speedInAud: true });
+    // 棚卸し（v1.13.2）：末尾の「設定」グループは廃止され、インストール案内は
+    // ナビゲーションのグループに統合されている。「設定」という見出しは無い
+    const audit = await page.evaluate(() => ({
+      installInNav: !!document.querySelector('#menuGroupNav #install-open'),
+      heads: [...document.querySelectorAll('#menuModal .setting-group')].map((h) => h.textContent),
+    }));
+    expect(audit.installInNav).toBe(true);
+    expect(audit.heads).not.toContain('設定');
+    // 閉じるは楕円ピルではなく×アイコン（文字なし・44px・右上）
+    const closeBtn = page.locator('#menuCloseBtn');
+    await expect(closeBtn).toHaveText('');
+    const closeBox = await closeBtn.boundingBox();
+    expect(closeBox?.width).toBe(44);
+    expect(closeBox?.height).toBe(44);
+    await page.locator('#menuCloseBtn').click();
+    // 本文メニューの項目順は本の並び順：表紙に戻る が上で、目次を開く が下
+    await openReader(page);
+    await openMenuInReader(page);
+    const toCoverBox = await page.locator('#toCoverFromMenuBtn').boundingBox();
+    const tocBox = await page.locator('#tocFromMenuBtn').boundingBox();
+    const installBox = await page.locator('#install-open').boundingBox();
+    expect(toCoverBox!.y).toBeLessThan(tocBox!.y);
+    expect(tocBox!.y).toBeLessThan(installBox!.y);
+    await page.locator('#menuCloseBtn').click();
   });
 });
 
@@ -2429,4 +2519,65 @@ test('復帰を繰り返してもBGMのマスターゲインは1つだけが生�
   await page.mouse.up();
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   expect(await page.evaluate(() => (window as unknown as { __pageSounds: number }).__pageSounds)).toBeGreaterThanOrEqual(1);
+});
+
+test('バックグラウンドへ移るときは、BGMを速くフェードしてから自分で suspend する（移行時ノイズ対策）', async ({ page }) => {
+  /* 実機報告「アプリがバックグラウンドへ移行するときにノイズが鳴る」への対策の
+     順序保証を、Chromium で観測できる範囲で固定する：
+     (1) 背面化で BGM マスターが速やかに（約0.15秒の指数フェード）ほぼ 0 になる
+     (2) その後、AudioContext が自分から suspended になる（OS に「鳴ったまま
+         切られる」状態を作らない）
+     (3) 前面に戻れば従来どおり BGM が立て直り、コンテキストも running に戻る
+     iOS の割り込みそのものは Chromium では再現できないため、ここで固定するのは
+     「フェード → suspend」の処理順序と、復帰経路が壊れていないことまで */
+  await page.addInitScript(() => {
+    const OrigAC = window.AudioContext;
+    class ProbeAC extends OrigAC {
+      constructor() {
+        super();
+        (window as unknown as { __ac: AudioContext }).__ac = this;
+      }
+    }
+    (window as unknown as { AudioContext: unknown }).AudioContext = ProbeAC;
+    // マスター（0.84 へランプするゲイン）を捕まえる（既存の二重化テストと同じ手口）
+    const probe = { masters: [] as GainNode[] };
+    (window as unknown as { __masters: typeof probe }).__masters = probe;
+    const origCreateGain = OrigAC.prototype.createGain;
+    OrigAC.prototype.createGain = function () {
+      const g = origCreateGain.call(this);
+      const origLin = g.gain.linearRampToValueAtTime.bind(g.gain);
+      g.gain.linearRampToValueAtTime = (v: number, t: number) => {
+        if (Math.abs(v - 0.84) < 0.01) probe.masters.push(g);
+        return origLin(v, t);
+      };
+      return g;
+    };
+  });
+  await openReader(page);
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+  await page.locator('#playPauseBtn').click(); // 朗読を止める（bgPlay の継続経路ではなく、停止の経路を通す）
+  const setHidden = async (hidden: boolean): Promise<void> => {
+    await page.evaluate((h) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+  };
+  const acState = (): Promise<string> => page.evaluate(() => (window as unknown as { __ac: AudioContext }).__ac.state);
+  const masterValue = (): Promise<number> =>
+    page.evaluate(() => {
+      const ms = (window as unknown as { __masters: { masters: GainNode[] } }).__masters.masters;
+      return ms.length ? ms[ms.length - 1].gain.value : -1;
+    });
+  await expect.poll(acState).toBe('running');
+  await setHidden(true);
+  // (1) マスターが速やかにほぼ 0 へ落ちる
+  await expect.poll(masterValue, { timeout: 3000 }).toBeLessThan(0.01);
+  // (2) その後、自分から suspended になる
+  await expect.poll(acState, { timeout: 3000 }).toBe('suspended');
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'off');
+  // (3) 前面に戻れば BGM が立て直り、コンテキストも running に戻る
+  await setHidden(false);
+  await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
+  await expect.poll(acState, { timeout: 5000 }).toBe('running');
 });

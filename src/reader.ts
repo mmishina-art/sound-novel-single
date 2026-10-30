@@ -18,7 +18,7 @@ import {
   type Unit,
 } from './logic';
 import { checkForUpdate } from './pwa';
-import { ensureAudioRunning, isBgmOn, isSoundOn, playPageTurn, resyncBgmIfDesynced, setBgmOn, setSound, startBgm, stopBgm } from './sound';
+import { ensureAudioRunning, isBgmOn, isSoundOn, playPageTurn, resyncBgmIfDesynced, setBgmOn, setSound, startBgm, stopBgmForBackground } from './sound';
 import { load, remove, save } from './storage';
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -222,12 +222,17 @@ export function createReader(book: BookData): Reader {
      同じ倍率になる。ページ割りは sizeKeyNow に設定を含めて再計算させ、
      読んでいる位置は文字アンカーで保つ */
   let fontSize: 'std' | 'large' = 'std';
+  /* 文字サイズの選択肢（標準／大）の選択状態を、aria-pressed と藍色で示す */
+  function syncFontChoices(): void {
+    $('fontStdBtn').setAttribute('aria-pressed', String(fontSize === 'std'));
+    $('fontLargeBtn').setAttribute('aria-pressed', String(fontSize === 'large'));
+  }
   function setFontSize(size: 'std' | 'large'): void {
     if (size === fontSize) return;
     fontSize = size;
     save('font', size);
     document.body.classList.toggle('font-large', size === 'large');
-    $('fontSizeBtn').textContent = size === 'large' ? '大' : '標準';
+    syncFontChoices();
     if (!readerView.hidden && PAGES.length) {
       const anchor = currentAnchorChar();
       pageSizeKey = '';
@@ -323,6 +328,7 @@ export function createReader(book: BookData): Reader {
     const rows = {
       toc: $('tocFromMenuBtn'),
       toCover: $('toCoverFromMenuBtn'),
+      install: $('install-open'),
       speed: $('rowSpeed'),
       pageSound: $('rowPageSound'),
       bgm: $('rowBgm'),
@@ -347,7 +353,7 @@ export function createReader(book: BookData): Reader {
       headAud.textContent = '「耳で読む」の設定';
       headDis.textContent = '「目で読む」の設定';
       aud.hidden = false;
-      put(nav, [rows.toc, rows.toCover, rows.wake, rows.pageSound, rows.bgm]);
+      put(nav, [rows.toCover, rows.toc, rows.wake, rows.pageSound, rows.bgm, rows.install]);
       put(aud, [rows.speed, rows.bgPlay, rows.hl]);
       put(dis, [rows.font, rows.ruby, rows.bg]);
     } else if (ctx === 'ear') {
@@ -356,7 +362,7 @@ export function createReader(book: BookData): Reader {
       headAud.textContent = '音';
       headDis.textContent = '表示';
       aud.hidden = false;
-      put(nav, [rows.toc, rows.toCover]);
+      put(nav, [rows.toCover, rows.toc, rows.install]);
       put(aud, [rows.speed, rows.pageSound, rows.bgm, rows.bgPlay]);
       put(dis, [rows.font, rows.ruby, rows.hl, rows.bg, rows.wake]);
     } else {
@@ -365,7 +371,7 @@ export function createReader(book: BookData): Reader {
       headAud.textContent = '音';
       headDis.textContent = '表示';
       aud.hidden = false;
-      put(nav, [rows.toc, rows.toCover]);
+      put(nav, [rows.toCover, rows.toc, rows.install]);
       put(aud, [rows.pageSound, rows.bgm]);
       put(dis, [rows.font, rows.ruby, rows.bg, rows.wake]);
       // 朗読に紐づく項目は目で読むでは出さない（置き場所ではなく行ごと隠す）
@@ -740,6 +746,24 @@ export function createReader(book: BookData): Reader {
         });
       }
     };
+    /* 上部の雨：ページ上部（高さ約1/3まで）だけを短く落ちる雨。本文の中央域には
+       置かない両端の雨（rain）と対で、第一章・第二章の雨を全てアニメーションに
+       するための部品（背景 SVG の静止した雨線は v1.13.2 で廃止した） */
+    const topRain = (count: number): void => {
+      for (let i = 0; i < count; i++) {
+        put('anim-rain top', {
+          left: (6 + rand() * 86).toFixed(1) + '%',
+          '--d': (2.7 + rand() * 1.2).toFixed(2) + 's',
+          '--dl': (-rand() * 5).toFixed(2) + 's',
+        });
+      }
+    };
+    /* 雨の量感は第一章・第二章で統一する（章ごとに密度が違うと不自然、という
+       実機指摘を受けて v1.13.2 で統一）：両端を全高で落ちる雨＋上部の短い雨 */
+    const fullRain = (): void => {
+      rain(7, false, false);
+      topRain(8);
+    };
     const motes = (count: number): void => {
       for (let i = 0; i < count; i++) {
         // 四隅まわりの帯に寄せる（横は端の帯、縦は上端か下端の帯）
@@ -754,11 +778,11 @@ export function createReader(book: BookData): Reader {
       }
     };
     switch (idx) {
-      case 0: // 第一章：雨の日の古本屋。細い雨が両端に静かに落ち続ける
-        rain(7, false, false);
+      case 0: // 第一章：雨の日の古本屋。雨は全てアニメーション（静止線は置かない）
+        fullRain();
         break;
-      case 1: // 第二章：雨上がり。雨はさらにまばらで弱く、水たまりがかすかにきらめく
-        rain(4, true, true);
+      case 1: // 第二章：雨上がり。雨の量感は第一章と統一し、水たまりがかすかにきらめく
+        fullRain();
         for (let i = 0; i < 2; i++) {
           put('anim-glint', {
             left: edgeX(),
@@ -1243,24 +1267,37 @@ export function createReader(book: BookData): Reader {
   // 隠れる直前に朗読が鳴っていたか（バックグラウンド再生の経路用）。
   // OS が割り込みで朗読を強制停止していても、戻ったときに再開できるよう覚える
   let hiddenNarrationWasPlaying = false;
+  /* 背面化の処理をしたかどうかの番兵：visibilitychange と pagehide の両方から
+     同じ後片付けを呼ぶため、二度目以降は素通りさせる（フラグを上書きして
+     復帰時の再開条件を壊さない） */
+  let hiddenHandled = false;
+  function handlePageHidden(): void {
+    if (hiddenHandled) return;
+    hiddenHandled = true;
+    /* バックグラウンド再生が効くのは「耳で読むモードで朗読を再生している間」
+       だけ（v1.12.2 で仕様変更）。表紙にいる間や目で読むモード中は、オンでも
+       BGM を止める（前面に戻ったら設定どおり再開する） */
+    const narrationPlaying = !isEye() && !audio.paused && !audio.ended;
+    hiddenNarrationWasPlaying = narrationPlaying;
+    if (bgPlay && narrationPlaying) {
+      ensureAudioRunning();
+      return;
+    }
+    hiddenPausedAudio = !audio.paused && !audio.ended;
+    if (hiddenPausedAudio) audio.pause();
+    hiddenStoppedBgm = document.body.dataset.bgm === 'on';
+    // 止め方は移行専用（速いフェード→自分から suspend）。通常の stopBgm の
+    // ゆっくりしたフェードは、移行直後の OS の割り込みで途中で切れて
+    // ノイズ化しうる（実機報告）
+    if (hiddenStoppedBgm) stopBgmForBackground();
+  }
   function onVisibilityChange(): void {
     // Wake Lock は隠れると OS に解放される。戻ってきたら、条件が合えば取り直す
     syncWakeLock();
     if (document.hidden) {
-      /* バックグラウンド再生が効くのは「耳で読むモードで朗読を再生している間」
-         だけ（v1.12.2 で仕様変更）。表紙にいる間や目で読むモード中は、オンでも
-         BGM を止める（前面に戻ったら設定どおり再開する） */
-      const narrationPlaying = !isEye() && !audio.paused && !audio.ended;
-      hiddenNarrationWasPlaying = narrationPlaying;
-      if (bgPlay && narrationPlaying) {
-        ensureAudioRunning();
-        return;
-      }
-      hiddenPausedAudio = !audio.paused && !audio.ended;
-      if (hiddenPausedAudio) audio.pause();
-      hiddenStoppedBgm = document.body.dataset.bgm === 'on';
-      if (hiddenStoppedBgm) stopBgm();
+      handlePageHidden();
     } else {
+      hiddenHandled = false;
       /* 復帰時の音の再開はここに一本化する。朗読：止めていた分を再開し、
          バックグラウンド再生中だったのに OS に強制停止されていた分も再開する。
          BGM：止めていた分は立て直し（フェードイン付き）、鳴らし続けていた分は
@@ -1513,6 +1550,14 @@ export function createReader(book: BookData): Reader {
       onDragActive?: (active: boolean) => void;
     }): SwipeHandle {
       let swipedAt = 0;
+      /* スワイプに伴う相方 click の抑止フラグ：ドラッグが活性化したまま指を
+         離したら立て、次の pointerdown（＝新しいジェスチャの始まり）で下ろす。
+         時間窓（swipedAt）だけでは、iOS で click が窓を超えて遅れて届いたときに
+         切り替わった先の画面で「タップ」と誤認される（扉の後方スワイプで前方へ
+         飛ぶ実機報告）。相方 click は新しい pointerdown を伴わないので、この
+         フラグで確実に止められる。本物のタップは必ず自分の pointerdown が
+         先に来て旗を下ろすため、誤って呑むことはない */
+      let clickEcho = false;
       let seq = 0;
       let drag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
       const el = o.followEl;
@@ -1523,6 +1568,7 @@ export function createReader(book: BookData): Reader {
       };
       o.surface.addEventListener('pointerdown', (e) => {
         seq++;
+        clickEcho = false; // 新しいジェスチャの始まり：前のスワイプの相方 click 抑止はここまで
         if (o.canStart && !o.canStart(e)) {
           drag = null;
           return;
@@ -1576,6 +1622,7 @@ export function createReader(book: BookData): Reader {
         o.onDragActive?.(false);
         if (!wasActive) return; // ただのタップは click 側で処理する
         swipedAt = Date.now(); // 直後の click で二重にめくらない
+        clickEcho = true; // 遅れて届く相方 click も、次の pointerdown までは止める
         const w = o.surface.clientWidth || 1;
         const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
         const dir: 1 | -1 = towardNext ? 1 : -1;
@@ -1617,7 +1664,7 @@ export function createReader(book: BookData): Reader {
       };
       o.surface.addEventListener('pointerup', (e) => finish(e, false));
       o.surface.addEventListener('pointercancel', (e) => finish(e, true));
-      return { swipedRecently: () => Date.now() - swipedAt < 350 };
+      return { swipedRecently: () => clickEcho || Date.now() - swipedAt < 350 };
     }
     /* 目次ページへの入口はメニューの「目次を開く」に一本化（表紙にも読書中にも共通） */
     $('tocFromMenuBtn').addEventListener('click', () => {
@@ -1686,9 +1733,8 @@ export function createReader(book: BookData): Reader {
       document.body.classList.toggle('bg-off', !checked);
       save('bg', checked);
     });
-    $('fontSizeBtn').addEventListener('click', () => {
-      setFontSize(fontSize === 'std' ? 'large' : 'std');
-    });
+    $('fontStdBtn').addEventListener('click', () => setFontSize('std'));
+    $('fontLargeBtn').addEventListener('click', () => setFontSize('large'));
     $<HTMLInputElement>('hlToggle').addEventListener('change', (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       document.body.classList.toggle('hl-off', !checked);
@@ -1715,6 +1761,9 @@ export function createReader(book: BookData): Reader {
       syncWakeLock(); // 読書画面で切り替えたら、その場で取得／解放が効く
     });
     document.addEventListener('visibilitychange', onVisibilityChange);
+    /* iOS では visibilitychange が来ないまま閉じられる／切り替えられる経路が
+       あるため、pagehide でも同じ後片付けをする（番兵で二重にはならない） */
+    window.addEventListener('pagehide', handlePageHidden);
     /* BGM は最初のタップ以降に鳴らせる（ブラウザの自動再生の制約）。
        表紙・扉・本文のどこで触れても、設定がオンなら流れ始めて画面をまたいで続く
        （BGM は両モード共通。目で読むモードでも鳴る） */
@@ -1901,7 +1950,7 @@ export function createReader(book: BookData): Reader {
   // 文字サイズ（未保存なら標準＝従来どおり）
   fontSize = load<string>('font', 'std') === 'large' ? 'large' : 'std';
   document.body.classList.toggle('font-large', fontSize === 'large');
-  $('fontSizeBtn').textContent = fontSize === 'large' ? '大' : '標準';
+  syncFontChoices();
   $<HTMLInputElement>('pageSoundToggle').checked = isSoundOn();
   $<HTMLInputElement>('bgmToggle').checked = isBgmOn();
   $<HTMLInputElement>('bgPlayToggle').checked = bgPlay;

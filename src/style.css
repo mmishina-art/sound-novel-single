@@ -458,6 +458,15 @@ body.bg-off .page-anim { display: none; }
   86% { opacity: .17; }
   100% { transform: translate3d(-6dvh, 114dvh, 0) rotate(14deg); opacity: 0; }
 }
+/* 上部の雨：ページの上約1/3だけを短く落ちて消える（本文域へは降り注がない）。
+   動きは transform と opacity だけ（合成のみで再描画コストは小さい） */
+.anim-rain.top { animation-name: animRainTop; }
+@keyframes animRainTop {
+  0% { transform: translate3d(0, -12px, 0) rotate(14deg); opacity: 0; }
+  12% { opacity: .3; }
+  78% { opacity: .3; }
+  100% { transform: translate3d(-2.2dvh, 34dvh, 0) rotate(14deg); opacity: 0; }
+}
 /* 埃のような粒・水たまりのきらめき */
 .anim-mote {
   position: absolute; width: 4px; height: 4px; border-radius: 50%;
@@ -732,6 +741,16 @@ body.bound-left .toc-sheet {
 .menu-panel .menu-section h4::after { content: ''; flex: 1; border-top: 1px solid rgba(138, 109, 47, .35); }
 /* 移動の行（目次を開く／表紙に戻る）は、他の行と同じ体裁に揃える：
    ラベル＋右端に進む印。大きなピルボタンにはしない */
+/* メニューを閉じる：楕円ピルはやめ、線画の×だけにする（v1.13.2、形の統一）。
+   トーンは帯のアイコン（.page-icon-btn）に合わせ、タップ領域は 44px を確保する */
+.menu-close-btn { width: 44px; height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; cursor: pointer; background: transparent; border: 1px solid rgba(146, 128, 84, .30); color: rgba(146, 124, 78, .62); box-shadow: 0 1px 2px rgba(90, 74, 40, .10), inset 0 0 0 1px rgba(255, 255, 255, .25); }
+.menu-close-btn svg { width: 19px; height: 19px; }
+/* 文字サイズ：ピル型の切替ボタンはやめ、「標準／大」の文字の選択肢を行の中に
+   並べて、選択中を藍で示す（v1.13.2、形の統一）。タップ領域は高さ 44px */
+.font-choices { display: flex; align-items: center; }
+.font-choice { font: inherit; font-size: .95rem; background: none; border: none; cursor: pointer; color: #9a8a64; min-height: 44px; padding: 0 10px; }
+.font-choice[aria-pressed="true"] { color: var(--indigo2); font-weight: 600; }
+.font-sep { color: rgba(101, 84, 52, .4); }
 .menu-nav-row { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 42px; padding: 3px 2px; background: none; border: none; border-bottom: 1px solid rgba(101, 84, 52, .14); font: inherit; font-size: .95rem; color: var(--text); cursor: pointer; text-align: start; }
 .menu-nav-row::after { content: '›'; color: #8a6d2f; font-size: 1.15rem; line-height: 1; }
 .menu-nav-row:active { background: rgba(163, 130, 62, .08); }

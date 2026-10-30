@@ -70,7 +70,9 @@ export function beep(frequency = 660, seconds = 0.08): void {
 
 /* ページめくり音：紙が擦れる音を、ノイズ＋帯域掃引でその場で合成する（実ファイルは持たない）。
    短く（約0.3秒）柔らかく、朗読の邪魔をしない「気配程度」の音量に抑える
-   （v1.11.1 で包絡全体を約0.4倍に下げた：ピーク 0.13→0.052）。オン/オフは効果音の
+   （下げ方の履歴：v1.11.1 で包絡全体を約0.4倍＝ピーク 0.13→0.052、v1.13.2 で
+   さらに約0.6倍＝ピーク 0.031。実機の感想を受けての段階調整で、最終的な
+   塩梅はユーザーの耳の確認待ち）。オン/オフは効果音の
    設定（保存キー 'sound'）に従い、BGM とは独立に切れる。連打・高速めくりでも
    音が重なって破綻しないよう、前回から 120ms 以内の再発音はしない */
 let lastPageTurnAt = 0;
@@ -107,9 +109,9 @@ export function playPageTurn(): void {
     lp.frequency.value = 5200;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.052, t + 0.045); // 立ち上がり（ピーク）
-    g.gain.linearRampToValueAtTime(0.022, t + 0.13); // 紙が離れかける谷
-    g.gain.linearRampToValueAtTime(0.04, t + 0.19); // めくり終わりの小さな盛り上がり
+    g.gain.linearRampToValueAtTime(0.031, t + 0.045); // 立ち上がり（ピーク）
+    g.gain.linearRampToValueAtTime(0.013, t + 0.13); // 紙が離れかける谷
+    g.gain.linearRampToValueAtTime(0.024, t + 0.19); // めくり終わりの小さな盛り上がり
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     // 定位は静止したわずかな振りだけ（時間で揺らす要素は付けない）
     const pan = c.createStereoPanner();
@@ -344,6 +346,49 @@ export function stopBgm(): void {
   const gen = bgmNodes;
   bgmNodes = undefined;
   teardownGeneration(gen, 0.4);
+}
+
+/** コンテキストを少し遅れて自分から suspend する（背面化の仕上げ）。
+    遅延はフェードが描画されるのを待つため。前面に戻っていたら何もしない
+    （復帰経路の resume と競合させない） */
+function suspendContextSoon(c: AudioContext, delayMs: number): void {
+  window.setTimeout(() => {
+    if (document.hidden && c.state === 'running') void c.suspend().catch(() => {});
+  }, delayMs);
+}
+
+/** バックグラウンドへ移る瞬間専用の止め方（実機報告：移行時にノイズが鳴る）。
+    通常の stopBgm（0.4秒の線形フェード＋壁時計タイマーでの disconnect）は、
+    移行直後に OS がコンテキストを止めたりタイマーを凍結したりすると、
+    鳴っている音が途中で切れてクリック／ノイズ化しうる。ここでは：
+    (1) 時定数の小さい指数フェードで速やかに無音へ落とす（約0.15秒で実質無音。
+        途中で描画が止まっても、残っている音量はごく小さく、切れても聞こえない）
+    (2) 無音になった頃合いを見て、自分から suspend する（OS に「鳴ったまま
+        切られる」状態を作らない。順序＝フェード→suspend をここで保証する）
+    復帰時は従来の経路（ensureAudioRunning／スケジューラの resume）で戻る */
+export function stopBgmForBackground(): void {
+  bgmWanted = false;
+  document.body.dataset.bgm = 'off';
+  document.dispatchEvent(new CustomEvent('app:bgm', { detail: { on: false } }));
+  if (!ctx) return;
+  const c = ctx;
+  if (!bgmNodes) {
+    suspendContextSoon(c, 250);
+    return;
+  }
+  const gen = bgmNodes;
+  bgmNodes = undefined;
+  clearInterval(gen.timer);
+  try {
+    const now = c.currentTime;
+    gen.master.gain.cancelScheduledValues(now);
+    gen.master.gain.setValueAtTime(Math.max(gen.master.gain.value, 0.0001), now);
+    gen.master.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+    window.setTimeout(() => gen.master.disconnect(), 500);
+    suspendContextSoon(c, 220);
+  } catch {
+    // 止められなくても続行する
+  }
 }
 
 let lastRestartWall = 0;

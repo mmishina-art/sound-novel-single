@@ -11,8 +11,12 @@ const reader = readFileSync(resolve(root, 'src/reader.ts'), 'utf8');
 
 describe('文字サイズ（標準／大）', () => {
   it('メニューの表示グループに文字サイズの項目がある', () => {
-    expect(html).toMatch(/id="fontSizeBtn"/);
+    // 形は「標準／大」の文字の選択肢（v1.13.2 で楕円ピルから変更）。
+    // 選択中は aria-pressed と藍色で示す
+    expect(html).toMatch(/id="fontStdBtn"/);
+    expect(html).toMatch(/id="fontLargeBtn"/);
     expect(html).toMatch(/文字サイズ/);
+    expect(reader).toMatch(/syncFontChoices/);
   });
 
   it('倍率は標準＝1、大＝1.2 で、本文の font-size に効いている', () => {
