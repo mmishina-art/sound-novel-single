@@ -40,21 +40,20 @@
            v1.12.2 で仕様変更）。モードは本を開いている間だけの選択で、設定には
            保存しない。しおりがあるときは、どちらの入口からでも続きから再開する
            （v1.12.2 で入り口をこの2ボタンに一本化し、「しおりから再開」ボタンは
-           廃止）。補足文（small）は「朗読つき／朗読なし」固定（v1.13.3 で整理：
-           以前は「・つづきから（第N章）」を補足文に混ぜていた）。再開の情報は
-           ボタン上の小行 #coverResume で別に示す -->
+           廃止）。補足文（small）は「朗読つき／朗読なし」固定。再開の情報は
+           ボタン上の小さな情報文 #coverResume に「第N章のつづきから」と
+           1回だけ示す（v1.13.10 で B3 案に合わせて独立行を置き換えた） -->
       <p id="coverResume" class="cover-resume" hidden></p>
       <div class="cover-modes">
         <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small id="earModeSub">朗読つき</small></button>
         <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small id="eyeModeSub">朗読なし</small></button>
       </div>
 
-      <!-- 表紙に出す入口は、モードの2ボタンと「メニュー」だけ。
-           目次ページへの入口はメニューの「目次を開く」に一本化する（表紙に目次ボタンは置かない） -->
-      <div class="cover-entry">
-        <button id="coverMenuBtn" type="button" class="cover-settings">メニュー</button>
-      </div>
-      <!-- バージョン表記は表紙画面の下部中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
+      <!-- 設定は最下部の行の右端に小さな文字リンクとして置く。開く先は
+           他画面の家マークから開くものと同じパネルで、表紙では「設定」と呼ぶ。
+           目次ページへの入口はパネル内の「目次を開く」に一本化する -->
+      <button id="coverSettingsBtn" type="button" class="cover-settings-link"><span aria-hidden="true">⚙</span> 設定</button>
+      <!-- バージョン表記は同じ最下部の行の中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
       <p id="version-line" class="cover-version">v<span id="version"></span></p>
     </section>
 
@@ -166,7 +165,7 @@
       <div class="modal-backdrop" id="menuBackdrop"></div>
       <div class="modal-panel menu-panel">
         <div class="modal-head">
-          <h3>メニュー</h3>
+          <h3 id="menuTitle">メニュー</h3>
           <button id="menuCloseBtn" class="menu-close-btn" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
         </div>
 
@@ -201,7 +200,7 @@
                 <button type="button" id="fontLargeBtn" class="font-choice" aria-pressed="false">大</button>
               </div>
             </div>
-            <label class="menu-row toggle-label" id="rowRuby"><span>フリガナ</span><input type="checkbox" id="rubyToggle" checked /></label>
+            <label class="menu-row toggle-label" id="rowRuby"><span>フリガナ</span><input type="checkbox" id="rubyToggle" /></label>
             <label class="menu-row toggle-label" id="rowHl"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowBg"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowWake"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>

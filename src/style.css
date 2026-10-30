@@ -329,13 +329,10 @@ body.bound-left .cover-vtitle { left: 14%; }
 }
 .cover-vtitle .vt-line { display: block; }
 .cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }
-/* 再開の小行（v1.13.3）：しおりがあるときだけ、モードボタンの上に控えめに
-   「つづきから（第N章）」を示す。補足文（朗読つき／朗読なし）とは混ぜない */
-.cover-resume { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; letter-spacing: .08em; }
-/* 表紙の入口は1つだけ（小さな「メニュー」）。目次・設定はすべてメニューの中。
-   しおりがあるときだけ、その上に再開ボタンが出る（案内行は置かない：章の情報は
-   再開ボタンの文言と重なるため） */
-.cover-entry { display: flex; flex-direction: column; align-items: center; gap: 7px; margin-top: 2px; }
+/* 再開の情報文（v1.13.10 で B3 案に変更）：しおりがあるときだけ、モード
+   ボタンの上に「第N章のつづきから」を1回だけ出す。ボタンに見えないよう、
+   操作要素より小さく・薄くし、独立した「つづきから（第N章）」行は置かない */
+.cover-resume { color: var(--desk-text); font-size: .78rem; margin: 2px 0 0; text-align: center; opacity: .68; letter-spacing: .12em; }
 
 /* ============ Gate — 中扉（紙の扉ページ） ============ */
 /* touch-action は本文（.page-wrap）と同じ契約にする：横の払いはアプリ側で受け、
@@ -697,11 +694,16 @@ body.hl-off .unit.now { background: none; color: inherit; }
   position: relative; flex: 1; min-width: 0; overflow: hidden;
   background: linear-gradient(160deg, #fffdf6, var(--paper) 55%, #f7f0da);
   writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;
-  padding: 34px 30px;
-  /* 目次レイアウト A案（v1.12.4）：各項目を1本の柱として扱い、全項目の上端を
-     完全に揃える。柱の頭は版面の上から約1/3（中央寄せではなく少し上気味、
-     下の余白を広めに取る）。--toc-top がその頭の位置 */
-  --toc-top: 27dvh;
+  padding: 7px 30px 34px;
+  /* 目次レイアウト A案（v1.12.4）＋上端の基準（v1.13.10）：各項目を1本の柱
+     として扱い、全項目の上端を完全に揃える。上端の位置は目次独自に決めず、
+     本文ページの組版に一致させる：シートの上余白 7px は本文の柱（.page-head
+     の top: 7px）と同じで、「目次」の見出しはそこから始める。項目の文字は
+     本文の始まる高さ（.page-content の上余白 46px）から始める：
+     --toc-top（項目の柱の padding-top 29px）＋項目自身の上余白 10px ＋
+     シートの上余白 7px ＝ 46px。旧仕様（柱の頭を版面の約1/3＝27dvh に置く）
+     では見出しと並びがページ中央に浮いて見えたため改めた */
+  --toc-top: 29px;
   /* 項目の統一高さ（A案）：一番長い第七章の題が自然に占める高さ（実測
      230.6px @412×915）に合わせ、全項目の印の領域を同じ背丈にする */
   --toc-item-h: 232px;
@@ -720,15 +722,18 @@ body.bound-left .toc-sheet {
   border-radius: 2px 6px 6px 2px;
   box-shadow: 0 16px 40px rgba(0,0,0,.55), 3px 3px 0 -1px #e7dec6, 6px 6px 0 -2px #d9cfb0;
 }
-/* 見出しの柱も項目と同じ頭の位置から始める（A案：上端揃え） */
-.toc-heading { font-size: 1.45rem; letter-spacing: .35em; font-weight: 600; color: #1b2a4a; margin: 0; height: 100%; box-sizing: border-box; padding-top: var(--toc-top); display: flex; flex-direction: row; justify-content: flex-start; }
+/* 見出しの柱はシートの上端（＝本文の柱と同じ 7px）から始める（v1.13.10。
+   項目の並びとは頭の位置が違う：見出し＝柱の高さ、項目＝本文の開始位置） */
+.toc-heading { font-size: 1.45rem; letter-spacing: .35em; font-weight: 600; color: #1b2a4a; margin: 0; height: 100%; box-sizing: border-box; padding-top: 0; display: flex; flex-direction: row; justify-content: flex-start; }
 /* 見出しとの間はブロック方向（横）の余白で取る。列どうしの間隔も同じ軸で広めに空ける */
 .toc-list { list-style: none; margin: 0; padding: 0; margin-block-start: 2.8em; }
 /* 見出しのない続きページでは、見出しとの間を取る余白を消す（塊の中央寄せがずれないように） */
 .toc-inner.no-head .toc-list { margin-block-start: 0; }
 /* 各列は紙の高さいっぱいに伸ばすが、項目は中央ではなく上端に揃える（A案）。
    縦書きでは flex の主軸（row）がインライン方向＝上下になるので、
-   justify-content: flex-start ＋ padding-top で全項目の頭が同じ高さに来る */
+   justify-content: flex-start ＋ padding-top で全項目の頭が同じ高さに来る。
+   padding-top の値（--toc-top）は、項目の文字の頭が本文の開始位置（46px）に
+   揃うよう決めてある（.toc-sheet のコメント参照） */
 .toc-list li { display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start; box-sizing: border-box; padding-top: var(--toc-top); }
 .toc-list li + li { margin-block-start: 2em; }
 /* 項目の背丈は全項目で統一する（A案）：現在地の印（背景色）の領域が、題の
@@ -800,13 +805,16 @@ body.bound-left .toc-sheet {
 .menu-row input[type="checkbox"]:focus-visible { outline: 2px solid rgba(138, 109, 47, .6); outline-offset: 2px; }
 .menu-panel .link { margin: 10px 0 0; color: var(--navy); }
 
-/* 表紙の「設定」入口：表紙そのものを中心にするため、目立たない小さな文字ボタンにする */
-.cover-settings { background: transparent; border: 1px solid rgba(201,189,160,.4); color: var(--desk-text); border-radius: 999px; padding: .3em 1.3em; font-size: .82rem; letter-spacing: .18em; opacity: .8; margin-top: 2px; }
+/* 表紙の「設定」入口（v1.13.10 で B3 案に変更）：楕円ボタンは廃止し、
+   バージョンと同じ最下部の行の右端へ、歯車＋小さな文字のリンクとして置く。
+   中央のバージョン表記とは重ならないよう、右端に絶対配置する */
+.cover-settings-link { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(4px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; justify-content: flex-end; gap: .35em; min-width: 44px; min-height: 36px; padding: 4px 0; background: transparent; border: none; color: var(--desk-text); font-size: .78rem; letter-spacing: .12em; opacity: .68; cursor: pointer; }
+.cover-settings-link span { font-size: .92rem; line-height: 1; }
 /* 表紙の「しおりから再開」：しおりがあるときだけ出す。表紙の静けさを壊さないよう、
    入口（メニュー）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
 /* （「しおりから再開」ボタンは v1.12.2 で廃止し、モードの2ボタンに一本化した） */
 /* 読書モードの入口（v1.12.0）：本の装丁に合わせ、藍の地に淡い金の罫で2枚の
    小さなプレートを並べる。主表記「耳で読む／目で読む」の下に、違いを一言添える */
 .cover-modes { display: flex; gap: 12px; justify-content: center; margin-top: 4px; padding: 0 6px; }
-.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; max-width: 196px; min-width: 0; min-height: 52px; justify-content: center; background: rgba(201,184,122,.07); border: 1px solid rgba(201,189,160,.45); color: var(--desk-text); border-radius: 4px; padding: .5em .5em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
+.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; max-width: 196px; min-width: 0; min-height: 52px; justify-content: center; background: rgba(8,14,29,.28); border: 1px solid rgba(218,205,175,.48); color: var(--desk-text); border-radius: 12px; padding: .5em .5em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
 .cover-mode small { font-size: .68rem; letter-spacing: .06em; opacity: .75; white-space: nowrap; }

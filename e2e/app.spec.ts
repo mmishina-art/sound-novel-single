@@ -35,9 +35,9 @@ async function openMenuInReader(page: import('@playwright/test').Page): Promise<
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
-/** 表紙からメニュー（入口は「メニュー」ボタン1つだけ）を開く */
+/** 表紙から設定パネル（入口は最下部右端の「⚙ 設定」リンク）を開く */
 async function openMenuOnCover(page: import('@playwright/test').Page): Promise<void> {
-  await page.locator('#coverMenuBtn').click();
+  await page.locator('#coverSettingsBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
@@ -168,7 +168,7 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
-  await expect(page.locator('#coverMenuBtn')).toBeVisible(); // 入口は1つ
+  await expect(page.locator('#coverSettingsBtn')).toBeVisible(); // 設定の入口は最下部のリンク1つ
   await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンは廃止（モードボタンに一本化）
   await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // 補足文は固定（v1.13.3）
   await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
@@ -184,6 +184,58 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
   await expect(page.locator('#coverResume')).toBeVisible();
   await expect(page.locator('#coverResume')).toContainText('つづきから');
+});
+
+test('表紙の下部は B3 案：設定は最下部右端の小リンク、再開情報は小さく1回だけ出す', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  // 旧「メニュー」楕円ボタンは置かず、最下部の右端にだけ「⚙ 設定」を置く
+  await expect(page.locator('#coverMenuBtn')).toHaveCount(0);
+  const settings = page.locator('#coverSettingsBtn');
+  await expect(settings).toBeVisible();
+  await expect(settings).toHaveText(/⚙\s*設定/);
+  await expect(page.locator('#coverResume')).toBeHidden(); // しおりが無ければ情報文は出ない
+  const settingsBox = await settings.boundingBox();
+  const versionBox = await page.locator('#version-line').boundingBox();
+  const viewport = page.viewportSize();
+  if (!settingsBox || !versionBox || !viewport) throw new Error('bounding box / viewport not found');
+  expect(Math.abs(settingsBox.x + settingsBox.width - viewport.width)).toBeLessThanOrEqual(20); // 右端
+  const settingsCy = settingsBox.y + settingsBox.height / 2;
+  const versionCy = versionBox.y + versionBox.height / 2;
+  expect(Math.abs(settingsCy - versionCy)).toBeLessThanOrEqual(7); // バージョンと同じ最下部の行
+  expect(Math.abs(versionBox.x + versionBox.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(3); // 版数は中央のまま
+  // 開く先は同じパネルだが、表紙から開いたときの呼び名は入口に合わせて「設定」
+  await settings.click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await expect(page.locator('#menuTitle')).toHaveText('設定');
+  await expect(page.locator('#menuModal')).toHaveAttribute('aria-label', '設定');
+  await page.locator('#menuCloseBtn').click();
+
+  // 本文の家マークから開くときは、従来どおり「メニュー」と呼ぶ
+  await enterViaToc(page, '#earModeBtn');
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  await openMenuInReader(page);
+  await expect(page.locator('#menuTitle')).toHaveText('メニュー');
+  await page.locator('#menuCloseBtn').click();
+  await backToCover(page);
+
+  // しおりがあるときは「第N章のつづきから」を、ボタンより小さい情報文で1回だけ出す
+  await page.evaluate((id) => {
+    localStorage.setItem(
+      `${id}-bookmark`,
+      JSON.stringify({ chapter: 6, time: 33, title: '第七章 空の郵便が届くまで', savedAt: Date.now(), anchor: 0, page: 60 }),
+    );
+  }, APP_ID);
+  await page.reload();
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await expect(page.locator('#coverResume')).toHaveText('第七章のつづきから');
+  const resumeStyle = await page.evaluate(() => {
+    const resume = getComputedStyle(document.getElementById('coverResume')!);
+    const mode = getComputedStyle(document.getElementById('earModeBtn')!);
+    return { resumeSize: parseFloat(resume.fontSize), modeSize: parseFloat(mode.fontSize), opacity: parseFloat(resume.opacity) };
+  });
+  expect(resumeStyle.resumeSize).toBeLessThan(resumeStyle.modeSize);
+  expect(resumeStyle.opacity).toBeLessThan(0.75);
 });
 
 test('表紙タップでは開かず、「耳で読む」からは目次→章扉と進んで本文へ入る', async ({ page }) => {
@@ -540,8 +592,8 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開もモードボタンから（ボタン上の小行が「つづきから（第一章）」を示す。補足文は固定。メニューには入れない）
-  await expect(page.locator('#coverResume')).toHaveText('つづきから（第一章）');
+  // 再開もモードボタンから（ボタン上の情報文が「第一章のつづきから」を示す。補足文は固定。メニューには入れない）
+  await expect(page.locator('#coverResume')).toHaveText('第一章のつづきから');
   await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
   await page.locator('#earModeBtn').click();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
@@ -1050,12 +1102,25 @@ test('速度の選択肢で再生速度が切り替わる', async ({ page }) => 
   expect(rate).toBe(1.25);
 });
 
-test('フリガナのオン/オフが切り替わる', async ({ page }) => {
+test('フリガナは初回だけオフで、オン/オフが切り替わる', async ({ page }) => {
+  await openReader(page);
+  // 保存値が無い初回はオフ（v1.13.10）。本文にも ruby-off が付いている
+  await expect(page.locator('body')).toHaveClass(/ruby-off/);
+  await openMenuInReader(page);
+  await expect(page.locator('#rubyToggle')).not.toBeChecked();
+  await page.locator('#rubyToggle').click();
+  await expect(page.locator('#rubyToggle')).toBeChecked();
+  await expect(page.locator('body')).not.toHaveClass(/ruby-off/);
+});
+
+test('フリガナの保存済み設定は、初回の初期値より優先される', async ({ page }) => {
+  await page.addInitScript((id) => {
+    localStorage.setItem(`${id}-ruby`, JSON.stringify(true));
+  }, APP_ID);
   await openReader(page);
   await expect(page.locator('body')).not.toHaveClass(/ruby-off/);
   await openMenuInReader(page);
-  await page.locator('#rubyToggle').click();
-  await expect(page.locator('body')).toHaveClass(/ruby-off/);
+  await expect(page.locator('#rubyToggle')).toBeChecked();
 });
 
 test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝前へ／中央20%＝無反応、ボタンは別）', async ({ page }) => {
@@ -1070,6 +1135,16 @@ test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝�
   await expect(page.locator('#playPauseBtn')).toBeVisible();
   await expect(page.locator('#menuBtn')).toBeVisible();
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  // タップで切り替わる間、16pxスライド用のクラスが一度も付かないことを監視する
+  await page.evaluate(() => {
+    const w = window as unknown as { __tapAnimSeen: boolean; __tapMo?: MutationObserver };
+    w.__tapAnimSeen = false;
+    const el = document.getElementById('pageEl')!;
+    w.__tapMo = new MutationObserver(() => {
+      if (el.classList.contains('turn-next') || el.classList.contains('turn-prev')) w.__tapAnimSeen = true;
+    });
+    w.__tapMo.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
   // 左端（次側の端）タップ → 次ページ
   await tapSurfaceAt(page, box, 0.03);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
@@ -1089,6 +1164,13 @@ test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝�
   // 右端タップ → 前ページ
   await tapSurfaceAt(page, box, 0.97);
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  await page.waitForTimeout(100); // MutationObserver の通知を拾い切る
+  const tapAnimSeen = await page.evaluate(() => {
+    const w = window as unknown as { __tapAnimSeen: boolean; __tapMo?: MutationObserver };
+    w.__tapMo?.disconnect();
+    return w.__tapAnimSeen;
+  });
+  expect(tapAnimSeen).toBe(false); // タップはアニメーションなしで即時に切り替わる
   // ボタンのタップではめくらない（メニューが開く＝ボタン側の処理が効く）
   await page.locator('#menuBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
@@ -1824,7 +1906,7 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     // 表紙：BGM が鳴っていても（バックグラウンド再生は既定オン）、背面化で止まる
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await page.locator('#coverMenuBtn').click(); // 最初のタップで BGM が流れ始める
+    await page.locator('#coverSettingsBtn').click(); // 最初のタップで BGM が流れ始める
     await expect.poll(bgmOn).toBe(true);
     await page.locator('#menuCloseBtn').click();
     await setHidden(true);
@@ -2567,12 +2649,60 @@ test('目次の体裁は本文・扉と揃っている：戻るピルなし、�
   const heights = m.items.map((i) => i.height);
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1);
   expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
-  // 柱の頭は版面の上から約1/3（中央寄せではなく上気味）
+  // 頭の位置は本文ページの組版に合わせる（v1.13.10）：項目の並びはページ上部
+  // （版面の約1/3＝旧仕様の中央浮きではなく、本文の開始位置の近く）から始まる
   const headRatio = (tops[0] - m.sheetTop) / m.sheetHeight;
-  expect(headRatio).toBeGreaterThan(0.25);
-  expect(headRatio).toBeLessThan(0.4);
+  expect(headRatio).toBeLessThan(0.1);
   // 家マークは本文と同じ薄いアイコン（背景を持たない）
   expect(m.menuBg).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('目次の見出し・項目の開始位置は本文ページの組版と一致する（v1.13.10）', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await enterViaToc(page, '#eyeModeBtn'); // 初回は目次から始まり、第一章の扉まで進む
+  await swipeGate(page, 'next');
+  await expect(page.locator('#readerView')).toBeVisible();
+  await page.waitForTimeout(300);
+  // 本文ページ側の基準：柱（章題の行）の上端と、本文の列（段落）の始まる高さ。
+  // 最初の文節は字下げ（1em）ぶん下がるので、列の開始位置は段落で測る
+  const body = await page.evaluate(() => {
+    const textTop = (el: Element): number => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return r.getBoundingClientRect().top;
+    };
+    const pageEl = document.querySelector('#pageEl')!;
+    const head = document.querySelector('.page-head')!;
+    const firstP = document.querySelector('#pageEl .page-content p')!;
+    const pr = pageEl.getBoundingClientRect();
+    return { pageTop: pr.top, headTop: head.getBoundingClientRect().top - pr.top, bodyTop: textTop(firstP) - pr.top };
+  });
+  // 柱の行はページ上端から 7px、本文の列は上余白 46px から始まる（組版の基準値）
+  expect(Math.abs(body.headTop - 7)).toBeLessThanOrEqual(3);
+  expect(Math.abs(body.bodyTop - 46)).toBeLessThanOrEqual(3);
+  // 本文のメニューから目次へ戻って、同じ物差しで測る
+  await openMenuInReader(page);
+  await page.locator('#tocFromMenuBtn').click();
+  await expect(page.locator('#tocView')).toBeVisible();
+  await page.waitForTimeout(200);
+  const toc = await page.evaluate(() => {
+    const textTop = (el: Element): number => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return r.getBoundingClientRect().top;
+    };
+    const sheet = document.querySelector('.toc-sheet')!.getBoundingClientRect();
+    const heading = document.querySelector('.toc-heading')!;
+    const firstItemText = document.querySelector('#tocList .toc-item .toc-num')!;
+    return {
+      headingTop: textTop(heading) - sheet.top,
+      itemTop: textTop(firstItemText) - sheet.top,
+    };
+  });
+  // 「目次」の見出しの上端＝柱の高さ、章の並びの頭＝本文の始まる高さ
+  expect(Math.abs(toc.headingTop - body.headTop)).toBeLessThanOrEqual(3);
+  expect(Math.abs(toc.itemTop - body.bodyTop)).toBeLessThanOrEqual(3);
 });
 
 test('デザインの約束事：帯の家具は全画面で同じ部品・寸法・色・浮き（DESIGN.md の自動検証）', async ({ page }) => {

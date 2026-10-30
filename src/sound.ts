@@ -71,10 +71,14 @@ export function beep(frequency = 660, seconds = 0.08): void {
 /* ページめくり音：紙が擦れる音を、ノイズ＋帯域掃引でその場で合成する（実ファイルは持たない）。
    短く（約0.3秒）柔らかく、朗読の邪魔をしない「気配程度」の音量に抑える
    （下げ方の履歴：v1.11.1 で包絡全体を約0.4倍＝ピーク 0.13→0.052、v1.13.2 で
-   さらに約0.6倍＝ピーク 0.031。実機の感想を受けての段階調整で、最終的な
-   塩梅はユーザーの耳の確認待ち）。オン/オフは効果音の
-   設定（保存キー 'sound'）に従い、BGM とは独立に切れる。連打・高速めくりでも
-   音が重なって破綻しないよう、前回から 120ms 以内の再発音はしない */
+   さらに約0.6倍＝ピーク 0.031、v1.13.10 で聞き比べの真ん中のサンプルを
+   ユーザーが選びピーク 0.020。谷と終わりの盛り上がりも同じ比率で下げる）。
+   オン/オフは効果音の設定（保存キー 'sound'）に従い、BGM とは独立に切れる。
+   連打・高速めくりでも音が重なって破綻しないよう、前回から 120ms 以内の
+   再発音はしない */
+const PAGE_TURN_PEAK = 0.02;
+const PAGE_TURN_VALLEY = (PAGE_TURN_PEAK * 0.013) / 0.031;
+const PAGE_TURN_BUMP = (PAGE_TURN_PEAK * 0.024) / 0.031;
 let lastPageTurnAt = 0;
 
 export function playPageTurn(): void {
@@ -109,9 +113,9 @@ export function playPageTurn(): void {
     lp.frequency.value = 5200;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.031, t + 0.045); // 立ち上がり（ピーク）
-    g.gain.linearRampToValueAtTime(0.013, t + 0.13); // 紙が離れかける谷
-    g.gain.linearRampToValueAtTime(0.024, t + 0.19); // めくり終わりの小さな盛り上がり
+    g.gain.linearRampToValueAtTime(PAGE_TURN_PEAK, t + 0.045); // 立ち上がり（ピーク）
+    g.gain.linearRampToValueAtTime(PAGE_TURN_VALLEY, t + 0.13); // 紙が離れかける谷
+    g.gain.linearRampToValueAtTime(PAGE_TURN_BUMP, t + 0.19); // めくり終わりの小さな盛り上がり
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     // 定位は静止したわずかな振りだけ（時間で揺らす要素は付けない）
     const pan = c.createStereoPanner();

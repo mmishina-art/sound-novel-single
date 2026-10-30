@@ -385,6 +385,11 @@ export function createReader(book: BookData): Reader {
   function openMenu(): void {
     // 分類（音／表示／再生）は全画面で共通。目で読むのときだけ朗読に紐づく行を隠す
     arrangeMenu(coverView.hidden ? readMode : 'cover');
+    // 表紙の入口は「設定」なので、表紙から開いたときだけパネルの呼び名も
+    // 「設定」に合わせる。他画面の家マークから開くときは従来どおり「メニュー」
+    const panelName = coverView.hidden ? 'メニュー' : '設定';
+    $('menuTitle').textContent = panelName;
+    $('menuModal').setAttribute('aria-label', panelName);
     // 「表紙に戻る」は表紙以外から開いたときだけ出す（表紙で開いたメニューには不要）
     $('toCoverFromMenuBtn').hidden = !coverView.hidden;
     $('menuModal').hidden = false;
@@ -593,7 +598,8 @@ export function createReader(book: BookData): Reader {
 
   /* animDir は描画アニメーションの向き（0 でアニメーションなし）。
      スワイプ確定時は指の動きに合わせた滑り込みをジェスチャ側で行うため、
-     通常のキーフレーム（キー操作・自動送り用）を重ねないよう 0 を渡す */
+     タップと自動送りも即時切り替えにするため、通常のキーフレームを重ねない
+     よう 0 を渡す。キーフレームを使うのはキー操作だけに留める */
   function turnPage(dir: number, animDir: number = dir): void {
     if (!PAGES.length || readerView.hidden) return;
     lastManualTurn = Date.now();
@@ -693,11 +699,12 @@ export function createReader(book: BookData): Reader {
     return load<Bookmark | null>('bookmark', null);
   }
   /* 表紙は「表紙だけが静かに出ている」状態が原則。入り口はモードの2ボタンと
-     「メニュー」だけ（v1.12.2 で表紙タップでの開始と「しおりから再開」ボタンを
-     廃止し、2ボタンに一本化した）。
-     補足文は「朗読つき／朗読なし」固定（v1.13.3 で整理）。しおりがあるときの
-     再開情報は、補足文に混ぜずボタン上の小行 #coverResume で示す（どちらの
-     入口からでも同じ章から再開するので、行は1つで足りる）。
+     最下部右端の「設定」リンクだけ（v1.12.2 で表紙タップでの開始と
+     「しおりから再開」ボタンを廃止し、2ボタンに一本化。v1.13.10 で B3 案に
+     合わせ、楕円の「メニュー」ボタンを廃止した）。
+     補足文は「朗読つき／朗読なし」固定。しおりがあるときの再開情報は、
+     補足文に混ぜずボタン上の小さな情報文 #coverResume に「第N章の
+     つづきから」と1回だけ示す（どちらの入口からでも同じ章から再開する）。
      ヒント文は初回（しおりがなく、まだ読み始めた記録もないとき）だけの控えめな案内 */
   function refreshResume(): void {
     const bm = loadBookmark();
@@ -706,7 +713,7 @@ export function createReader(book: BookData): Reader {
     $('eyeModeSub').textContent = '朗読なし';
     const resumeEl = $('coverResume');
     resumeEl.hidden = !has;
-    resumeEl.textContent = has && bm ? 'つづきから（' + chapters[bm.chapter].num + '）' : '';
+    resumeEl.textContent = has && bm ? chapters[bm.chapter].num + 'のつづきから' : '';
     $('coverHint').hidden = has || load<boolean>('seen', false);
   }
 
@@ -1578,12 +1585,12 @@ export function createReader(book: BookData): Reader {
     };
     $('earModeBtn').addEventListener('click', () => enterFromCover('ear'));
     $('eyeModeBtn').addEventListener('click', () => enterFromCover('eye'));
-    /* メニュー（入口は本文・扉・目次の家マークと表紙の「メニュー」、中身は1つ。
+    /* メニュー（入口は本文・扉・目次の家マークと表紙の「設定」、中身は1つ。
        目次・設定はこの中にある） */
     $('menuBtn').addEventListener('click', openMenu);
     $('gateMenuBtn').addEventListener('click', openMenu);
     $('tocMenuBtn').addEventListener('click', openMenu);
-    $('coverMenuBtn').addEventListener('click', openMenu);
+    $('coverSettingsBtn').addEventListener('click', openMenu);
     $('endMenuBtn').addEventListener('click', openMenu); // 奥付の家マークも他画面と同じくメニューを開く
     /* 扉の再生アイコン：表示中の扉が決めた gatePlay（入章して朗読開始） */
     $('gatePlayBtn').addEventListener('click', () => {
@@ -1624,7 +1631,8 @@ export function createReader(book: BookData): Reader {
          （ゾーン判定の純関数は logic.tapDirection。v1.13.6 でタップめくりを
          廃止したが、v1.13.9 でユーザー決定により復活。半分判定だった旧仕様
          と違い中央に無反応帯を置き、曖昧なタップを拾わない。ボタン類の上
-         ではめくらない）。
+         ではめくらない）。切り替えは16pxスライドを付けず即時に行う
+         （v1.13.10。自動送りと同じ扱い）。
        - めくりが確定した瞬間に、ページめくり音を1回鳴らす。
        - prefers-reduced-motion では追随もアニメーションもせず即時に切り替える */
     const SWIPE_COMMIT_RATIO = 0.09;
@@ -1923,7 +1931,7 @@ export function createReader(book: BookData): Reader {
       const dir = tapDirFor(pageWrap, e.clientX);
       if (!dir) return;
       turnSound(); // タップめくりでも、確定した瞬間に1回鳴らす
-      turnPage(dir);
+      turnPage(dir, 0); // タップはスライドさせず、即時に切り替える
     });
     /* 奥付ページにも、他のページと同じページ操作を効かせる（v1.12.4、実機
        報告「奥付まで行くとスワイプで戻れない」への対応）。奥付は本文の上に
@@ -1947,7 +1955,7 @@ export function createReader(book: BookData): Reader {
       const dir = tapDirFor(endPageEl, e.clientX);
       if (!dir) return;
       turnSound();
-      turnPage(dir);
+      turnPage(dir, 0); // 奥付のタップも本文と同じく即時に切り替える
     });
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
@@ -2068,7 +2076,8 @@ export function createReader(book: BookData): Reader {
   }
 
   /* ---------- 初期化 ---------- */
-  const rubyOn = load<boolean>('ruby', true);
+  // フリガナは、保存値が無い初回だけオフにする（v1.13.10）。保存済みの値は優先する
+  const rubyOn = load<boolean>('ruby', false);
   $<HTMLInputElement>('rubyToggle').checked = rubyOn;
   document.body.classList.toggle('ruby-off', !rubyOn);
   const bgOn = load<boolean>('bg', true);

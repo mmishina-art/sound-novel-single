@@ -24,7 +24,7 @@ try {
   await page.waitForSelector('#tocList li', { state: 'attached', timeout: 10000 });
 
   const openChapter = async (n) => {
-    await page.click('#coverMenuBtn');
+    await page.click('#coverSettingsBtn');
     await page.click('#tocFromMenuBtn');
     await page.locator('.toc-item').nth(n).click();
     await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });

@@ -21,7 +21,7 @@ const forcePageMode = async (page) => {
 // 目次ページへの入口はメニューの「目次を開く」に一本化されている（表紙に目次ボタンはない）
 const openToc = async (page) => {
   await waitBook(page);
-  await page.click('#coverMenuBtn');
+  await page.click('#coverSettingsBtn');
   await page.click('#tocFromMenuBtn');
   await page.waitForSelector('#tocView:not([hidden])');
 };
@@ -81,7 +81,7 @@ const SCREENS = [
   },
   { name: 'cover' },
   {
-    // しおりがあるときの表紙（モードボタンの補足が「つづきから」になる状態）。
+    // しおりがあるときの表紙（ボタン上の情報文が「第一章のつづきから」になる状態）。
     // しおりを置いて読み込み直す
     name: 'cover-resume',
     open: async (page) => {
@@ -199,8 +199,8 @@ const SCREENS = [
     },
   },
   // 管理系はメニュー（表紙の「設定」）の中に集約した
-  { name: 'install', open: async (page) => { await page.click('#coverMenuBtn'); await page.click('#install-open'); } },
-  { name: 'cover-menu', open: async (page) => { await page.click('#coverMenuBtn'); } },
+  { name: 'install', open: async (page) => { await page.click('#coverSettingsBtn'); await page.click('#install-open'); } },
+  { name: 'cover-menu', open: async (page) => { await page.click('#coverSettingsBtn'); } },
 ];
 
 /** 撮る大きさ。このアプリは暗い固定配色なので、ダークモードの撮り分けはしない。 */
