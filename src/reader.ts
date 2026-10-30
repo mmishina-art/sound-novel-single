@@ -708,7 +708,7 @@ export function createReader(book: BookData): Reader {
   }
 
   /* ---------- 章背景のアニメーション ----------
-     線画（--chapter-bg）の上に、章に合う小さな動きだけを重ねる（CSS の .page-anim 配下）。
+     章背景の帯（--chapter-bg-top / --chapter-bg-bottom）の上に、章に合う小さな動きだけを重ねる（CSS の .page-anim 配下）。
      要素は章ごとに作り直す。配置は章番号で種をまいた決定的な乱数で決め、
      開くたびに同じ景色になるようにしている。
      静かさの基準（v1.2.1〜）: あくまで雰囲気。本文より主張しないよう、動きは薄く・
@@ -941,11 +941,14 @@ export function createReader(book: BookData): Reader {
     syncPlayChrome();
   }
   function layoutChapter(opts: EnterOptions): void {
-    // 章ごとの背景イメージを差し込む（オフ設定のときは CSS 側で紙だけになる）。
+    // 章ごとの背景イメージ（上下の帯）を差し込む（オフ設定のときは CSS 側で紙だけになる）。
     // URL は文書基準の絶対URLにする（CSS 変数経由の url() はスタイルシート基準で
-    // 解決されてしまい、dist の assets/ から見た相対パスでは画像に届かないため）
-    const bgUrl = new URL('book/bg/ch' + (current + 1) + '.svg', document.baseURI).href;
-    pageWrap.style.setProperty('--chapter-bg', 'url("' + bgUrl + '")');
+    // 解決されてしまい、dist の assets/ から見た相対パスでは画像に届かないため）。
+    // 旧線画 SVG（book/bg/ch*.svg）は戻せるよう残してあるが、もう参照しない（v1.13.3〜）
+    const bgTopUrl = new URL('book/bg/ch' + (current + 1) + '-top.webp', document.baseURI).href;
+    const bgBottomUrl = new URL('book/bg/ch' + (current + 1) + '-bottom.webp', document.baseURI).href;
+    pageWrap.style.setProperty('--chapter-bg-top', 'url("' + bgTopUrl + '")');
+    pageWrap.style.setProperty('--chapter-bg-bottom', 'url("' + bgBottomUrl + '")');
     buildPageAnim(current);
     // リーダーが表示された状態でページ割りをする
     if (!PAGES.length || sizeKeyNow() !== pageSizeKey) paginateAll();

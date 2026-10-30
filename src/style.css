@@ -404,9 +404,12 @@ body.dir-horizontal .read-progress { justify-content: flex-start; }
 
 .page-wrap { position: relative; flex: 1; min-height: 0; margin: var(--frame-mt) var(--frame-mr) var(--frame-mb) var(--frame-ml); --folio-band: 44px; touch-action: pan-y pinch-zoom; }
 /* 1ページの紙。背（綴じ側）は右、 小口は左。
-   章ごとの背景イメージ（--chapter-bg、reader.ts が章ごとに差し込む）は ::before の
-   専用層に敷く。下端はノンブルの帯（--folio-band）の上で止め、ページ数の表示と
-   絵が重ならないようにする（本文の下余白42pxともほぼ揃う）。
+   章ごとの背景イメージ（--chapter-bg-top / --chapter-bg-bottom、reader.ts が章ごとに
+   差し込む）は ::before の専用層に敷く。絵は生成イラストを上下の帯に切り分けたもの
+   （v1.13.3〜）で、上帯は天に、下帯は地に吸着させ、中央の本文域は紙のまま空ける。
+   切り口は画像側で紙色へフェードさせてあり、継ぎ目は見えない。下端はノンブルの帯
+   （--folio-band）の上で止め、ページ数の表示と絵が重ならないようにする
+   （本文の下余白42pxともほぼ揃う）。
    背景オフのときは body.bg-off で ::before とアニメーション層を消し、紙だけに戻す */
 .page {
   position: absolute; inset: 0;
@@ -415,10 +418,12 @@ body.dir-horizontal .read-progress { justify-content: flex-start; }
     linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc);
   overflow: hidden;
 }
-.page::before { /* 章背景（線画）の専用層：ノンブルの帯には入り込まない */
+.page::before { /* 章背景（上下の帯）の専用層：ノンブルの帯には入り込まない */
   content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: var(--folio-band);
-  background-image: var(--chapter-bg, none);
-  background-size: cover; background-position: center bottom; background-repeat: no-repeat;
+  background-image: var(--chapter-bg-top, none), var(--chapter-bg-bottom, none);
+  background-size: 100% auto, 100% auto;
+  background-position: center top, center bottom;
+  background-repeat: no-repeat, no-repeat;
   pointer-events: none;
 }
 body.bg-off .page::before { display: none; }
@@ -440,13 +445,14 @@ body.bound-left .page::after {
   left: 0; background: linear-gradient(to right, rgba(101,84,52,.3), rgba(101,84,52,.1) 55%, transparent);
 }
 /* ============ 章背景のアニメーション層 ============
-   線画（--chapter-bg）の上に、章に合う小さな動きだけを重ねる。本文（.page-content）より
+   章背景の帯（--chapter-bg-top / --chapter-bg-bottom）の上に、章に合う小さな動きだけを重ねる。本文（.page-content）より
    下の層に置き、動きは transform / opacity のみ・要素数も最小限にして描画負荷を抑える。
    中身は reader.ts の buildPageAnim() が章ごとに作る（--d=周期、--dl=遅延、--dx/--dy=漂う量）。
    背景オフ（body.bg-off）のときと、端末の「視覚効果を減らす」設定のときは層ごと出さない。
    濃さ・速さの基準（v1.2.1〜）: あくまで雰囲気であり、本文より主張してはいけない。
    意識して見れば動いているのが分かるが、読んでいる間は視界に入ってこない水準に抑え、
-   迷ったら弱める側に倒す。各要素の実効最大不透明度は線画本体（0.20、v1.3.0で 0.30 から引き下げ）以下を目安にする */
+   迷ったら弱める側に倒す。各要素の実効最大不透明度は背景の帯絵の濃さ以下を目安にする
+   （旧線画時代の基準は 0.20、v1.3.0で 0.30 から引き下げ） */
 .page-anim { position: absolute; top: 0; left: 0; right: 0; bottom: var(--folio-band, 44px); z-index: 0; overflow: hidden; pointer-events: none; }
 body.bg-off .page-anim { display: none; }
 @media (prefers-reduced-motion: reduce) {

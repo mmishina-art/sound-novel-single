@@ -1431,6 +1431,13 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await openReader(page);
     const anim = page.locator('#pageAnim');
     await expect(anim).toHaveAttribute('data-chapter', '1');
+    // 章背景は生成イラストの上下帯（v1.13.3〜）：::before の2層が当該章の帯を指す
+    const bgOf = () => page.evaluate(() => {
+      const el = document.querySelector('#pageEl');
+      return el ? getComputedStyle(el, '::before').backgroundImage : '';
+    });
+    await expect.poll(bgOf).toContain('ch1-top.webp');
+    await expect.poll(bgOf).toContain('ch1-bottom.webp');
     // 雨は全てアニメーション（v1.13.2）：両端を全高で落ちる雨7＋上部の短い雨8。
     // 背景 SVG 側に静止した雨線は置かない（「止まって見える」実機指摘への対応）
     await expect(anim.locator('.anim-rain')).toHaveCount(15);
@@ -1442,11 +1449,14 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
     await expect(page.locator('#readerChapterLabel')).toHaveText(/第二章/);
     await expect(anim).toHaveAttribute('data-chapter', '2');
+    await expect.poll(bgOf).toContain('ch2-top.webp');
+    await expect.poll(bgOf).toContain('ch2-bottom.webp');
     // 第二章の雨も量感を第一章に統一（密度・薄さとも）。水たまりのきらめきは残る
     await expect(anim.locator('.anim-rain')).toHaveCount(15);
     await expect(anim.locator('.anim-rain.top')).toHaveCount(8);
     await expect(anim.locator('.anim-glint')).toHaveCount(2);
-    // 背景 SVG に静止した雨の線が残っていないこと（傘や日差しの線画は対象外：
+    // 旧線画 SVG は参照を外して残してある（戻すときの原版）。その SVG に静止した
+    // 雨の線が残っていないこと（傘や日差しの線画は対象外：
     // 雨グループの目印コメントで判定する）
     const svgTexts = await page.evaluate(async () => {
       const get = async (n: number): Promise<string> => (await fetch('book/bg/ch' + n + '.svg')).text();
