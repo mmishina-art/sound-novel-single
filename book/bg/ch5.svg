@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第五章の背景：閉店の知らせと夕方の店">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.20">
+    <!-- 夕日（下部右、地平線に沈む） -->
+    <g transform="translate(0,540)">
+      <path d="M 356 690 A 92 92 0 0 1 540 690"/>
+      <line x1="318" y1="690" x2="578" y2="690" stroke-width="2.8"/>
+      <line x1="352" y1="716" x2="544" y2="716" stroke-width="1.8"/>
+      <g stroke-width="1.8">
+        <line x1="448" y1="556" x2="448" y2="574"/><line x1="382" y1="580" x2="394" y2="594"/>
+        <line x1="514" y1="580" x2="502" y2="594"/>
+      </g>
+    </g>
+    <!-- 店の入口と貼り紙（下部左） -->
+    <g transform="translate(88,992)">
+      <rect x="0" y="0" width="196" height="252" rx="3"/>
+      <line x1="98" y1="0" x2="98" y2="252" stroke-width="1.7"/>
+      <circle cx="84" cy="130" r="4"/>
+      <circle cx="112" cy="130" r="4"/>
+      <!-- 閉店のお知らせの貼り紙 -->
+      <g transform="rotate(-2 52 66)">
+        <rect x="14" y="30" width="76" height="72" rx="2" fill="#1b2a4a" fill-opacity="0.05"/>
+        <g stroke-width="1.6">
+          <line x1="26" y1="50" x2="78" y2="50"/><line x1="26" y1="64" x2="78" y2="64"/>
+          <line x1="26" y1="78" x2="62" y2="78"/>
+        </g>
+        <circle cx="52" cy="38" r="2.6"/>
+      </g>
+    </g>
+  </g>
+</svg>

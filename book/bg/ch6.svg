@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第六章の背景：新しい店舗の見学と光">
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.20">
+    <!-- 空き店舗の大きな窓（下部） -->
+    <g transform="translate(96,968)">
+      <rect x="0" y="0" width="408" height="276" rx="3"/>
+      <line x1="136" y1="0" x2="136" y2="276" stroke-width="1.8"/>
+      <line x1="272" y1="0" x2="272" y2="276" stroke-width="1.8"/>
+      <line x1="0" y1="92" x2="408" y2="92" stroke-width="1.8"/>
+      <!-- 差し込む光 -->
+      <path d="M 150 92 L 330 276 L 408 276 L 262 92 Z" fill="#c9b87a" stroke="none" fill-opacity="0.13"/>
+      <path d="M 20 92 L 168 276 L 226 276 L 96 92 Z" fill="#c9b87a" stroke="none" fill-opacity="0.10"/>
+      <!-- 床に映る窓の光 -->
+      <path d="M 150 292 L 358 292 L 396 318 L 190 318 Z" fill="#c9b87a" stroke="none" fill-opacity="0.10"/>
+    </g>
+    <!-- 間取りの線（上部左、見学のメモ） -->
+    <g transform="translate(64,64)" stroke-width="1.8">
+      <rect x="0" y="0" width="150" height="104"/>
+      <line x1="58" y1="0" x2="58" y2="64"/><line x1="58" y1="64" x2="150" y2="64"/>
+      <path d="M 96 104 A 26 26 0 0 1 122 78" stroke-dasharray="3 5"/>
+    </g>
+  </g>
+</svg>

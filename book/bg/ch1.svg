@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1300" role="img" aria-label="第一章の背景：雨の日の古本屋">
+  <!-- 章背景の共通方針：生成りの紙の上にうっすら透かす線画。画布は本文ページの縦横比（約 600:1300）に合わせ、
+       モチーフは上部と下部に寄せ、中央の本文域は空ける -->
+  <g fill="none" stroke="#6b5a33" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.20">
+    <!-- 雨（上部にまばらに） -->
+    <g stroke-width="1.8">
+      <line x1="86" y1="60" x2="76" y2="92"/><line x1="168" y1="38" x2="158" y2="70"/>
+      <line x1="470" y1="52" x2="460" y2="84"/><line x1="528" y1="96" x2="518" y2="128"/>
+      <line x1="120" y1="150" x2="110" y2="182"/><line x1="505" y1="190" x2="495" y2="222"/>
+      <line x1="66" y1="250" x2="56" y2="282"/><line x1="548" y1="300" x2="538" y2="332"/>
+    </g>
+    <!-- 古本屋（下部） -->
+    <g transform="translate(150,1060)">
+      <path d="M 20 62 L 150 14 L 280 62 L 262 78 L 38 78 Z"/>
+      <rect x="52" y="78" width="196" height="118"/>
+      <path d="M 66 106 L 234 106 L 222 126 L 78 126 Z"/>
+      <rect x="84" y="136" width="58" height="44" rx="2"/>
+      <rect x="162" y="136" width="58" height="44" rx="2"/>
+      <rect x="140" y="140" width="22" height="56" rx="2"/>
+      <rect x="118" y="86" width="64" height="15" rx="3"/>
+    </g>
+    <!-- 水たまり -->
+    <ellipse cx="300" cy="1268" rx="180" ry="9" fill="#1b2a4a" stroke="none" fill-opacity="0.06"/>
+    <ellipse cx="225" cy="1268" rx="52" ry="4" fill="#1b2a4a" stroke="none" fill-opacity="0.06"/>
+  </g>
+</svg>
