@@ -11,6 +11,7 @@ import {
   rubyToHtml,
   speedIndexOf,
   speedLabel,
+  tapDirection,
   unitIndexAtTime,
   type BookData,
   type Bookmark,
@@ -319,8 +320,9 @@ export function createReader(book: BookData): Reader {
   }
 
   /* ---------- メニュー（入口はボタンだけ） ----------
-     操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置き、
-     ページめくりはスワイプのみ。本文タップではめくらず、メニューも開かない */
+     操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置く。
+     ページめくりはスワイプとタップ（ゾーン判定）の併用。本文タップで
+     メニューは開かない */
   /* メニューの組み替え：分類は開いた場所・モードによらず 音／表示／再生 の
      3つで固定する（v1.13.3 で再編。旧 v1.12.0〜のモード別見出し「耳で読む」
      の設定／「目で読む」の設定は廃止した——全設定は両モード共通という実態に
@@ -1044,11 +1046,12 @@ export function createReader(book: BookData): Reader {
     renderPage(0);
     refreshTocCurrent();
   }
-  /* 初回だけの小さな案内（v1.13.6〜）：タップめくりを廃止してスワイプのみに
-     したため、初めて本文を開いたときに一度だけ「スワイプでページを
-     めくります」を出す。出したら保存キー 'swipe-hint' を立てて二度と出さ
-     ない（表紙ヒント・ダウンロード案内と同じ流儀）。消し方は2通り：
-     ページを1枚めくったら消える／何もしなくても6秒で消える */
+  /* 初回だけの小さな案内（v1.13.6〜）：初めて本文を開いたときに一度だけ
+     めくり方の案内を出す（文面は v1.13.9 でタップ復活に合わせて
+     「タップかスワイプでページをめくります」に変更）。出したら保存キー
+     'swipe-hint' を立てて二度と出さない（表紙ヒント・ダウンロード案内と
+     同じ流儀）。消し方は2通り：ページを1枚めくったら消える／何もしなくても
+     6秒で消える */
   let swipeHintTimer: ReturnType<typeof setTimeout> | undefined;
   function hideSwipeHint(): void {
     if (swipeHintTimer !== undefined) clearTimeout(swipeHintTimer);
@@ -1435,7 +1438,7 @@ export function createReader(book: BookData): Reader {
      目次は本文ページとは別画面のままにしているが、組み方は本文に寄せてある：
      列を実測して収まる分だけを1ページにし、章が増えたら次の目次ページへ送る
      （本文の「文単位で測ってページに分ける」に対する「列単位で測って分ける」）。
-     ページ送りは本文と同じ作法（スワイプのみ。向きは本文と同じ）。
+     ページ送りは本文と同じ作法（スワイプとタップのゾーン判定。向きは本文と同じ）。
      項目は「章と題」だけにする（語り手名は各章の扉で分かるため、目次には載せない） */
   let tocReturn: TocReturn = 'cover';
   let tocPages: number[][] = [];
@@ -1617,9 +1620,11 @@ export function createReader(book: BookData): Reader {
          （実機で「もっと少なくていい」）。確定時の滑りも画面幅ではなく最大28px
          に留め、差し替え後は反対側14pxから .18s で静かに収める。未満は .22s
          で戻す（行き過ぎ＝オーバーシュートは付けない）。
-       - タップではめくらない（v1.13.6 でタップめくりを廃止し、手動のめくりは
-         スワイプのみにした。面へのタップは無反応で、ボタン類だけがタップで
-         効く。左右どちらへ倒れるか曖昧なタップ判定そのものを無くすため）。
+       - タップ：次側の40%＝次へ、反対側の40%＝前へ、中央20%は無反応
+         （ゾーン判定の純関数は logic.tapDirection。v1.13.6 でタップめくりを
+         廃止したが、v1.13.9 でユーザー決定により復活。半分判定だった旧仕様
+         と違い中央に無反応帯を置き、曖昧なタップを拾わない。ボタン類の上
+         ではめくらない）。
        - めくりが確定した瞬間に、ページめくり音を1回鳴らす。
        - prefers-reduced-motion では追随もアニメーションもせず即時に切り替える */
     const SWIPE_COMMIT_RATIO = 0.09;
@@ -1724,8 +1729,8 @@ export function createReader(book: BookData): Reader {
         const mySeq = seq;
         drag = null;
         o.onDragActive?.(false);
-        if (!wasActive) return; // ただのタップでは何も起きない（v1.13.6〜）
-        sharedSwipedAt = Date.now(); // 直後の click で二重にめくらない（タップ遷移は無いが、相方 click 抑止の仕組みとして維持）
+        if (!wasActive) return; // スワイプとして活性化しなかった指上げでは送らない（タップは click 側のゾーン判定が処理する）
+        sharedSwipedAt = Date.now(); // 直後の click（相方）で二重にめくらない
         sharedClickEcho = true; // 遅れて届く相方 click も、次の pointerdown までは止める
         const w = o.surface.clientWidth || 1;
         const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
@@ -1785,14 +1790,28 @@ export function createReader(book: BookData): Reader {
         dir > 0 ? 1 : -1,
       );
     };
-    attachSwipeNav({
+    /* タップのゾーン判定（全画面共通）：面の左端からの割合を logic の
+       純関数へ渡すだけ。行き先の決定はスワイプと同じく decideNav 側で、
+       タップはこちらで方向（1／-1／0）を決めて渡すだけに留める */
+    const tapDirFor = (view: HTMLElement, clientX: number): 1 | -1 | 0 => {
+      const r = view.getBoundingClientRect();
+      if (r.width <= 0) return 0;
+      return tapDirection((clientX - r.left) / r.width, DIR.nextSide);
+    };
+    const tocSwipe = attachSwipeNav({
       surface: tocView,
       followEl: tocView.querySelector<HTMLElement>('.toc-sheet'),
       onDragActive: (a) => tocView.classList.toggle('toc-dragging', a),
       onNav: (dir) => tocTapNav(dir),
     });
-    // 目次面のタップでは送らない（手動のめくりはスワイプのみ。v1.13.6〜）。
-    // 章項目はボタンとして従来どおりタップで効く
+    tocView.addEventListener('click', (e) => {
+      if (tocSwipe.swipedRecently()) return; // スワイプ直後の相方 click では送らない
+      if ((e.target as HTMLElement).closest('button')) return; // 章項目はボタン側の処理
+      const dir = tapDirFor(tocView, e.clientX);
+      if (!dir) return;
+      turnSound();
+      tocTapNav(dir);
+    });
     $('toCoverFromMenuBtn').addEventListener('click', () => {
       closeMenu();
       goCover();
@@ -1883,7 +1902,7 @@ export function createReader(book: BookData): Reader {
        メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
        メニューや操作 UI が出ることはない）。ボタンの上と奥付ページ表示中は
        めくりジェスチャの対象にしない */
-    attachSwipeNav({
+    const bodySwipe = attachSwipeNav({
       surface: pageWrap,
       followEl: pageEl,
       canStart: (e) => !(e.target as HTMLElement).closest('button') && !endOpen,
@@ -1893,8 +1912,19 @@ export function createReader(book: BookData): Reader {
       },
       onNav: (dir) => turnPage(dir, 0),
     });
-    // 本文面のタップではめくらない（手動のめくりはスワイプのみ。v1.13.6〜。
-    // 帯のボタン類は従来どおりタップで効く）
+    pageWrap.addEventListener('click', (e) => {
+      if (bodySwipe.swipedRecently()) return; // スワイプ直後の相方 click では送らない
+      if ((e.target as HTMLElement).closest('button')) return; // 帯のボタン類はボタン側の処理
+      // 奥付は pageWrap の内側に重なっているため、奥付のタップがここへ
+      // 伝播してくる。奥付表示中は奥付側のハンドラに任せる（スワイプで
+      // 奥付を閉じた直後の click が本文側で「次へ」と解釈され、奥付を
+      // 開き直してしまう事故の防止）
+      if (endOpen) return;
+      const dir = tapDirFor(pageWrap, e.clientX);
+      if (!dir) return;
+      turnSound(); // タップめくりでも、確定した瞬間に1回鳴らす
+      turnPage(dir);
+    });
     /* 奥付ページにも、他のページと同じページ操作を効かせる（v1.12.4、実機
        報告「奥付まで行くとスワイプで戻れない」への対応）。奥付は本文の上に
        重なる独立レイヤーなので、共通ジェスチャーを奥付自身にも付ける。
@@ -1902,13 +1932,23 @@ export function createReader(book: BookData): Reader {
        次へ＝表紙。帯の家マークはボタンのため、ジェスチャーの対象から
        外れてメニューを開く（docs/DESIGN.md に記録） */
     const endPageEl = $('endPage');
-    attachSwipeNav({
+    const endSwipe = attachSwipeNav({
       surface: endPageEl,
       followEl: endPageEl,
       canStart: (e) => !(e.target as HTMLElement).closest('button'),
       onNav: (dir) => turnPage(dir, 0),
     });
-    // 奥付面のタップでも遷移しない（スワイプのみ。他の画面と共通）
+    endPageEl.addEventListener('click', (e) => {
+      // 奥付は pageWrap の内側にあるため、処理したタップを本文側へ伝播させない
+      // （奥付を閉じた直後に、同じタップで本文までめくれてしまう二重効きの防止）
+      e.stopPropagation();
+      if (endSwipe.swipedRecently()) return;
+      if ((e.target as HTMLElement).closest('button')) return;
+      const dir = tapDirFor(endPageEl, e.clientX);
+      if (!dir) return;
+      turnSound();
+      turnPage(dir);
+    });
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
       const nextKey = DIR.nextSide === 'left' ? 'ArrowLeft' : 'ArrowRight';
@@ -1920,8 +1960,8 @@ export function createReader(book: BookData): Reader {
        の規則は decideNav の gate の項に一本化した（v1.13.6。通常扉は次＝入章
        ／前＝前章の最終本文ページ（第一章では後方扉へ）、後方扉は次＝自章の
        本文／前＝前章の最終本文ページ（第一章では目次））。手動の遷移は
-       スワイプのみ（タップめくりは v1.13.6 で全画面廃止）。autoplay は
-       扉の文脈で決める：後方扉から章へ入る
+       スワイプとタップ（ゾーン判定）の併用で、どちらも方向を渡すだけ。
+       autoplay は扉の文脈で決める：後方扉から章へ入る
        ときは常に false、通常扉から前章へ戻るときは扉が開かれたときの指定 */
     const gateNavTo = (dir: 1 | -1): void => {
       navigate(
@@ -1930,14 +1970,20 @@ export function createReader(book: BookData): Reader {
         { autoplay: gateBack ? false : gateAutoplay },
       );
     };
-    attachSwipeNav({
+    const gateSwipe = attachSwipeNav({
       surface: gateView,
       followEl: gateView.querySelector<HTMLElement>('.gate-sheet'),
       onDragActive: (a) => gateView.classList.toggle('gate-dragging', a),
       onNav: (dir) => gateNavTo(dir),
     });
-    // 扉面のタップでも遷移しない（スワイプのみ。再生アイコン等のボタンは
-    // 従来どおりタップで効く）
+    gateView.addEventListener('click', (e) => {
+      if (gateSwipe.swipedRecently()) return; // スワイプ直後の相方 click では遷移しない
+      if ((e.target as HTMLElement).closest('button')) return; // 再生アイコン等のボタンはボタン側の処理
+      const dir = tapDirFor(gateView, e.clientX);
+      if (!dir) return;
+      turnSound();
+      gateNavTo(dir);
+    });
     let resizeT: ReturnType<typeof setTimeout> | undefined;
     window.addEventListener('resize', () => {
       if (resizeT !== undefined) clearTimeout(resizeT);

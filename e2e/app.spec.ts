@@ -19,8 +19,7 @@ async function enterViaToc(
 }
 
 /** 表紙 → 目次 → 章扉（自動で進む）→ 本文まで開く。
-    手動のページ送りはスワイプのみ（v1.13.6〜）。耳モードの扉は自動で
-    本文へ進むので、この関数では扉の操作は要らない */
+    耳モードの扉は自動で本文へ進むので、この関数では扉の操作は要らない */
 async function openReader(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' }); // 本のデータが届いてから
@@ -64,9 +63,8 @@ async function backToCover(page: import('@playwright/test').Page): Promise<void>
 
 type SurfaceBox = { x: number; y: number; width: number; height: number };
 
-/** 画面（本文・扉・目次・奥付）上を横スワイプする。手動のページ送りは
-    スワイプだけが効く（v1.13.6〜）。方向の対応は既存テストが固定する
-    アプリの判定どおり：指を右へ払う＝次へ、左へ払う＝前へ。
+/** 画面（本文・扉・目次・奥付）上を横スワイプする。方向の対応は既存テストが
+    固定するアプリの判定どおり：指を右へ払う＝次へ、左へ払う＝前へ。
     yRatio は払う高さ（既定は中央） */
 async function swipeSurface(
   page: import('@playwright/test').Page,
@@ -89,6 +87,18 @@ async function swipeGate(page: import('@playwright/test').Page, dir: 'next' | 'p
   const gateBox = await page.locator('#gateView').boundingBox();
   if (!gateBox) throw new Error('gateView not found');
   await swipeSurface(page, gateBox, dir);
+}
+
+/** 画面上を、幅に対する割合（0=左端、1=右端）の位置でタップする。
+    タップのゾーン判定（v1.13.9〜）：次側40%＝次へ／反対側40%＝前へ／
+    中央20%＝無反応。この本は右綴じ（次側＝左）なので、左が次・右が前 */
+async function tapSurfaceAt(
+  page: import('@playwright/test').Page,
+  box: SurfaceBox,
+  xRatio: number,
+  yRatio = 0.5,
+): Promise<void> {
+  await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
 }
 
 /* 既存のテストは「2回目以降の訪問」として扱う：初回だけ出るダウンロード案内
@@ -1048,46 +1058,69 @@ test('フリガナのオン/オフが切り替わる', async ({ page }) => {
   await expect(page.locator('body')).toHaveClass(/ruby-off/);
 });
 
-test('タップではめくれない：手動のページめくりはスワイプのみ（ボタン類はタップで効く）', async ({ page }) => {
-  // v1.13.6（ユーザー決定）：タップによるページめくりを廃止。本文・扉の
-  // どこをタップしても遷移せず、メニューも開かない。ボタン類は従来どおり
+test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝前へ／中央20%＝無反応、ボタンは別）', async ({ page }) => {
+  // v1.13.9（ユーザー決定）：タップめくりを復活。ゾーンは次側40%／
+  // 反対側40%、中央20%は無反応帯（この本は右綴じ＝次側は左）。
+  // スワイプも従来どおり併存する。境界ちょうど（0.4／0.6）の扱いは
+  // 単体テスト（logic.tapDirection）が固定し、ここでは境界の内外を確かめる
   await openReader(page);
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
-  const cy = box.y + box.height * 0.5;
   // 操作ボタンは常時見えている（召喚する操作は要らない）
   await expect(page.locator('#playPauseBtn')).toBeVisible();
   await expect(page.locator('#menuBtn')).toBeVisible();
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
-  for (const ratio of [0.2, 0.5, 0.8]) {
-    await page.mouse.click(box.x + box.width * ratio, cy);
+  // 左端（次側の端）タップ → 次ページ
+  await tapSurfaceAt(page, box, 0.03);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  // 40%境界の内側（0.38）タップ → 次ページ
+  await tapSurfaceAt(page, box, 0.38);
+  await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
+  // 中央（0.5）と境界の外側（0.42／0.58）は無反応。メニューも開かない
+  for (const ratio of [0.42, 0.5, 0.58]) {
+    await tapSurfaceAt(page, box, ratio);
     await page.waitForTimeout(250);
-    await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+    await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
     await expect(page.locator('#menuModal')).toBeHidden();
   }
-  // 扉でもタップでは入らない（目で読むは扉で止まるので、そのまま確かめられる）
+  // 60%境界の内側（0.62）タップ → 前ページ
+  await tapSurfaceAt(page, box, 0.62);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  // 右端タップ → 前ページ
+  await tapSurfaceAt(page, box, 0.97);
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  // ボタンのタップではめくらない（メニューが開く＝ボタン側の処理が効く）
+  await page.locator('#menuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  await page.locator('#menuCloseBtn').click();
+  await expect(page.locator('#menuModal')).toBeHidden();
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  // スワイプも従来どおり効く（併存の確認）
+  await swipeSurface(page, box, 'next');
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await swipeSurface(page, box, 'prev');
+  await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
+  // 扉でもゾーン判定が効く（目で読むは扉で止まるので、そのまま確かめられる）
   await backToCover(page);
   await page.locator('#eyeModeBtn').click();
   await expect(page.locator('#gateView')).toBeVisible(); // しおりから再開するので扉が直接出る
   const gateBox = await page.locator('#gateView').boundingBox();
   if (!gateBox) throw new Error('gateView not found');
-  await page.mouse.click(gateBox.x + gateBox.width * 0.3, gateBox.y + gateBox.height * 0.5);
+  // 中央タップでは入らない
+  await tapSurfaceAt(page, gateBox, 0.5);
   await page.waitForTimeout(400);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#readerView')).toBeHidden();
-  // スワイプなら入れる
-  await swipeSurface(page, gateBox, 'next');
+  // 左（次側）タップで入れる
+  await tapSurfaceAt(page, gateBox, 0.2);
   await expect(page.locator('#readerView')).toBeVisible();
-  // ボタン類はタップで効く（メニューが開く）
-  await page.locator('#menuBtn').click();
-  await expect(page.locator('#menuModal')).toBeVisible();
 });
 
-test('初回の案内：初めて本文を開くと「スワイプでページをめくります」が一度だけ出て、めくると消える', async ({ page }) => {
+test('初回の案内：初めて本文を開くと「タップかスワイプでページをめくります」が一度だけ出て、めくると消える', async ({ page }) => {
   await openReader(page);
   const hint = page.locator('#swipeHint');
   await expect(hint).toBeVisible();
-  await expect(hint).toHaveText('スワイプでページをめくります');
+  await expect(hint).toHaveText('タップかスワイプでページをめくります');
   // 1回めくると消える
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
@@ -1279,8 +1312,8 @@ test('回帰：扉の後方スワイプに遅れて届く相方クリックが�
   // 350ms（swipedRecently の窓）を超えて遅れて届くことがある。v1.13.5 以前は
   // その click が着地先の画面で「次側タップ」と誤認され、戻る操作なのに
   // 前方へ飛んだ。相方クリックは新しい pointerdown を伴わないので、click
-  // だけを直接 dispatch して再現する。v1.13.6 でタップ遷移自体を廃止した
-  // ため構造的に起きないが、抑止の仕組みごと回帰として残す
+  // だけを直接 dispatch して再現する。v1.13.9 でタップめくりが復活したため、
+  // この抑止（共有 click エコーフラグ）が再び要る
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await openMenuOnCover(page);
@@ -1314,10 +1347,14 @@ test('回帰：扉の後方スワイプに遅れて届く相方クリックが�
   await page.waitForTimeout(500);
   await expect(page.locator('#pageFolio')).toHaveText(folio as string);
   await expect(page.locator('#readerView')).toBeVisible();
-  // 本物のタップでも（v1.13.6 では）めくれない：スワイプだけが効く
-  await page.mouse.click(bodyBox.x + bodyBox.width * 0.25, bodyBox.y + bodyBox.height * 0.5);
+  // 本物のタップは、自分の pointerdown が先に来て抑止を下ろすので効く：
+  // 中央（無反応帯）では変わらず、前側ゾーンでは前ページへ戻る
+  await page.mouse.click(bodyBox.x + bodyBox.width * 0.5, bodyBox.y + bodyBox.height * 0.5);
   await page.waitForTimeout(300);
   await expect(page.locator('#pageFolio')).toHaveText(folio as string);
+  const folioNum = parseInt((folio as string).replace(/[^0-9]/g, ''), 10);
+  await page.mouse.click(bodyBox.x + bodyBox.width * 0.75, bodyBox.y + bodyBox.height * 0.5);
+  await expect(page.locator('#pageFolio')).toHaveText(`― ${folioNum - 1} ―`);
 });
 
 test('画面は上下に引っ張れない：ドキュメントがスクロールしない', async ({ page }) => {

@@ -11,6 +11,7 @@ import {
   rubyToHtml,
   splitSentences,
   speedIndexOf,
+  tapDirection,
   unitIndexAtTime,
   type ChapterData,
 } from '../src/logic';
@@ -111,6 +112,34 @@ describe('directionOf', () => {
   });
   it('horizontal は左綴じ（次ページは右）', () => {
     expect(directionOf('horizontal')).toMatchObject({ mode: 'horizontal', bound: 'left', nextSide: 'right' });
+  });
+});
+
+describe('tapDirection（タップのゾーン判定：次側40%／中央20%無反応／反対側40%）', () => {
+  it('次側が左（右綴じ）：左40%＝次へ、右40%＝前へ', () => {
+    expect(tapDirection(0, 'left')).toBe(1); // 左端
+    expect(tapDirection(0.2, 'left')).toBe(1);
+    expect(tapDirection(0.399, 'left')).toBe(1); // 境界の内側
+    expect(tapDirection(0.8, 'left')).toBe(-1);
+    expect(tapDirection(0.601, 'left')).toBe(-1); // 境界の内側
+    expect(tapDirection(1, 'left')).toBe(-1); // 右端
+  });
+  it('中央20%と境界（0.4／0.6ちょうど）は無反応', () => {
+    expect(tapDirection(0.4, 'left')).toBe(0);
+    expect(tapDirection(0.5, 'left')).toBe(0);
+    expect(tapDirection(0.6, 'left')).toBe(0);
+  });
+  it('次側が右（左綴じ）では左右が入れ替わる', () => {
+    expect(tapDirection(0, 'right')).toBe(-1);
+    expect(tapDirection(0.399, 'right')).toBe(-1);
+    expect(tapDirection(0.4, 'right')).toBe(0);
+    expect(tapDirection(0.5, 'right')).toBe(0);
+    expect(tapDirection(0.6, 'right')).toBe(0);
+    expect(tapDirection(0.601, 'right')).toBe(1);
+    expect(tapDirection(1, 'right')).toBe(1);
+  });
+  it('割合が数でないときは無反応', () => {
+    expect(tapDirection(Number.NaN, 'left')).toBe(0);
   });
 });
 

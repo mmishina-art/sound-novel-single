@@ -65,6 +65,22 @@ export function directionOf(name: string | undefined): Direction {
   return name === 'horizontal' ? DIRECTIONS.horizontal : DIRECTIONS.vertical;
 }
 
+/* ---- タップのゾーン判定 ----
+   画面幅に対するタップ位置の割合（0=左端、1=右端）から、ページ送りの
+   方向を決める純関数。次側の40%＝次へ（1）、反対側の40%＝前へ（-1）、
+   中央20%は無反応（0）。境界（ちょうど0.4／0.6）は中央側に含める。
+   v1.13.6 でタップめくりを廃止したが、v1.13.9 でユーザー決定により復活。
+   半分判定だった旧仕様と違い、中央に無反応帯を置くことで、左右どちらへ
+   倒れるか曖昧なタップを拾わない */
+export function tapDirection(ratio: number, nextSide: 'left' | 'right'): 1 | -1 | 0 {
+  if (!Number.isFinite(ratio)) return 0;
+  const onNextSide = nextSide === 'left' ? ratio < 0.4 : ratio > 0.6;
+  const onPrevSide = nextSide === 'left' ? ratio > 0.6 : ratio < 0.4;
+  if (onNextSide) return 1;
+  if (onPrevSide) return -1;
+  return 0;
+}
+
 /* ---- 再生速度 ---- */
 
 export const SPEEDS = [0.8, 1.0, 1.25, 1.5, 2.0];
