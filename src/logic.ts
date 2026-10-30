@@ -238,6 +238,101 @@ export function pageForChar(pages: Page[], charPos: number): number {
   return p;
 }
 
+/* ---- 画面遷移の決定（本の中の連鎖の規則） ----
+   「いまどこにいて、次／前へ進むと、どこへ行くか」の決定は、すべてここに
+   一本化する。reader.ts は現在の状態（NavState）を渡して行き先（NavTarget）を
+   受け取り、実行するだけ。連鎖の規則を変えるときはここだけを変える。
+   連鎖（後方）：本文 → 自章の後方扉 → 前章の最終本文ページ → … →
+   第1章の後方扉 → 目次 → 表紙。前方も同じ道を逆に辿る。
+   扉には2種類ある：通常扉（前方向の入口。次＝そのまま入章で、開始処理は
+   扉自身の非同期な続き＝章題コールやタイマーが持つため、行き先としては
+   'gate-enter' とだけ表す）と、後方扉（前へ辿る連鎖の途中の止まり場。
+   次＝自章の本文先頭、前＝前章の最終本文ページ／第1章では目次） */
+
+/** 目次を開いた元の画面 */
+export type TocReturn = 'cover' | 'reader' | 'gate';
+
+export type NavState =
+  /* 本文（reader）。endOpen は奥付ページが本文の上に重なって開いている状態 */
+  | { kind: 'body'; chapter: number; page: number; pageCount: number; chapterCount: number; endOpen: boolean }
+  /* 章扉（gate）。back は後方扉かどうか */
+  | { kind: 'gate'; chapter: number; chapterCount: number; back: boolean }
+  /* 目次ページ（toc）。returnTo は開いた元の画面 */
+  | { kind: 'toc'; page: number; pageCount: number; returnTo: TocReturn };
+
+export type NavTarget =
+  | { type: 'page'; page: number }
+  | { type: 'gate'; chapter: number }
+  | { type: 'gate-back'; chapter: number }
+  | { type: 'gate-enter' }
+  | { type: 'chapter-first'; chapter: number }
+  | { type: 'chapter-last'; chapter: number }
+  | { type: 'end-open' }
+  | { type: 'end-close' }
+  | { type: 'toc-gate' }
+  | { type: 'toc-page'; page: number }
+  | { type: 'view'; view: 'cover' | 'reader' }
+  | { type: 'cover' };
+
+export function decideNav(state: NavState, dir: 1 | -1): NavTarget {
+  switch (state.kind) {
+    case 'body': {
+      if (state.endOpen) {
+        // 奥付（本の最終ページの上に重なる独立ページ）：前へ＝本文の最終
+        // ページへ戻る、次へ＝本を閉じて表紙へ戻る
+        return dir < 0 ? { type: 'end-close' } : { type: 'cover' };
+      }
+      if (dir > 0) {
+        if (state.page < state.pageCount - 1) return { type: 'page', page: state.page + 1 };
+        // 章をまたぐときも必ず通常扉に止まる（扉を素通りして本文に入らない）
+        if (state.chapter < state.chapterCount - 1) return { type: 'gate', chapter: state.chapter + 1 };
+        // 本文の最終ページの次は、独立した奥付ページ
+        return { type: 'end-open' };
+      }
+      if (state.page > 0) return { type: 'page', page: state.page - 1 };
+      // 先頭ページでさらに前へ：自章の後方扉に止まる。そこからもう一度
+      // 前へで、前章の最終本文ページへ直接戻る（前章の扉へは飛ばない）
+      return { type: 'gate-back', chapter: state.chapter };
+    }
+    case 'gate': {
+      if (!state.back) {
+        // 通常扉：次へ＝そのまま入章（開始は扉自身の続きが行う）
+        if (dir > 0) return { type: 'gate-enter' };
+        // 前へ＝前章の最終本文ページへ直接（前章の扉には止まらない）。
+        // 第1章の扉だけは後方扉へ切り替わり、連鎖（目次→表紙）を続ける
+        return state.chapter > 0
+          ? { type: 'chapter-last', chapter: state.chapter - 1 }
+          : { type: 'gate-back', chapter: 0 };
+      }
+      // 後方扉：次へ＝自章の本文先頭、前へ＝前章の最終本文ページへ直接
+      // （第1章では目次へ。目次は本の並び順で最終ページに着地する）
+      if (dir > 0) return { type: 'chapter-first', chapter: state.chapter };
+      return state.chapter > 0
+        ? { type: 'chapter-last', chapter: state.chapter - 1 }
+        : { type: 'toc-gate' };
+    }
+    case 'toc': {
+      if (dir > 0) {
+        if (state.page < state.pageCount - 1) return { type: 'toc-page', page: state.page + 1 };
+        // 末尾ページでの次へ＝第1章の通常扉（本文へ続く）
+        return { type: 'gate', chapter: 0 };
+      }
+      if (state.page > 0) return { type: 'toc-page', page: state.page - 1 };
+      // 先頭ページでの前へ＝開いた元へ戻る。読書中（メニュー）から開いた
+      // 目次なら本文へ帰り、それ以外（表紙から／後方連鎖から）は表紙へ進む
+      // （扉へは次方向の操作で戻れるので、後方だけで表紙まで辿り着ける
+      // 連鎖は途切れない）
+      return state.returnTo === 'reader' ? { type: 'view', view: 'reader' } : { type: 'cover' };
+    }
+  }
+}
+
+/** 目次を閉じるときの行き先（後方連鎖で開いた目次は第1章の後方扉へ帰り、
+    それ以外は開いた元の画面へそのまま戻る） */
+export function decideTocClose(returnTo: TocReturn): NavTarget {
+  return returnTo === 'gate' ? { type: 'gate-back', chapter: 0 } : { type: 'view', view: returnTo };
+}
+
 /* ---- 時刻表示 ---- */
 
 export function fmt(t: number): string {

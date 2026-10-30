@@ -3,6 +3,8 @@
 import {
   SPEEDS,
   buildUnits,
+  decideNav,
+  decideTocClose,
   directionOf,
   groupClass,
   pageForChar,
@@ -14,7 +16,10 @@ import {
   type Bookmark,
   type ChapterData,
   type Direction,
+  type NavState,
+  type NavTarget,
   type Page,
+  type TocReturn,
   type Unit,
 } from './logic';
 import { checkForUpdate } from './pwa';
@@ -60,6 +65,7 @@ export function createReader(book: BookData): Reader {
   const readerView = $('readerView');
   const pageWrap = $('pageWrap');
   const pageEl = $('pageEl');
+  const swipeHintEl = $('swipeHint');
   const pageAnim = $<HTMLDivElement>('pageAnim');
   const pageContent = $('pageContent');
   const audio = $<HTMLAudioElement>('audioEl');
@@ -94,13 +100,21 @@ export function createReader(book: BookData): Reader {
      フォールバックが新しい扉のタイマーを上書きして旧い章への入章を予約したこと。
      gateOpen だけでは「どの扉か」を区別できない） */
   let gateSeq = 0;
-  // 扉でのスワイプ遷移先（showGate／showGateBack が表示のたびに差し替える）
-  let gateNav: { next: () => void; prev: () => void } | null = null;
+  /* 扉の状態（行き先の決定は logic.decideNav に一本化し、ここには「どの扉が
+     開いているか」だけを持つ。v1.13.6 で gateNav の差し替え式から移行）：
+     gateBack = 後方扉（showGateBack）かどうか。gateSession = 通常扉の開始
+     処理（章題コールの続きやタイマーと結びついた非同期な入口で、扉自身が
+     持つ。cancel は「この扉の開始を取り消す」＝旧実装で prev が立てていた
+     started フラグに相当）。gateAutoplay = 通常扉が開かれたときの autoplay
+     指定（扉から前章へ戻る際に enterChapter へ引き継ぐ） */
+  let gateBack = false;
+  let gateSession: { start: () => void; cancel: () => void } | null = null;
+  let gateAutoplay: boolean | undefined;
   /* 扉の再生アイコンの動作（表示中の扉が決める）：コールや待ち時間を飛ばして、
      その章へ入り朗読を始める。showGate / showGateBack が入るたびに差し替える */
   let gatePlay: (() => void) | null = null;
   // 「前へ辿る」モードの扉（showGateBack）は専用フラグを持たず、自動タイマーを
-  // 張らないことと、gateNav の中身で通常の扉と区別する
+  // 張らないことと、gateBack の状態で通常の扉と区別する
   /* 読書モード（v1.12.0）：'ear'＝耳で読む（朗読あり、従来どおり）／'eye'＝目で
      読む（人の声だけを止める：朗読・章題コールなし、手動送りのみ、ハイライト
      追随なし、再生ボタンを出さない。BGM とページめくり音は設定どおり鳴る
@@ -306,7 +320,7 @@ export function createReader(book: BookData): Reader {
 
   /* ---------- メニュー（入口はボタンだけ） ----------
      操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置き、
-     本文タップはページめくり専用。本文タップでメニューが開くことはない */
+     ページめくりはスワイプのみ。本文タップではめくらず、メニューも開かない */
   /* メニューの組み替え：分類は開いた場所・モードによらず 音／表示／再生 の
      3つで固定する（v1.13.3 で再編。旧 v1.12.0〜のモード別見出し「耳で読む」
      の設定／「目で読む」の設定は廃止した——全設定は両モード共通という実態に
@@ -577,51 +591,24 @@ export function createReader(book: BookData): Reader {
 
   /* animDir は描画アニメーションの向き（0 でアニメーションなし）。
      スワイプ確定時は指の動きに合わせた滑り込みをジェスチャ側で行うため、
-     通常のキーフレーム（タップ用）を重ねないよう 0 を渡す */
+     通常のキーフレーム（キー操作・自動送り用）を重ねないよう 0 を渡す */
   function turnPage(dir: number, animDir: number = dir): void {
     if (!PAGES.length || readerView.hidden) return;
     lastManualTurn = Date.now();
-    if (endOpen) {
-      // 奥付ページ（本の最終ページ）での操作：前へ＝本文の最終ページへ戻る、
-      // 次へ＝本を閉じて表紙へ戻る（v1.12.4 で追加。以前は次へが無反応で、
-      // スワイプでは戻ることもできなかった）
-      if (dir < 0) closeEndPage();
-      else goCover();
-      return;
-    }
-    const pages = PAGES[current];
-    if (dir > 0) {
-      // 次ページ（左へ）
-      if (curPage < pages.length - 1) {
-        curPage++;
-        renderPage(animDir);
-        schedulePageSeek();
-      } else if (current < chapters.length - 1) {
-        // 章をまたぐときも必ず章扉に止まる（扉を素通りして本文に入らない）
-        showGate(current + 1, { autoplay: !audio.paused });
-        return;
-      } else {
-        // 本文の最終ページの次は、独立した奥付ページ
-        openEndPage();
-        return;
-      }
-    } else {
-      // 前ページ（右へ）
-      if (curPage > 0) {
-        curPage--;
-        renderPage(animDir);
-        schedulePageSeek();
-      } else if (current > 0) {
-        // 前章へ戻るときも章扉に止まる
-        showGate(current - 1, { page: 'last', autoplay: !audio.paused });
-        return;
-      } else {
-        // 第一章の先頭ページでさらに前へ：本の前側（扉→目次→表紙）へ辿る連鎖に入る
-        showGateBack();
-        return;
-      }
-    }
-    saveBookmark();
+    // 行き先の決定は logic.decideNav に一本化（本文・奥付での次／前の規則は
+    // そちら。v1.13.6）。ここは現在の状態を渡して実行するだけ
+    navigate(
+      {
+        kind: 'body',
+        chapter: current,
+        page: curPage,
+        pageCount: PAGES[current]?.length ?? 0,
+        chapterCount: chapters.length,
+        endOpen,
+      },
+      dir > 0 ? 1 : -1,
+      { animDir, autoplay: !audio.paused },
+    );
   }
   /* 朗読の進行にページを合わせる（音声→ページの追従）。
      手でめくった場合は上のページ→音声シークで位置が合うため、ここが手で開いた
@@ -650,7 +637,10 @@ export function createReader(book: BookData): Reader {
     if (Date.now() - lastManualTurn < 12000) return;
     if (p > curPage) {
       curPage = p;
-      renderPage(1);
+      // 自動送り（朗読追随）ではアニメーションを付けず即時に切り替える
+      // （v1.13.6、ユーザー判断：16pxの横ずれは自動送りには不要。手動の
+      // スワイプ確定時の滑りや、キー操作等の手動送りの動きは従来どおり）
+      renderPage(0);
     }
   }
 
@@ -843,14 +833,17 @@ export function createReader(book: BookData): Reader {
       gateOpen = false;
       enterChapter(idx, opts);
     };
-    // タップ・スワイプは共通ジェスチャー側が gateNav を呼ぶ（次＝この start）
-    // スワイプ：右へ払う＝入章（タップと同じ start）、左へ払う＝後方遷移の規則で
-    // 戻る（前の章の扉を最終ページ指定で開く。第一章の扉では後方モードの扉へ）
-    gateNav = {
-      next: start,
-      prev: () => {
-        if (idx > 0) showGate(idx - 1, { page: 'last', autoplay: false });
-        else showGateBack();
+    // スワイプの行き先は共通ジェスチャー側が decideNav で決める
+    // （次＝この start で入章、前＝前章の最終本文ページへ直接／第1章では
+    // 後方扉へ）。ここでは扉の開始処理をセッションとして登録するだけ：
+    // 前へ離れるときは applyNav が cancel を呼び、この扉の start／gatePlay
+    // を無効化してから前章へ入る（コールの続きが後から割り込まないため）
+    gateBack = false;
+    gateAutoplay = opts.autoplay;
+    gateSession = {
+      start,
+      cancel: () => {
+        started = true;
       },
     };
     // 扉の再生アイコン：コールや待ち時間を飛ばし、その章の朗読をすぐ始める
@@ -865,7 +858,7 @@ export function createReader(book: BookData): Reader {
     syncPlayChrome();
     if (isEye()) {
       // 目で読むモードの扉は無音で、自動でも進まない（後方扉と同じく、
-      // タップ／スワイプの操作でだけ本文へ入る）
+      // スワイプの操作でだけ本文へ入る）
       return;
     }
     if (opts.autoplay === false) {
@@ -877,7 +870,7 @@ export function createReader(book: BookData): Reader {
     /* 章題コール：扉の内容（第N章・題・語り手名）を、その章の語り手の声で読む
        短い音声（book/audio/ch{N}-title.mp3）を鳴らし、読み終わってから本文を始める。
        鳴らせない・読み込めない場合は従来の待ち時間で進み、長くても上限で打ち切る。
-       扉をタップすればコールを止めてすぐ本文へ進む */
+       扉で次へスワイプすれば（または再生アイコンを押せば）コールを止めてすぐ本文へ進む */
     gateTimer = setTimeout(start, 10000);
     gateAudio.src = 'book/audio/ch' + (idx + 1) + '-title.mp3';
     gateAudio.playbackRate = SPEEDS[speedIdx];
@@ -899,40 +892,111 @@ export function createReader(book: BookData): Reader {
     const p = gateAudio.play();
     if (p && p.catch) p.catch(fallback);
   }
-  /* 第一章の先頭ページから「前へ」を続けたときの扉（本の前側へ辿る連鎖の入口）。
-     通常の扉と違い、自動でもタップでもすぐ本文へは進まない：
-     前側（綴じ側と反対）のタップで目次ページへ、本文側のタップで第一章の本文へ入る。
-     朗読は止める（扉・目次・表紙にいる間に音声が勝手に進まないように）。
-     位置はしおりに残っているので、表紙の再開から元の場所へ戻れる */
-  function showGateBack(): void {
+  /* 章の先頭ページから「前へ」をしたときの、その章自身の扉（後方モード。
+     本の前側へ辿る連鎖の入口で、全章共通）。通常の扉と違い、自動でも
+     次操作でも勝手に本文へは進まない：
+     次＝自章の本文（先頭ページ）へ、前＝前章の最終本文ページへ直接
+     （第一章では目次ページへ）。朗読は止める（扉・目次・表紙にいる間に
+     音声が勝手に進まないように）。位置はしおりに残っているので、表紙の
+     再開から元の場所へ戻れる */
+  function showGateBack(idx: number): void {
     gateSeq++; // 前の扉の非同期な続き（フォールバック等）を無効化する
     save('seen', true);
     stopGateCall(); // 前へ辿る扉は無音が原則（コールは鳴らさない）
     audio.pause();
     updatePlayBtn();
     saveBookmark();
-    current = 0;
+    current = idx;
     gateOpen = true;
     if (gateTimer !== undefined) clearTimeout(gateTimer);
-    fillGate(chapters[0]);
+    fillGate(chapters[idx]);
     showView('gate');
-    // タップ・スワイプは共通ジェスチャー側が gateNav を呼ぶ（半分判定に統一。
-    // 以前この扉だけ 0.58/0.42 の帯で分けていた）
-    // スワイプ：右へ払う＝第一章の本文へ、左へ払う＝目次へ（タップの作法と同じ）
-    gateNav = {
-      next: () => {
-        gateOpen = false;
-        enterChapter(0, { autoplay: false });
-      },
-      prev: () => openTocPage('gate'),
-    };
-    // 後方扉の再生アイコン：第一章へ入り、朗読を始める
+    // スワイプの行き先は共通ジェスチャー側が decideNav で決める
+    // （次＝自章の本文先頭、前＝前章の最終ページ（第一章では目次））。
+    // 実行はそちらが担い、ここは「後方扉が開いている」状態を立てるだけ
+    gateBack = true;
+    gateSession = null;
+    // 後方扉の再生アイコン：自章へ入り、朗読を始める
     gatePlay = (): void => {
       gateOpen = false;
-      enterChapter(0, { autoplay: true });
+      enterChapter(idx, { autoplay: true });
     };
     syncPlayChrome();
   }
+  /* ---------- 遷移の実行（決定は logic.decideNav、ここは実行だけ） ----------
+     呼び出し側（本文・扉・目次のジェスチャーとキー操作）は、現在の状態
+     （NavState）と向きを navigate に渡すだけ。行き先ごとの実行はここに集約
+     する。autoplay は呼び出し側が文脈で決める：本文から章をまたぐ＝再生
+     状態の引き継ぎ（turnPage が !audio.paused を渡す）、扉から＝その扉の
+     指定（後方扉は常に false、通常扉は開かれたときの指定）、目次から＝
+     指定なし（従来どおり showGate の既定） */
+  interface NavCtx {
+    animDir?: number;
+    autoplay?: boolean;
+  }
+  function applyNav(target: NavTarget, from: NavState, ctx: NavCtx = {}): void {
+    switch (target.type) {
+      case 'page':
+        hideSwipeHint(); // めくり方を覚えたら案内は要らない
+        curPage = target.page;
+        renderPage(ctx.animDir ?? 0);
+        schedulePageSeek();
+        saveBookmark();
+        break;
+      case 'gate':
+        showGate(target.chapter, { autoplay: ctx.autoplay });
+        break;
+      case 'gate-back':
+        showGateBack(target.chapter);
+        break;
+      case 'gate-enter':
+        // 通常扉の「次へ」は、扉自身の開始処理（コールやタイマーの続き）が行う
+        if (gateSession) gateSession.start();
+        break;
+      case 'chapter-first':
+        enterChapter(target.chapter, { autoplay: ctx.autoplay });
+        break;
+      case 'chapter-last': {
+        // 通常扉から前へ離れるときは、その扉の開始処理を先に取り消す
+        // （遅れて届くコールの続きやタイマーが、前章へ入った後に割り込んで
+        // 扉の章へ引き戻さないため。旧実装で prev が started を立てていた分）
+        const fromNormalGate = from.kind === 'gate' && !from.back;
+        if (fromNormalGate) gateSession?.cancel();
+        // 通常扉から前へ戻ったときは、着地した最終ページで再生を始めない
+        // （位置だけ合わせる）。扉の autoplay を引き継いで最終ページの先頭
+        // から読み始めると、短い最終ページでは数秒で章が終わり、朗読の
+        // ended で元の章の扉が開き直して「戻ったのに進む」形になるため
+        enterChapter(target.chapter, {
+          page: 'last',
+          autoplay: fromNormalGate ? false : ctx.autoplay,
+        });
+        break;
+      }
+      case 'end-open':
+        openEndPage();
+        break;
+      case 'end-close':
+        closeEndPage();
+        break;
+      case 'toc-gate':
+        openTocPage('gate');
+        break;
+      case 'toc-page':
+        tocPage = target.page;
+        renderTocPage();
+        break;
+      case 'view':
+        showView(target.view);
+        break;
+      case 'cover':
+        goCover();
+        break;
+    }
+  }
+  function navigate(from: NavState, dir: 1 | -1, ctx: NavCtx = {}): void {
+    applyNav(decideNav(from, dir), from, ctx);
+  }
+
   function layoutChapter(opts: EnterOptions): void {
     // 章ごとの背景イメージ（下帯のみ）を差し込む（オフ設定のときは CSS 側で紙だけになる）。
     // URL は文書基準の絶対URLにする（CSS 変数経由の url() はスタイルシート基準で
@@ -953,6 +1017,24 @@ export function createReader(book: BookData): Reader {
     renderPage(0);
     refreshTocCurrent();
   }
+  /* 初回だけの小さな案内（v1.13.6〜）：タップめくりを廃止してスワイプのみに
+     したため、初めて本文を開いたときに一度だけ「スワイプでページを
+     めくります」を出す。出したら保存キー 'swipe-hint' を立てて二度と出さ
+     ない（表紙ヒント・ダウンロード案内と同じ流儀）。消し方は2通り：
+     ページを1枚めくったら消える／何もしなくても6秒で消える */
+  let swipeHintTimer: ReturnType<typeof setTimeout> | undefined;
+  function hideSwipeHint(): void {
+    if (swipeHintTimer !== undefined) clearTimeout(swipeHintTimer);
+    swipeHintTimer = undefined;
+    swipeHintEl.hidden = true;
+  }
+  function showSwipeHintOnce(): void {
+    if (load<boolean>('swipe-hint', false)) return;
+    save('swipe-hint', true);
+    swipeHintEl.hidden = false;
+    swipeHintTimer = setTimeout(hideSwipeHint, 6000);
+  }
+
   function enterChapter(idx: number, opts: EnterOptions = {}): void {
     if (gateTimer !== undefined) clearTimeout(gateTimer);
     stopGateCall(); // 本文に入るときはコールを必ず止める（二重に鳴らさない）
@@ -961,6 +1043,7 @@ export function createReader(book: BookData): Reader {
     current = idx;
     enterStamp = Date.now();
     showView('reader');
+    showSwipeHintOnce(); // 初めて本文を開いたときだけ（2回目以降は即 return）
     // 目で読むモードでは再生ボタンを出さない（音の入口を画面に残さない）
     syncPlayChrome();
     // 操作ボタンはページ下の帯に常時あるため、開いた直後に特別な表示はしない
@@ -1110,6 +1193,7 @@ export function createReader(book: BookData): Reader {
   }
   function goCover(): void {
     stopGateCall();
+    hideSwipeHint();
     audio.pause();
     closeEndPage();
     saveBookmark();
@@ -1319,9 +1403,9 @@ export function createReader(book: BookData): Reader {
      目次は本文ページとは別画面のままにしているが、組み方は本文に寄せてある：
      列を実測して収まる分だけを1ページにし、章が増えたら次の目次ページへ送る
      （本文の「文単位で測ってページに分ける」に対する「列単位で測って分ける」）。
-     ページ送りは本文と同じ作法（次側タップで次ページ／前側タップで前ページ、スワイプも同じ向き）。
+     ページ送りは本文と同じ作法（スワイプのみ。向きは本文と同じ）。
      項目は「章と題」だけにする（語り手名は各章の扉で分かるため、目次には載せない） */
-  let tocReturn: 'cover' | 'reader' | 'gate' = 'cover';
+  let tocReturn: TocReturn = 'cover';
   let tocPages: number[][] = [];
   let tocPage = 0;
   let tocMeasurer: HTMLDivElement | null = null;
@@ -1418,13 +1502,6 @@ export function createReader(book: BookData): Reader {
     const p = tocPages.findIndex((g) => g.includes(chIdx));
     return p >= 0 ? p : 0;
   }
-  function turnTocPage(dir: number): boolean {
-    const next = tocPage + dir;
-    if (next < 0 || next >= tocPages.length) return false;
-    tocPage = next;
-    renderTocPage();
-    return true;
-  }
   function openTocPage(from?: 'cover' | 'reader' | 'gate'): void {
     /* 開いた元の画面を覚えておく（先頭ページでの後方操作が、そこへ帰るため。
        旧「戻る」ボタンの役目を v1.12.4 で後方操作へ統合した）。
@@ -1442,11 +1519,10 @@ export function createReader(book: BookData): Reader {
     renderTocPage();
   }
   function closeTocPage(): void {
-    if (tocReturn === 'gate') {
-      showGateBack();
-      return;
-    }
-    showView(tocReturn);
+    // 行き先の決定は decideTocClose（後方連鎖で開いた目次は第一章の後方扉へ
+    // 帰る——後方連鎖で目次を開けるのは第一章の後方扉だけ。その prev が
+    // 目次を開く。それ以外は開いた元の画面へそのまま戻る）
+    applyNav(decideTocClose(tocReturn), { kind: 'toc', page: tocPage, pageCount: tocPages.length, returnTo: tocReturn });
   }
 
   /* ---------- events ---------- */
@@ -1498,10 +1574,10 @@ export function createReader(book: BookData): Reader {
     /* ---------- ページ操作の共通ジェスチャー（本文・扉・目次で完全共通） ----------
        3画面で別々に実装していた頃は、目次だけフリックも追随も無く、扉だけ確定時の
        アニメーションが無いなど、画面ごとに挙動がずれていた（実機指摘）。ここに
-       一本化し、向き・確定量・フリック・追随・アニメーション・タップの半分判定
-       まで、すべて同じ規則で動かす。
-       - スワイプ：次側と反対へ払うと次、前へ払うと前（タップの半分判定とは逆向き。
-         どちらが次側かは DIR.nextSide が決める）。確定は「幅の9%か28pxの大きい方」
+       一本化し、向き・確定量・フリック・追随・アニメーションまで、すべて
+       同じ規則で動かす。
+       - スワイプ：次側と反対へ払うと次、前へ払うと前（どちらが次側かは
+         DIR.nextSide が決める）。確定は「幅の9%か28pxの大きい方」
          まで動かすか、速いフリック（14px以上かつ0.4px/ms以上、同方向）。
        - 追随：指の移動をゴム状に減衰させたうえで 0.45 倍に抑え、最大24pxまでに
          留める。旧実装はゴム追随のまま大きく動き「ちらつく」印象だったため、
@@ -1509,9 +1585,10 @@ export function createReader(book: BookData): Reader {
          （実機で「もっと少なくていい」）。確定時の滑りも画面幅ではなく最大28px
          に留め、差し替え後は反対側14pxから .18s で静かに収める。未満は .22s
          で戻す（行き過ぎ＝オーバーシュートは付けない）。
-       - タップ：左右の半分で次／前（中央の無反応帯なし）。端ぎわ12pxは誤爆防止の
-         無反応帯。ボタン上の操作と、スワイプ直後の click は対象にしない。
-       - めくりが確定した瞬間に、ページめくり音を1回鳴らす（スワイプ・タップ共通）。
+       - タップではめくらない（v1.13.6 でタップめくりを廃止し、手動のめくりは
+         スワイプのみにした。面へのタップは無反応で、ボタン類だけがタップで
+         効く。左右どちらへ倒れるか曖昧なタップ判定そのものを無くすため）。
+       - めくりが確定した瞬間に、ページめくり音を1回鳴らす。
        - prefers-reduced-motion では追随もアニメーションもせず即時に切り替える */
     const SWIPE_COMMIT_RATIO = 0.09;
     const SWIPE_COMMIT_MIN_PX = 28;
@@ -1532,17 +1609,20 @@ export function createReader(book: BookData): Reader {
     /* 実際の追随量：ゴム減衰をさらに SWIPE_FOLLOW_SCALE 倍し、上限を設ける */
     const followDx = (dx: number, w: number): number =>
       Math.sign(dx) * Math.min(Math.abs(rubberDx(dx, w)) * SWIPE_FOLLOW_SCALE, SWIPE_FOLLOW_MAX_PX);
-    /* タップの半分判定（3画面共通）。端ぎわ12pxは 0（無反応）を返す */
-    const tapDirFor = (view: HTMLElement, clientX: number): 1 | -1 | 0 => {
-      const r = view.getBoundingClientRect();
-      const x = clientX - r.left;
-      if (x < 12 || x > r.width - 12) return 0;
-      const onNextSide = DIR.nextSide === 'left' ? x / r.width < 0.5 : x / r.width > 0.5;
-      return onNextSide ? 1 : -1;
-    };
     interface SwipeHandle {
       swipedRecently: () => boolean;
     }
+    /* スワイプに伴う相方 click の抑止状態は、全画面（本文・扉・目次・奥付）で
+       共有する。ドラッグが活性化したまま指を離したら旗を立て、次の pointerdown
+       （＝新しいジェスチャの始まり）で下ろす。時間窓だけでは、iOS で click が
+       窓を超えて遅れて届いたときに切り替わった先の画面で「タップ」と誤認される
+       （扉の後方スワイプで前方へ飛ぶ実機報告）。スワイプで画面自体が切り替わる
+       遷移（扉で戻る→本文に着地）では、遅れた click は切り替わった先の画面に
+       落ちるため、表面ごとの旗では止められない。相方 click は新しい
+       pointerdown を伴わないので、この旗で確実に止められる。本物のタップは
+       必ず自分の pointerdown が先に来て旗を下ろすため、誤って呑むことはない */
+    let sharedSwipedAt = 0;
+    let sharedClickEcho = false;
     function attachSwipeNav(o: {
       surface: HTMLElement;
       followEl: HTMLElement | null;
@@ -1550,15 +1630,6 @@ export function createReader(book: BookData): Reader {
       canStart?: (e: PointerEvent) => boolean;
       onDragActive?: (active: boolean) => void;
     }): SwipeHandle {
-      let swipedAt = 0;
-      /* スワイプに伴う相方 click の抑止フラグ：ドラッグが活性化したまま指を
-         離したら立て、次の pointerdown（＝新しいジェスチャの始まり）で下ろす。
-         時間窓（swipedAt）だけでは、iOS で click が窓を超えて遅れて届いたときに
-         切り替わった先の画面で「タップ」と誤認される（扉の後方スワイプで前方へ
-         飛ぶ実機報告）。相方 click は新しい pointerdown を伴わないので、この
-         フラグで確実に止められる。本物のタップは必ず自分の pointerdown が
-         先に来て旗を下ろすため、誤って呑むことはない */
-      let clickEcho = false;
       let seq = 0;
       let drag: { id: number; x: number; y: number; active: boolean; lastX: number; lastT: number; vx: number } | null = null;
       const el = o.followEl;
@@ -1569,7 +1640,7 @@ export function createReader(book: BookData): Reader {
       };
       o.surface.addEventListener('pointerdown', (e) => {
         seq++;
-        clickEcho = false; // 新しいジェスチャの始まり：前のスワイプの相方 click 抑止はここまで
+        sharedClickEcho = false; // 新しいジェスチャの始まり：前のスワイプの相方 click 抑止はここまで
         if (o.canStart && !o.canStart(e)) {
           drag = null;
           return;
@@ -1621,9 +1692,9 @@ export function createReader(book: BookData): Reader {
         const mySeq = seq;
         drag = null;
         o.onDragActive?.(false);
-        if (!wasActive) return; // ただのタップは click 側で処理する
-        swipedAt = Date.now(); // 直後の click で二重にめくらない
-        clickEcho = true; // 遅れて届く相方 click も、次の pointerdown までは止める
+        if (!wasActive) return; // ただのタップでは何も起きない（v1.13.6〜）
+        sharedSwipedAt = Date.now(); // 直後の click で二重にめくらない（タップ遷移は無いが、相方 click 抑止の仕組みとして維持）
+        sharedClickEcho = true; // 遅れて届く相方 click も、次の pointerdown までは止める
         const w = o.surface.clientWidth || 1;
         const towardNext = DIR.nextSide === 'left' ? dx > 0 : dx < 0;
         const dir: 1 | -1 = towardNext ? 1 : -1;
@@ -1665,7 +1736,7 @@ export function createReader(book: BookData): Reader {
       };
       o.surface.addEventListener('pointerup', (e) => finish(e, false));
       o.surface.addEventListener('pointercancel', (e) => finish(e, true));
-      return { swipedRecently: () => clickEcho || Date.now() - swipedAt < 350 };
+      return { swipedRecently: () => sharedClickEcho || Date.now() - sharedSwipedAt < 350 };
     }
     /* 目次ページへの入口はメニューの「目次を開く」に一本化（表紙にも読書中にも共通） */
     $('tocFromMenuBtn').addEventListener('click', () => {
@@ -1673,35 +1744,23 @@ export function createReader(book: BookData): Reader {
       openTocPage();
     });
     /* 目次のページ送りも共通ジェスチャーで本文・扉と揃える（v1.11.1 で統一）。
-       目次ページの端での遷移（v1.12.4 で「戻る」ピルを廃止し、その役目を
-       後方操作へ統合した）：
-       - 先頭ページでの前へ＝「開いた元へ戻る」。読書中（メニュー）から開いた
-         目次なら本文へ帰り、表紙から開いた目次なら表紙へ帰る。後方連鎖
-         （扉から前へ）で開いた目次は、本の並び順どおり表紙へ進む
-         （扉へは次方向の操作で戻れるので、後方だけで表紙まで辿り着ける
-         連鎖は途切れない）
-       - 末尾ページでの次へ＝第一章の扉（通常モードで開き、本文へ続く） */
+       目次ページの端での遷移（先頭ページの前へ＝開いた元へ戻る／末尾ページの
+       次へ＝第一章の扉。v1.12.4 で「戻る」ピルを廃止し、その役目を後方操作へ
+       統合した）の規則は decideNav の toc の項に一本化した（v1.13.6） */
     const tocTapNav = (dir: number): void => {
-      if (turnTocPage(dir)) return;
-      if (dir < 0) {
-        if (tocReturn === 'reader') showView('reader');
-        else goCover();
-      } else showGate(0);
+      navigate(
+        { kind: 'toc', page: tocPage, pageCount: tocPages.length, returnTo: tocReturn },
+        dir > 0 ? 1 : -1,
+      );
     };
-    const tocSwipe = attachSwipeNav({
+    attachSwipeNav({
       surface: tocView,
       followEl: tocView.querySelector<HTMLElement>('.toc-sheet'),
       onDragActive: (a) => tocView.classList.toggle('toc-dragging', a),
       onNav: (dir) => tocTapNav(dir),
     });
-    tocView.addEventListener('click', (e) => {
-      if (tocSwipe.swipedRecently()) return; // スワイプ直後のクリックでは送らない
-      if ((e.target as HTMLElement).closest('button')) return; // 章項目はボタン側の処理
-      const dir = tapDirFor(tocView, e.clientX);
-      if (!dir) return;
-      turnSound();
-      tocTapNav(dir);
-    });
+    // 目次面のタップでは送らない（手動のめくりはスワイプのみ。v1.13.6〜）。
+    // 章項目はボタンとして従来どおりタップで効く
     $('toCoverFromMenuBtn').addEventListener('click', () => {
       closeMenu();
       goCover();
@@ -1792,7 +1851,7 @@ export function createReader(book: BookData): Reader {
        メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
        メニューや操作 UI が出ることはない）。ボタンの上と奥付ページ表示中は
        めくりジェスチャの対象にしない */
-    const bodySwipe = attachSwipeNav({
+    attachSwipeNav({
       surface: pageWrap,
       followEl: pageEl,
       canStart: (e) => !(e.target as HTMLElement).closest('button') && !endOpen,
@@ -1802,19 +1861,8 @@ export function createReader(book: BookData): Reader {
       },
       onNav: (dir) => turnPage(dir, 0),
     });
-    pageWrap.addEventListener('click', (e) => {
-      if (bodySwipe.swipedRecently()) return;
-      if ((e.target as HTMLElement).closest('button')) return;
-      // 奥付は pageWrap の内側に重なっているため、奥付のタップがここへ
-      // 伝播してくる。奥付表示中は奥付側のハンドラに任せる（スワイプで
-      // 奥付を閉じた直後の click が本文側で「次へ」と解釈され、奥付を
-      // 開き直してしまう事故の防止）
-      if (endOpen) return;
-      const dir = tapDirFor(pageWrap, e.clientX);
-      if (!dir) return;
-      turnSound(); // タップめくりでも、確定した瞬間に1回鳴らす
-      turnPage(dir);
-    });
+    // 本文面のタップではめくらない（手動のめくりはスワイプのみ。v1.13.6〜。
+    // 帯のボタン類は従来どおりタップで効く）
     /* 奥付ページにも、他のページと同じページ操作を効かせる（v1.12.4、実機
        報告「奥付まで行くとスワイプで戻れない」への対応）。奥付は本文の上に
        重なる独立レイヤーなので、共通ジェスチャーを奥付自身にも付ける。
@@ -1822,23 +1870,13 @@ export function createReader(book: BookData): Reader {
        次へ＝表紙。帯の家マークはボタンのため、ジェスチャーの対象から
        外れてメニューを開く（docs/DESIGN.md に記録） */
     const endPageEl = $('endPage');
-    const endSwipe = attachSwipeNav({
+    attachSwipeNav({
       surface: endPageEl,
       followEl: endPageEl,
       canStart: (e) => !(e.target as HTMLElement).closest('button'),
       onNav: (dir) => turnPage(dir, 0),
     });
-    endPageEl.addEventListener('click', (e) => {
-      // 奥付は pageWrap の内側にあるため、処理したタップを本文側へ伝播させない
-      // （奥付を閉じた直後に、同じタップで本文までめくれてしまう二重効きの防止）
-      e.stopPropagation();
-      if (endSwipe.swipedRecently()) return;
-      if ((e.target as HTMLElement).closest('button')) return;
-      const dir = tapDirFor(endPageEl, e.clientX);
-      if (!dir) return;
-      turnSound();
-      turnPage(dir);
-    });
+    // 奥付面のタップでも遷移しない（スワイプのみ。他の画面と共通）
     document.addEventListener('keydown', (e) => {
       if (readerView.hidden) return;
       const nextKey = DIR.nextSide === 'left' ? 'ArrowLeft' : 'ArrowRight';
@@ -1846,29 +1884,28 @@ export function createReader(book: BookData): Reader {
       if (e.key === nextKey) turnPage(1);
       else if (e.key === prevKey) turnPage(-1);
     });
-    /* 扉（ゲート）のページ操作も共通ジェスチャーで本文・目次と揃える。遷移先は
-       gateNav（表示中の扉が決める：通常扉は次＝入章／前＝前の扉か後方扉、後方扉は
-       次＝第一章の本文／前＝目次）。タップも半分判定に統一した（以前は通常扉が
-       「どこを押しても入章」、後方扉が 0.58/0.42 の非対称な帯だった） */
-    const gateSwipe = attachSwipeNav({
+    /* 扉（ゲート）のページ操作も共通ジェスチャーで本文・目次と揃える。遷移先
+       の規則は decideNav の gate の項に一本化した（v1.13.6。通常扉は次＝入章
+       ／前＝前章の最終本文ページ（第一章では後方扉へ）、後方扉は次＝自章の
+       本文／前＝前章の最終本文ページ（第一章では目次））。手動の遷移は
+       スワイプのみ（タップめくりは v1.13.6 で全画面廃止）。autoplay は
+       扉の文脈で決める：後方扉から章へ入る
+       ときは常に false、通常扉から前章へ戻るときは扉が開かれたときの指定 */
+    const gateNavTo = (dir: 1 | -1): void => {
+      navigate(
+        { kind: 'gate', chapter: current, chapterCount: chapters.length, back: gateBack },
+        dir,
+        { autoplay: gateBack ? false : gateAutoplay },
+      );
+    };
+    attachSwipeNav({
       surface: gateView,
       followEl: gateView.querySelector<HTMLElement>('.gate-sheet'),
       onDragActive: (a) => gateView.classList.toggle('gate-dragging', a),
-      onNav: (dir) => {
-        if (!gateNav) return;
-        if (dir > 0) gateNav.next();
-        else gateNav.prev();
-      },
+      onNav: (dir) => gateNavTo(dir),
     });
-    gateView.addEventListener('click', (e) => {
-      if (gateSwipe.swipedRecently()) return; // スワイプ直後のクリックでは遷移しない
-      if ((e.target as HTMLElement).closest('button')) return;
-      const dir = tapDirFor(gateView, e.clientX);
-      if (!dir || !gateNav) return;
-      turnSound();
-      if (dir > 0) gateNav.next();
-      else gateNav.prev();
-    });
+    // 扉面のタップでも遷移しない（スワイプのみ。再生アイコン等のボタンは
+    // 従来どおりタップで効く）
     let resizeT: ReturnType<typeof setTimeout> | undefined;
     window.addEventListener('resize', () => {
       if (resizeT !== undefined) clearTimeout(resizeT);

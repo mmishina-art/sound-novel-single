@@ -25,6 +25,22 @@ const openToc = async (page) => {
   await page.click('#tocFromMenuBtn');
   await page.waitForSelector('#tocView:not([hidden])');
 };
+// 表面へのスワイプ（手動のページめくりはスワイプのみ。v1.13.6〜）。
+// 縦書き（右綴じ）では指を右へ払う＝次へ、左へ払う＝前へ
+const swipeSurface = async (page, box, dir, yRatio = 0.5) => {
+  const cy = box.y + box.height * yRatio;
+  const from = dir === 'next' ? 0.3 : 0.7;
+  const to = dir === 'next' ? 0.75 : 0.25;
+  await page.mouse.move(box.x + box.width * from, cy);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * to, cy, { steps: 6 });
+  await page.mouse.up();
+};
+const swipeGateNext = async (page) => {
+  const box = await page.locator('#gateView').boundingBox();
+  if (box) await swipeSurface(page, box, 'next');
+};
+
 // 目次で目的の章を選ぶ（項目が別ページにあるときは、目次を送りながら探す）。
 // セレクタは E2E と同じく #tocList 内の data-idx で絞る（計測用の隠しコピーを
 // 数えないため。旧実装は .toc-item の nth で数えていて最終ページ撮影が止まっていた）
@@ -33,7 +49,7 @@ const clickTocChapterShots = async (page, idx) => {
   for (let i = 0; i < 6 && !(await item.isVisible()); i++) {
     const box = await page.locator('#tocView').boundingBox();
     if (!box) break;
-    await page.mouse.click(box.x + box.width * 0.15, box.y + box.height * 0.08);
+    await swipeSurface(page, box, 'next', 0.08);
     await page.waitForTimeout(250);
   }
   await item.click();
@@ -122,9 +138,9 @@ const SCREENS = [
     name: 'page2',
     open: async (page) => {
       await openReader(page);
-      // 右綴じ: 次ページは左側タップ
+      // 右綴じ: 次ページへは右方向のスワイプ
       const box = await page.locator('#pageWrap').boundingBox();
-      await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+      await swipeSurface(page, box, 'next');
       await page.waitForTimeout(300);
     },
   },
@@ -151,12 +167,12 @@ const SCREENS = [
       await forcePageMode(page);
       await openToc(page);
       await clickTocChapterShots(page, 6);
-      await page.click('#gateView');
+      await swipeGateNext(page);
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
       for (let i = 0; i < 300; i++) {
         if ((await page.locator('#pageContent .story-end').count()) > 0) break;
-        await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+        await swipeSurface(page, box, 'next');
         await page.waitForTimeout(40);
       }
       await page.waitForTimeout(300);
@@ -169,15 +185,15 @@ const SCREENS = [
       await forcePageMode(page);
       await openToc(page);
       await clickTocChapterShots(page, 6);
-      await page.click('#gateView');
+      await swipeGateNext(page);
       await page.waitForSelector('#readerView:not([hidden])', { timeout: 10000 });
       const box = await page.locator('#pageWrap').boundingBox();
       for (let i = 0; i < 300; i++) {
         if ((await page.locator('#pageContent .story-end').count()) > 0) break;
-        await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+        await swipeSurface(page, box, 'next');
         await page.waitForTimeout(40);
       }
-      await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+      await swipeSurface(page, box, 'next');
       await page.waitForSelector('#endPage:not([hidden])', { timeout: 5000 });
       await page.waitForTimeout(300);
     },

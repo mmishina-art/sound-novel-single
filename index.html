@@ -123,6 +123,11 @@
           <p id="audioError" class="audio-error" hidden></p>
         </div>
 
+        <!-- 初回だけの小さな案内（v1.13.6〜）：タップめくりを廃止しスワイプ
+             のみにしたため、初めて本文を開いたときに一度だけ出す。表示・
+             消去は reader.ts が管理し、一度出たら二度と出ない -->
+        <p id="swipeHint" class="swipe-hint" hidden>スワイプでページをめくります</p>
+
         <!-- 独立した奥付ページ（本文の最終ページの次に来る、本のいちばん最後のページ）。
              奥付と表紙への導線だけをゆったり収める。ノンブルは付けない
              （扉など他の非本文ページと同じ作法）。「おわり」は本文の最終ページの中にある -->
@@ -139,8 +144,8 @@
           <!-- 奥付の帯（v1.12.4 で仕様変更）：他のページと共通の帯を付け、
                右下＝家マークのみ出す。再生は朗読対象が無いので出さない
                （要素は置いて右下の位置を固定し、常時 hidden のまま）。
-               「表紙に戻る」文字リンクは廃止し、表紙へは前方向のスワイプ／
-               タップと、家マーク→メニューから行く -->
+               「表紙に戻る」文字リンクは廃止し、表紙へは前方向のスワイプと、
+               家マーク→メニューから行く -->
           <div class="sheet-footer">
             <button id="endPlayBtn" type="button" class="page-icon-btn" aria-label="再生" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
             <button id="endMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>

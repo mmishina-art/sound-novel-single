@@ -661,6 +661,10 @@ body.hl-off .unit.now { background: none; color: inherit; }
 /* 音声エラーは、下の帯の上に重ねて知らせる（普段は隠れている） */
 .audio-error { position: absolute; left: 12px; right: 12px; bottom: calc(var(--folio-band, 44px) + 8px); z-index: 6; color: #a33; background: #fdf0f0; border: 1px solid #e8bcbc; border-radius: 8px; padding: 6px 10px; font-size: .85rem; margin: 0; text-align: center; }
 
+/* 初回だけの小さな案内（スワイプでめくる本になったことの知らせ）。下の帯の
+   上に静かに浮かべ、操作の邪魔はしない（ポインタは透過） */
+.swipe-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--folio-band, 44px) + 14px); z-index: 7; margin: 0; padding: 6px 14px; font-size: .82rem; letter-spacing: .04em; white-space: nowrap; color: var(--indigo2); background: rgba(247, 242, 231, .94); border: 1px solid rgba(30, 45, 82, .2); border-radius: 999px; pointer-events: none; }
+
 /* TOC modal */
 .modal { position: fixed; inset: 0; z-index: 20; }
 .modal-backdrop { position: absolute; inset: 0; background: rgba(10,16,32,.6); }
