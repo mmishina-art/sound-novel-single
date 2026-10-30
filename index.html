@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-BSkyLpL1.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-t2t39QLx.css">
+    <script type="module" crossorigin src="./assets/index-DtNpPpps.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B_LyNJZE.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -26,9 +26,12 @@
            v1.12.2 で表紙タップでの開始を廃止） -->
       <div class="cover-tap">
         <span class="book-cover">
-          <img src="book/cover.svg" alt="空の郵便が届くまで — 水瀬 葵" class="cover-img" />
-          <span class="cover-colophon">サウンド単行本</span>
+          <!-- 地絵は生成イラスト（雨空の商店街）。題字・著者名・ロゴは描き込まず、
+               活字と公式SVGで後付けする（v1.13.3 で新装丁に差し替え） -->
+          <img src="book/cover-art.webp" alt="空の郵便が届くまで — 水瀬 葵" class="cover-img" />
+          <img src="icons/logo-line-indigo.svg" alt="" class="cover-logo" aria-hidden="true" />
           <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
+          <span class="cover-author" aria-hidden="true">水瀬　葵</span>
         </span>
       </div>
       <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
@@ -37,9 +40,12 @@
       <!-- 読書モードの入口（v1.12.0）。「耳で読む」＝朗読つき（従来どおり）、
            「目で読む」＝朗読なし（人の声だけを止める。BGM・めくり音は鳴る：
            v1.12.2 で仕様変更）。モードは本を開いている間だけの選択で、設定には
-           保存しない。しおりがあるときは、どちらの入口からでも続きから再開し、
-           補足文（small）が「つづきから（第N章）」に変わる（v1.12.2 で入り口を
-           この2ボタンに一本化し、「しおりから再開」ボタンは廃止） -->
+           保存しない。しおりがあるときは、どちらの入口からでも続きから再開する
+           （v1.12.2 で入り口をこの2ボタンに一本化し、「しおりから再開」ボタンは
+           廃止）。補足文（small）は「朗読つき／朗読なし」固定（v1.13.3 で整理：
+           以前は「・つづきから（第N章）」を補足文に混ぜていた）。再開の情報は
+           ボタン上の小行 #coverResume で別に示す -->
+      <p id="coverResume" class="cover-resume" hidden></p>
       <div class="cover-modes">
         <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small id="earModeSub">朗読つき</small></button>
         <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small id="eyeModeSub">朗読なし</small></button>
@@ -162,10 +168,13 @@
         </div>
 
         <!-- メニューの中身は開いた場所と読書モードで組み替える（reader.ts の
-             arrangeMenu）：表紙では全項目を見出し付き（共通／「耳で読む」の設定／
-             「目で読む」の設定）で出し、本文中はモード別（目で読むでは朗読に
-             紐づく項目を出さない）。行要素は id で引いてグループ間を移すので、
-             ここでの並びは耳で読む（本文）の初期形としておく -->
+             arrangeMenu）。分類は全画面で 音／表示／再生 の3つに固定する
+             （v1.13.3 で再編：モード別見出し「耳で読む」の設定／「目で読む」の
+             設定は廃止。全設定は両モード共通という実態に見せ方を合わせた）。
+             目で読むでは朗読に紐づく行（再生速度・バックグラウンド再生・
+             朗読中の文を強調）を隠し、「再生」の見出しも一緒に隠す。
+             行要素は id で引いてグループ間を移すので、ここでの並びは
+             耳で読む（本文）の初期形としておく -->
         <div class="menu-section">
           <h4 class="setting-group" id="menuHeadNav" hidden>共通</h4>
           <div id="menuGroupNav">
@@ -175,13 +184,8 @@
           </div>
           <h4 class="setting-group" id="menuHeadAudio">音</h4>
           <div id="menuGroupAudio">
-            <div class="menu-row" id="rowSpeed">
-              <span>再生速度</span>
-              <button id="speedBtn" class="btn" aria-label="再生速度">1.0×</button>
-            </div>
             <label class="menu-row toggle-label" id="rowPageSound"><span>ページめくり音</span><input type="checkbox" id="pageSoundToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowBgm"><span>BGM</span><input type="checkbox" id="bgmToggle" checked /></label>
-            <label class="menu-row toggle-label" id="rowBgPlay"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
           </div>
           <h4 class="setting-group" id="menuHeadDisplay">表示</h4>
           <div id="menuGroupDisplay">
@@ -198,6 +202,17 @@
             <label class="menu-row toggle-label" id="rowHl"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowBg"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowWake"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>
+          </div>
+          <h4 class="setting-group" id="menuHeadPlay">再生</h4>
+          <div id="menuGroupPlay">
+            <!-- 再生速度は楕円ピル（押すたび巡回）を廃止し、文字サイズと同じ
+                 「文字の選択肢の並び」にした（v1.13.3）。候補は SPEEDS が正で、
+                 ボタンは reader.ts が生成する -->
+            <div class="menu-row" id="rowSpeed">
+              <span>再生速度</span>
+              <div class="speed-choices" id="speedChoices" role="group" aria-label="再生速度"></div>
+            </div>
+            <label class="menu-row toggle-label" id="rowBgPlay"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
           </div>
         </div>
 
