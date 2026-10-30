@@ -18,6 +18,10 @@ SRC = {
  7:'media-generation-sora-no-yubin-bg-ch7-new-shop-0-d8b8d806-a788-41ca-be0d-3a384bda0814.webp',
 }
 # (上モチーフの下端, 上帯の切り位置, 下モチーフの上端, 下帯の切り位置) いずれも高さ比
+# ※第1章は v1.13.4 で地絵が昭和版v2（~/workspace/your_files/ch1-bg-remake/
+#   ch1-bg-showa-bookshop-v2.webp）に差し替わり、下帯のみ再生成した
+#   （上帯は v1.13.4 で廃止）。v2 の下帯: inkStart 0.555（電柱の頭）、
+#   botCut 0.500。以下の ch1 の行は旧地絵（sample）の記録として残す。
 CUTS = {
  1:(0.120, 0.185, 0.826, 0.761),
  2:(0.062, 0.127, 0.795, 0.730),

@@ -119,8 +119,8 @@ test('表紙は新装丁：地絵の上に題字・著者名・線画ロゴを�
   expect(geo.title.top).toBeLessThan(0.14);
   expect(geo.title.right).toBeGreaterThan(0.03);
   expect(geo.title.right).toBeLessThan(0.15);
-  // 著者名：中心が表紙幅の約45%（地絵の家に合わせる）、下部に置く
-  expect(Math.abs(geo.author.centerX / geo.cover.w - 0.45)).toBeLessThan(0.03);
+  // 著者名：中心が表紙幅の約40%（水彩版の地絵の店の中心に合わせる）、下部に置く
+  expect(Math.abs(geo.author.centerX / geo.cover.w - 0.40)).toBeLessThan(0.03);
   expect(geo.author.bottom).toBeGreaterThan(0.02);
   expect(geo.author.bottom).toBeLessThan(0.08);
 });
@@ -1472,6 +1472,18 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     expect(svgTexts.ch1).not.toContain('雨（上部にまばらに）');
     expect(svgTexts.ch2).not.toContain('まばらな雨');
     expect(svgTexts.ch2).toContain('開いた傘'); // 傘のモチーフは残っている
+    // 第七章：鳥のアニメーションは廃止（v1.13.4〜）。雲だけが残る
+    await openMenuInReader(page);
+    await page.locator('#tocFromMenuBtn').click();
+    await expect(page.locator('#tocView')).toBeVisible();
+    await clickTocChapter(page, 6);
+    await expect(page.locator('#gateNum')).toHaveText('第七章');
+    await page.locator('#gateView').click({ position: { x: 60, y: 300 } });
+    await expect(page.locator('#readerChapterLabel')).toHaveText(/第七章/);
+    await expect(anim).toHaveAttribute('data-chapter', '7');
+    await expect(anim.locator('.anim-bird')).toHaveCount(0);
+    await expect(anim.locator('.anim-cloud')).toHaveCount(2);
+    await expect.poll(bgOf).toContain('ch7-bottom.webp');
   });
 
   test('背景をオフにするとアニメーションの層も消える', async ({ page }) => {

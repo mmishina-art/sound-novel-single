@@ -320,9 +320,10 @@ body.bound-left .cover-logo { right: 5.8%; }
 body.dir-vertical .cover-vtitle { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
 body.bound-right .cover-vtitle { right: 14%; }
 body.bound-left .cover-vtitle { left: 14%; }
-.cover-author { /* 著者名：地絵の家の中心（幅の約45%）に合わせて下部に置く。
+.cover-author { /* 著者名：地絵の店の中心に合わせて下部に置く（水彩版の地絵では
+  明かりの点いた店先が幅の約24〜56%にあり、中心は約40%。実測で合わせた）。
   地絵基準の位置なので、綴じ方向では反転させない */
-  position: absolute; bottom: 4.2%; left: 45%; transform: translateX(-50%); z-index: 3;
+  position: absolute; bottom: 4.2%; left: 40%; transform: translateX(-50%); z-index: 3;
   font-size: 3.6cqw; letter-spacing: .5em; margin-right: -.5em;
   color: #1e2d52; white-space: nowrap;
 }
@@ -548,22 +549,6 @@ body.bg-off .page-anim { display: none; }
 @keyframes animCloud {
   from { transform: translateX(-10px); }
   to { transform: translateX(20px); }
-}
-/* 鳥：ときおり上部を横切る（60秒周期のうち、横切るのは初めの約12秒だけ） */
-.anim-bird {
-  position: absolute; top: 10%; left: 0; width: 46px; opacity: 0;
-  animation: animBird 60s linear infinite;
-}
-.anim-bird svg { display: block; width: 100%; height: auto; animation: animBob 2.8s ease-in-out infinite alternate; }
-@keyframes animBird {
-  0% { transform: translateX(-64px); opacity: 0; }
-  3% { opacity: .2; }
-  20% { transform: translateX(105dvw); opacity: .2; }
-  23%, 100% { transform: translateX(105dvw); opacity: 0; }
-}
-@keyframes animBob {
-  from { transform: translateY(-3px); }
-  to { transform: translateY(3px); }
 }
 body.font-large { --font-scale: 1.2; }
 /* 本文。組版方向は body.dir-* で決まり、余白はノド側（綴じ側）を広く取る */

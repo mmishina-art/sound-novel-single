@@ -27,10 +27,6 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T;
 };
 
-/** 第七章の背景で、ときおり横切る鳥（線画の鳥の形を塗ったもの） */
-const BIRD_SVG =
-  '<svg viewBox="-90 -60 180 110" aria-hidden="true"><path d="M -78 18 Q -30 -38 28 -22 Q 62 -52 88 -30 Q 48 -18 38 2 Q 70 8 78 28 Q 38 22 10 34 Q -28 52 -58 40 Q -30 28 -78 18 Z" fill="rgba(107,90,51,.5)"/></svg>';
-
 /** Screen Wake Lock の最小限の型（lib.dom に無い環境でも使えるよう、必要分だけ宣言する） */
 export interface WakeLockSentinelLike extends EventTarget {
   release(): Promise<void>;
@@ -800,13 +796,10 @@ export function createReader(book: BookData): Reader {
         motes(1);
         break;
       case 6: {
-        // 第七章：雲がゆっくり流れ、鳥がときおり上部を横切る
+        // 第七章：雲がゆっくり流れるだけにする（鳥の横切りは v1.13.4 で廃止。
+        // ユーザー指示。背景帯の静止画の鳥はそのまま残る）
         put('anim-cloud', { left: '6%', top: '5%', width: '36%', '--d': '46s' });
         put('anim-cloud', { right: '5%', top: '34%', width: '27%', '--d': '58s', '--dl': '-20s' });
-        const bird = document.createElement('span');
-        bird.className = 'anim-bird';
-        setHtml(bird, BIRD_SVG);
-        pageAnim.appendChild(bird);
         break;
       }
       default:
