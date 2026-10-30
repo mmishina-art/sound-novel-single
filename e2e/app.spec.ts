@@ -332,6 +332,48 @@ test('文送りボタンで朗読位置とハイライトが文単位で移る�
   await expect(page.locator('#nextSentBtn')).toBeHidden();
 });
 
+test('文送りボタンの並びはメディア標準（左=前の文／中央=再生／右=次の文）', async ({ page }) => {
+  await openReader(page);
+  // 画面上の実測順序：前の文 < 再生/停止 < 次の文（進むは右）。
+  // 本の綴じ方向（右綴じ＝次ページは左）に寄せて反転させないことを座標で固定する
+  const boxes = await page.evaluate(() => {
+    const box = (id: string) => {
+      const r = document.getElementById(id)!.getBoundingClientRect();
+      return { x: r.x, w: r.width };
+    };
+    return { prev: box('prevSentBtn'), play: box('playPauseBtn'), next: box('nextSentBtn') };
+  });
+  expect(boxes.prev.w).toBeGreaterThan(0);
+  expect(boxes.prev.x).toBeLessThan(boxes.play.x);
+  expect(boxes.play.x).toBeLessThan(boxes.next.x);
+  // 図柄も並びに一致させる：前の文は棒+左向き三角（|◀）、次の文は右向き三角+棒（▶|）
+  const glyphs = await page.evaluate(() => {
+    const d = (id: string) =>
+      [...document.getElementById(id)!.querySelectorAll('svg path')].map((p) => p.getAttribute('d'));
+    return { prev: d('prevSentBtn'), next: d('nextSentBtn') };
+  });
+  expect(glyphs.prev).toEqual(['M4.5 5.5h2v13h-2z', 'M18.5 5.5v13L8 12z']);
+  expect(glyphs.next).toEqual(['M5.5 5.5v13L16 12z', 'M17.5 5.5h2v13h-2z']);
+  // 再生の図柄はスピーカー＋波紋（v1.13.1）：右向き三角（▶）は綴じ方向と競合する
+  // ため廃止。止めて「再生」表示にしたうえで、本文・扉・目次の3ボタンとも
+  // 同じ記号になっていることを確かめる（一時停止の二本線は従来のまま）
+  await page.locator('#playPauseBtn').click();
+  await expect(page.locator('#playPauseBtn')).toHaveAttribute('aria-label', '再生');
+  const speaker = [
+    'M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z',
+    'M15.3 9.4a3.8 3.8 0 0 1 0 5.2',
+    'M17.8 6.9a7.2 7.2 0 0 1 0 10.2',
+  ];
+  const playGlyphs = await page.evaluate(() => {
+    const d = (id: string) =>
+      [...document.getElementById(id)!.querySelectorAll('svg path')].map((p) => p.getAttribute('d'));
+    return { body: d('playPauseBtn'), gate: d('gatePlayBtn'), toc: d('tocPlayBtn') };
+  });
+  expect(playGlyphs.body).toEqual(speaker);
+  expect(playGlyphs.gate).toEqual(speaker);
+  expect(playGlyphs.toc).toEqual(speaker);
+});
+
 test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await openReader(page);
   const box = await page.locator('#pageWrap').boundingBox();
@@ -404,14 +446,16 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   if (!endBox || !colophonBox) throw new Error('bounding box not found');
   expect(colophonBox.y).toBeGreaterThanOrEqual(endBox.y);
   expect(colophonBox.y + colophonBox.height).toBeLessThanOrEqual(endBox.y + endBox.height + 1);
-  // 版元ロゴ（公式ロゴ＝アプリアイコンと同じ角印）が奥付文の上に表示される
+  // 版元ロゴ（公式ロゴのパターン2＝アイコン＋文字の縦組み）が奥付文の上に表示される
   const logo = page.locator('.end-logo');
   await expect(logo).toBeVisible();
   await expect(logo).toHaveAttribute('alt', 'サウンド単行本');
+  await expect(logo).toHaveAttribute('src', /logo-text-vertical\.svg$/);
   expect(await logo.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
   const logoBox = await logo.boundingBox();
   if (!logoBox) throw new Error('logo box not found');
-  expect(logoBox.width).toBe(56); // 奥付の体裁を壊さない控えめな大きさ（style.css の指定どおり）
+  expect(logoBox.width).toBe(128); // 文字あり版の寸法（style.css の指定どおり。v1.13.1 で 56px のアイコンのみ版から差し替え）
+  expect(logoBox.height).toBeGreaterThan(logoBox.width); // 縦組み（280×356）なので幅より高い
   expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(colophonBox.y); // 奥付文より上にある
   expect(logoBox.y).toBeGreaterThanOrEqual(endBox.y);
   expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(endBox.y + endBox.height);
@@ -425,6 +469,41 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   await expect(page.locator('#finalToCoverBtn')).toHaveCount(0);
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
   await expect(page.locator('#coverView')).toBeVisible();
+});
+
+test('最終章の朗読が終わっても、最終ページに留まり奥付へ自動で進まない', async ({ page }) => {
+  // v1.13.1 の仕様変更（実機フィードバック：読み終わりの余韻を最終ページで
+  // 楽しみたい）。以前は朗読終了で自動的に奥付ページへ進んでいた
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await enterViaToc(page, '#earModeBtn', 6); // 最終章（第七章）を耳で読む
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 15000 });
+  // 朗読が始まっていることを確認してから、最終章の音声を末尾近くへ進めて
+  // 自然に ended を迎える
+  await page.waitForFunction(() => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    return isFinite(a.duration) && a.duration > 0 && !a.paused;
+  });
+  await page.evaluate(() => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    a.currentTime = a.duration - 0.4;
+  });
+  // ended 後も最終ページ（「おわり」のページ）に留まり、再生は止まる
+  await page.waitForFunction(() => (document.getElementById('audioEl') as HTMLAudioElement).ended);
+  await page.waitForTimeout(800); // 自動遷移があるなら起きる時間を置く
+  await expect(page.locator('#endPage')).toBeHidden();
+  await expect(page.locator('#pageContent .story-end')).toHaveText('おわり');
+  const state = await page.evaluate(() => {
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    return { paused: a.paused, ended: a.ended };
+  });
+  expect(state.ended).toBe(true);
+  expect(state.paused).toBe(true);
+  // 手動の前進では従来どおり奥付へ行ける（道は残っている）
+  const box = await page.locator('#pageWrap').boundingBox();
+  if (!box) throw new Error('pageWrap not found');
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await expect(page.locator('#endPage')).toBeVisible();
 });
 
 test('再生中にページをめくると、朗読がそのページの先頭へ移り、引き戻されない', async ({ page }) => {
@@ -1049,6 +1128,56 @@ test('更新バナーは「あとで」で閉じられる', async ({ page }) => 
   });
   await page.getByRole('button', { name: 'あとで' }).click();
   await expect(page.locator('#update-banner')).toBeHidden();
+});
+
+test('更新バナーのボタンは最前面にあり、タッチでも押せる', async ({ page }) => {
+  // 実機報告（v1.13.1 で対応）: バナーは出るのにボタンが押せない。
+  // まず幾何の側を固定する: 両ボタンの中心で elementFromPoint がボタン自身を
+  // 返す（透明な要素が被っていない）ことと、タッチタップで実際に効くこと
+  await page.route('**/version.json', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: '999.0.0' }) }),
+  );
+  await page.goto('/');
+  await expect(page.locator('#update-banner')).toBeVisible();
+  for (const id of ['update-button', 'update-later']) {
+    const top = await page.evaluate((btnId) => {
+      const btn = document.getElementById(btnId)!;
+      const r = btn.getBoundingClientRect();
+      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return el === btn || btn.contains(el);
+    }, id);
+    expect(top, `#${id} の中心はボタン自身が最前面`).toBe(true);
+  }
+  const laterBox = await page.locator('#update-later').boundingBox();
+  if (!laterBox) throw new Error('later box not found');
+  await page.touchscreen.tap(laterBox.x + laterBox.width / 2, laterBox.y + laterBox.height / 2);
+  await expect(page.locator('#update-banner')).toBeHidden();
+});
+
+test('SWの更新確認が返らなくても、「更新」は時間内に再読み込みまで進む', async ({ page }) => {
+  // v1.13.0 までの実機症状の再現: registration.update() は新しい SW の
+  // インストール完了まで返らないことがあり（iOS で滞留すると実質無期限）、
+  // 旧実装はその await の後ろに全ての保険が並んでいたため、ボタンが無反応に
+  // なった。update() が永遠に返らない状況を作っても、最後の砦のタイマーが
+  // 再読み込みまで運ぶことを固定する
+  await page.addInitScript(() => {
+    ServiceWorkerRegistration.prototype.update = () => new Promise(() => undefined);
+  });
+  await page.route('**/version.json', (route) =>
+    route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: '999.0.0' }) }),
+  );
+  await page.goto('/');
+  await expect(page.locator('#update-banner')).toBeVisible();
+  const t0 = await page.evaluate(() => performance.timeOrigin);
+  await page.locator('#update-button').click();
+  // 押せたことがその場で分かる（文言が変わり、無効化される）
+  await expect(page.locator('#update-button')).toHaveText('更新しています…');
+  await expect(page.locator('#update-button')).toBeDisabled();
+  // 再読み込みが起きる（timeOrigin が新しくなる）ことをもって到達とする
+  await expect
+    .poll(() => page.evaluate(() => performance.timeOrigin), { timeout: 30000 })
+    .toBeGreaterThan(t0);
+  await expect(page.locator('#coverView')).toBeVisible();
 });
 
 test.describe('初回案内（音声の総容量とWi-Fi推奨）と一括取り込み', () => {

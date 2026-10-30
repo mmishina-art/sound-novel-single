@@ -610,7 +610,7 @@ export function createReader(book: BookData): Reader {
         return;
       } else {
         // 本文の最終ページの次は、独立した奥付ページ
-        openEndPage(false);
+        openEndPage();
         return;
       }
     } else {
@@ -1027,7 +1027,15 @@ export function createReader(book: BookData): Reader {
     );
     return document.importNode(doc.documentElement, true) as unknown as SVGSVGElement;
   };
-  const ICON_PLAY_PATHS = '<path d="M8 5.5v13l11-6.5z" fill="currentColor"/>';
+  /* 再生の図柄は「スピーカー＋波紋」（v1.13.1〜、ユーザー決定）：右向き三角（▶）は
+     右綴じの本では綴じ方向と競合して進む／戻るの誤読を招くため、向きを持たない
+     音の記号にした。線画（家マークと同じ stroke 1.6 の作法）で描く。
+     一時停止は従来どおり二本線（塗り）のまま */
+  const SPEAKER_ATTRS = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
+  const ICON_PLAY_PATHS =
+    `<path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" ${SPEAKER_ATTRS}/>` +
+    `<path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" ${SPEAKER_ATTRS}/>` +
+    `<path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" ${SPEAKER_ATTRS}/>`;
   const ICON_PAUSE_PATHS = '<path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor"/>';
   /* 再生アイコンは本文・扉・目次の3画面で共通の家具（v1.12.2）。図柄と
      ラベルは全部まとめて現在の再生状態に合わせる */
@@ -1086,20 +1094,17 @@ export function createReader(book: BookData): Reader {
 
   /* ---------- 独立した奥付ページ（本のいちばん最後のページ） ----------
      本文の最終ページから「次へ」で開き、「前へ」で本文の最終ページへ戻る。
-     朗読が最終章を読み終えたときも、ここへ進む。開いている間は朗読を止める */
-  function openEndPage(finished: boolean): void {
+     朗読が最終章を読み終えても自動では開かない（v1.13.1〜。最終ページに
+     留まる）。開いている間は朗読を止める */
+  function openEndPage(): void {
     if (endOpen) return;
     endOpen = true;
     audio.pause();
     updatePlayBtn();
     $('endPage').hidden = false;
-    if (finished) {
-      // 読了：しおりは消す（表紙の再開ボタンも消える）
-      remove('bookmark');
-      refreshResume();
-    } else {
-      saveBookmark();
-    }
+    // 手動で開いた奥付ではしおりを保存する（位置の記録として残す）。
+    // 読了時のしおり消去は、朗読の ended ハンドラ側で行う（v1.13.1〜）
+    saveBookmark();
   }
   function closeEndPage(): void {
     if (!endOpen) return;
@@ -1419,7 +1424,7 @@ export function createReader(book: BookData): Reader {
       // 初めて読むとき（しおりが無い）は、まず目次ページを開く（v1.12.4）。
       // 章を選ぶ／前方向の操作で第一章の扉へ進む流れは、目次の既存の規則どおり。
       // 「しおりが無い」には読了後も含まれる：読了でしおりは消える
-      // （openEndPage）ため、読み直しも目次から始まる
+      // （朗読の ended ハンドラ）ため、読み直しも目次から始まる
       else openTocPage('cover');
     };
     $('earModeBtn').addEventListener('click', () => enterFromCover('ear'));
@@ -1867,9 +1872,14 @@ export function createReader(book: BookData): Reader {
       if (current < chapters.length - 1) {
         showGate(current + 1);
       } else {
-        // 最終章の朗読が終わったら、本文の最終ページを経て奥付ページへ進む（読了）
+        // 最終章の朗読が終わったら、本文の最終ページに留まる（v1.13.1 で変更。
+        // 以前は自動で奥付ページへ進んでいたが、読み終わりの余韻を最終ページで
+        // 楽しめるよう、自動では進まない。奥付へは手動の前進操作で従来どおり
+        // 行ける）。再生は ended で自然に止まる。BGM は従来の終了時挙動どおり
+        // 止めずに鳴らし続ける。読了の扱い（しおりを消す）も従来どおり
         syncPageToAudio(true);
-        openEndPage(true);
+        remove('bookmark');
+        refreshResume();
         updatePlayBtn();
       }
     });

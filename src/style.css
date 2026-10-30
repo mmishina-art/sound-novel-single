@@ -146,7 +146,13 @@ button.link {
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.2);
-  z-index: 30;
+  /* どの画面・モーダルよりも手前に置く（デバッグパネルの 40 より上）。
+     タップを確実に受けるため pointer-events と touch-action も明示する
+     （v1.13.1: 実機で「更新が押せない」報告を受けての保険。重なり自体は
+     実測で正常だったが、約束として固定する） */
+  z-index: 60;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .banner__actions {
@@ -630,7 +636,11 @@ body.hl-off .unit.now { background: none; color: inherit; }
 .end-page { position: absolute; inset: 0; z-index: 11; touch-action: pan-y pinch-zoom; background-image: repeating-linear-gradient(0deg, rgba(120,100,60,.014) 0 3px, transparent 3px 6px), linear-gradient(155deg, #fffdf6, var(--paper) 55%, #f8f1dc); }
 .end-foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 30px 30px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .end-colophon { margin: 0; font-size: .72rem; line-height: 1.9; letter-spacing: .06em; color: #7d7260; text-align: center; }
-.end-logo { width: 56px; height: 56px; }
+/* 版元ロゴ（パターン2＝アイコン＋文字の縦組み、280×356）。v1.13.0 の
+   アイコンのみ56pxは実機で小さいとの指摘を受け、v1.13.1 で文字あり版に
+   差し替え。幅 128px（高さ約163px）で、印部分が約110pxになり、奥付の
+   版元表示として存在感を持たせた（スクリーンショットで実測確認） */
+.end-logo { width: 128px; height: auto; }
 /* 「表紙に戻る」文字リンクは v1.12.4 で廃止（帯の家マーク＋前方向の操作に一本化） */
 
 /* 音声エラーは、下の帯の上に重ねて知らせる（普段は隠れている） */
