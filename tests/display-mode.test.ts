@@ -11,7 +11,7 @@ const css = readFileSync(resolve(root, 'src/style.css'), 'utf8');
 const reader = readFileSync(resolve(root, 'src/reader.ts'), 'utf8');
 
 describe('表示方式（ページ形式のみ）', () => {
-  it('メニューに表示方式の項目がない', () => {
+  it('設定に表示方式の項目がない', () => {
     expect(html).not.toMatch(/displayModeBtn/);
     expect(html).not.toMatch(/表示方式/);
   });

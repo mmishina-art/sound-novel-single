@@ -18,7 +18,7 @@ const forcePageMode = async (page) => {
   await page.waitForFunction(() => globalThis.__appStarted === true);
   await waitBook(page);
 };
-// 目次ページへの入口はメニューの「目次を開く」に一本化されている（表紙に目次ボタンはない）
+// 目次ページへの入口は設定の「目次を開く」に一本化されている（表紙に目次ボタンはない）
 const openToc = async (page) => {
   await waitBook(page);
   await page.click('#coverSettingsBtn');
@@ -58,9 +58,9 @@ const openReader = async (page) => {
   await waitBook(page);
   await page.click('#earModeBtn');
   // 初めて読むときは目次から始まる（v1.12.4）。第一章を選んで扉へ。
-  // しおりがあるときは扉から再開する（撮影は同一コンテキストで続くため、
-  // 前の画面が置いたしおりが残っていることがある）
-  await page.waitForSelector('#tocView:not([hidden]), #gateView:not([hidden])', { timeout: 10000 });
+  // しおりがあるときは扉を経由せず本文へ直接再開する（v1.13.11〜。撮影は
+  // 同一コンテキストで続くため、前の画面が置いたしおりが残っていることがある）
+  await page.waitForSelector('#tocView:not([hidden]), #gateView:not([hidden]), #readerView:not([hidden])', { timeout: 10000 });
   if (await page.locator('#tocView').isVisible()) {
     await page.locator('.toc-item').first().click();
     await page.waitForSelector('#gateView:not([hidden])');
@@ -99,15 +99,19 @@ const SCREENS = [
   {
     name: 'gate',
     open: async (page) => {
+      // 扉そのものを撮るため、しおりを消して目次経由で第一章の扉へ入る
+      // （しおりがあると再開で本文へ直行し、扉は出ない。v1.13.11〜）
+      await page.evaluate(() => {
+        const appId = globalThis.document.querySelector('meta[name="app-id"]')?.content || '';
+        globalThis.localStorage.removeItem(`${appId}-bookmark`);
+      });
+      await page.reload();
+      await page.waitForFunction(() => globalThis.__appStarted === true);
       await waitBook(page);
       await page.click('#earModeBtn');
-      // しおりが無いときは目次から、あるときは扉から再開する（撮影は同一
-      // コンテキストで続くため、前の画面が置いたしおりが残っていることがある）
-      await page.waitForSelector('#tocView:not([hidden]), #gateView:not([hidden])');
-      if (await page.locator('#tocView').isVisible()) {
-        await page.locator('.toc-item').first().click();
-        await page.waitForSelector('#gateView:not([hidden])');
-      }
+      await page.waitForSelector('#tocView:not([hidden])');
+      await page.locator('.toc-item').first().click();
+      await page.waitForSelector('#gateView:not([hidden])');
     },
   },
   {
@@ -148,7 +152,7 @@ const SCREENS = [
     name: 'menu',
     open: async (page) => {
       await openReader(page);
-      // メニューはページ下の帯のボタンから直接開く（常時表示）
+      // 設定はページ下の帯のボタンから直接開く（常時表示）
       await page.click('#menuBtn');
     },
   },
@@ -198,7 +202,7 @@ const SCREENS = [
       await page.waitForTimeout(300);
     },
   },
-  // 管理系はメニュー（表紙の「設定」）の中に集約した
+  // 管理系は設定（表紙の「設定」）の中に集約した
   { name: 'install', open: async (page) => { await page.click('#coverSettingsBtn'); await page.click('#install-open'); } },
   { name: 'cover-menu', open: async (page) => { await page.click('#coverSettingsBtn'); } },
 ];

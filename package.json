@@ -30,5 +30,5 @@
     "verify": "npm run lint && npm test && npm run build && npm run check:dist && npm run check:content"
   },
   "type": "module",
-  "version": "1.13.10"
+  "version": "1.13.11"
 }

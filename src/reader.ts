@@ -250,7 +250,7 @@ export function createReader(book: BookData): Reader {
       if (paginateAll()) {
         curPage = pageForChar(PAGES[current], anchor);
         renderPage(0);
-        refreshTocCurrent();
+        refreshTocMark();
         saveBookmark();
       }
     }
@@ -319,32 +319,28 @@ export function createReader(book: BookData): Reader {
     if (name === 'cover') checkForUpdate();
   }
 
-  /* ---------- メニュー（入口はボタンだけ） ----------
-     操作UIの出し隠しはしない。再生／停止とメニューはページ下の帯に常時置く。
+  /* ---------- 設定（入口はボタンだけ） ----------
+     操作UIの出し隠しはしない。再生／停止と設定はページ下の帯に常時置く。
      ページめくりはスワイプとタップ（ゾーン判定）の併用。本文タップで
-     メニューは開かない */
-  /* メニューの組み替え：分類は開いた場所・モードによらず 音／表示／再生 の
-     3つで固定する（v1.13.3 で再編。旧 v1.12.0〜のモード別見出し「耳で読む」
-     の設定／「目で読む」の設定は廃止した——全設定は両モード共通という実態に
-     見せ方を合わせるため）。割り当て：音＝めくり音・BGM／表示＝文字サイズ・
-     フリガナ・朗読中の文を強調・背景イメージ・画面を暗くしない／再生＝再生
-     速度・バックグラウンド再生。「朗読中の文を強調」は文の見た目の設定なので
-     表示に置く（旧分類では「耳で読む」の設定側だった）。目で読むでは朗読に
-     紐づく行（再生速度・バックグラウンド再生・朗読中の文を強調）を隠し、
-     行が無くなる「再生」の見出しも一緒に隠す。ナビ行には見出しを付けない */
+     設定は開かない */
+  /* 設定の組み替え：分類は開いた場所・モードによらず 音／表示／朗読 の
+     3つで固定する（v1.13.3 で再編し、v1.13.11 で「再生」を「朗読」へ改称。
+     旧 v1.12.0〜のモード別見出し「耳で読む」の設定／「目で読む」の設定は
+     廃止した——全設定は両モード共通という実態に見せ方を合わせるため）。
+     割り当て：音＝めくり音・BGM／表示＝文字サイズ・フリガナ・背景イメージ・
+     画面を暗くしない／朗読＝速さ・朗読中の文を強調・バックグラウンド再生
+     （「朗読中の文を強調」は v1.13.11 で表示から朗読へ移した）。目で読むでは
+     朗読に紐づく行を隠し、行が無くなる「朗読」の見出しも一緒に隠す。
+     移動のボタン（表紙へ／目次へ）はパネル上部の固定位置にあり、組み替えの
+     対象にしない */
   function arrangeMenu(ctx: 'cover' | 'ear' | 'eye'): void {
-    const nav = $('menuGroupNav');
     const aud = $('menuGroupAudio');
     const dis = $('menuGroupDisplay');
     const play = $('menuGroupPlay');
-    const headNav = $('menuHeadNav');
     const headAud = $('menuHeadAudio');
     const headDis = $('menuHeadDisplay');
     const headPlay = $('menuHeadPlay');
     const rows = {
-      toc: $('tocFromMenuBtn'),
-      toCover: $('toCoverFromMenuBtn'),
-      install: $('install-open'),
       speed: $('rowSpeed'),
       pageSound: $('rowPageSound'),
       bgm: $('rowBgm'),
@@ -362,15 +358,13 @@ export function createReader(book: BookData): Reader {
     rows.speed.hidden = false;
     rows.bgPlay.hidden = false;
     rows.hl.hidden = false;
-    headNav.hidden = true;
     headAud.hidden = false;
     headAud.textContent = '音';
     headDis.hidden = false;
     headDis.textContent = '表示';
-    put(nav, [rows.toCover, rows.toc, rows.install]);
     put(aud, [rows.pageSound, rows.bgm]);
-    put(dis, [rows.font, rows.ruby, rows.hl, rows.bg, rows.wake]);
-    put(play, [rows.speed, rows.bgPlay]);
+    put(dis, [rows.font, rows.ruby, rows.bg, rows.wake]);
+    put(play, [rows.speed, rows.hl, rows.bgPlay]);
     if (ctx === 'eye') {
       // 朗読に紐づく項目は目で読むでは出さない（置き場所ではなく行ごと隠す）
       rows.speed.hidden = true;
@@ -379,18 +373,17 @@ export function createReader(book: BookData): Reader {
       headPlay.hidden = true;
     } else {
       headPlay.hidden = false;
-      headPlay.textContent = '再生';
+      headPlay.textContent = '朗読';
     }
   }
   function openMenu(): void {
     // 分類（音／表示／再生）は全画面で共通。目で読むのときだけ朗読に紐づく行を隠す
     arrangeMenu(coverView.hidden ? readMode : 'cover');
-    // 表紙の入口は「設定」なので、表紙から開いたときだけパネルの呼び名も
-    // 「設定」に合わせる。他画面の家マークから開くときは従来どおり「メニュー」
-    const panelName = coverView.hidden ? 'メニュー' : '設定';
-    $('menuTitle').textContent = panelName;
-    $('menuModal').setAttribute('aria-label', panelName);
-    // 「表紙に戻る」は表紙以外から開いたときだけ出す（表紙で開いたメニューには不要）
+    // パネルの呼び名は開いた場所によらず「設定」に統一する（v1.13.11。
+    // v1.13.10 の「表紙から=設定／他画面=メニュー」の使い分けは廃止した）
+    $('menuTitle').textContent = '設定';
+    $('menuModal').setAttribute('aria-label', '設定');
+    // 「表紙に戻る」は表紙以外から開いたときだけ出す（表紙で開いた設定には不要）
     $('toCoverFromMenuBtn').hidden = !coverView.hidden;
     $('menuModal').hidden = false;
   }
@@ -682,16 +675,20 @@ export function createReader(book: BookData): Reader {
       title: chapters[current].num + ' ' + chapters[current].title,
       savedAt: Date.now(),
     };
-    if (isEye() && PAGES.length) {
-      // 目で読むモードでは音声位置が無いので、ページ先頭の文字位置から
-      // 対応する朗読時刻を引いて保存する（耳で読むで再開しても同じ場所に来る。
-      // 位置の正は従来どおり文字アンカー）
-      const t = timeAtCharPos(current, currentAnchorChar());
-      if (t !== null) bm.time = t;
-    }
     if (PAGES.length) {
       bm.anchor = currentAnchorChar();
       bm.page = bookPageOf(current, curPage);
+      // 位置の正は文字アンカー。目で読むモードでは音声位置が無いので常時、
+      // アンカーから対応する朗読時刻を引いて保存する（耳で読むで再開しても
+      // 同じ場所に来る）。耳モードでも、ページシークの反映待ち（260ms の
+      // デバウンス中・メタデータ待ち）の間に保存すると音声時刻だけが
+      // 表示ページより古いまま残り、時刻とアンカーの食い違うしおりに
+      // なるため、同じくアンカーから時刻を揃える（食い違ったしおりは
+      // 再開時に時刻側のページへ着地してしまう。v1.13.11 で修正）
+      if (isEye() || pageSeekTimer !== undefined || pageSeekPending) {
+        const t = timeAtCharPos(current, bm.anchor);
+        if (t !== null) bm.time = t;
+      }
     }
     save('bookmark', bm);
   }
@@ -701,7 +698,7 @@ export function createReader(book: BookData): Reader {
   /* 表紙は「表紙だけが静かに出ている」状態が原則。入り口はモードの2ボタンと
      最下部右端の「設定」リンクだけ（v1.12.2 で表紙タップでの開始と
      「しおりから再開」ボタンを廃止し、2ボタンに一本化。v1.13.10 で B3 案に
-     合わせ、楕円の「メニュー」ボタンを廃止した）。
+     合わせ、楕円の「設定」ボタンを廃止した）。
      補足文は「朗読つき／朗読なし」固定。しおりがあるときの再開情報は、
      補足文に混ぜずボタン上の小さな情報文 #coverResume に「第N章の
      つづきから」と1回だけ示す（どちらの入口からでも同じ章から再開する）。
@@ -717,10 +714,27 @@ export function createReader(book: BookData): Reader {
     $('coverHint').hidden = has || load<boolean>('seen', false);
   }
 
+  /* しおりからの再開は扉を経由しない（v1.13.11、実機報告「再開はいつも
+     章の扉ページから始まる」への対応）。扉は「新しい章へ入る」ための
+     儀式で、読みかけの場所へ戻る再開では止まらず、しおりの位置（文字
+     アンカー）のページへ直接着地する。耳モードはその文から再生できる
+     状態で入り、目モードはそのページを止まったまま開く（enterChapter の
+     既定動作：目モードでは playAudio が何もしない）。通常の章入場
+     （目次ジャンプ・ページめくりでの章移動）は従来どおり扉を経由する */
   function resumeFromBookmark(): void {
     const bm = loadBookmark();
     if (!bm || !chapters[bm.chapter]) return;
-    showGate(bm.chapter, { seek: bm.time || 0, anchor: bm.anchor != null ? bm.anchor : null });
+    save('seen', true); // 読み始めの記録（従来は showGate が担っていた）
+    // 着地の正は文字アンカー。時刻とアンカーが食い違うしおり（ページを
+    // めくった直後に表紙へ戻って保存されたもの等）でもアンカーのページへ
+    // 着くよう、シーク時刻はアンカーから引き直す（時刻をそのまま使うと
+    // seeked への追従がページを時刻側へ引き戻してしまう）
+    let seek = bm.time || 0;
+    if (bm.anchor != null) {
+      const t = timeAtCharPos(bm.chapter, bm.anchor);
+      if (t !== null) seek = t;
+    }
+    enterChapter(bm.chapter, { seek, anchor: bm.anchor != null ? bm.anchor : null });
   }
 
   /* ---------- 章背景のアニメーション ----------
@@ -1051,7 +1065,7 @@ export function createReader(book: BookData): Reader {
     else if (typeof opts.page === 'number') curPage = opts.page;
     else curPage = 0;
     renderPage(0);
-    refreshTocCurrent();
+    refreshTocMark();
   }
   /* 初回だけの小さな案内（v1.13.6〜）：初めて本文を開いたときに一度だけ
      めくり方の案内を出す（文面は v1.13.9 でタップ復活に合わせて
@@ -1163,7 +1177,7 @@ export function createReader(book: BookData): Reader {
   };
   /* 再生の図柄は「スピーカー＋波紋」（v1.13.1〜、ユーザー決定）：右向き三角（▶）は
      右綴じの本では綴じ方向と競合して進む／戻るの誤読を招くため、向きを持たない
-     音の記号にした。線画（家マークと同じ stroke 1.6 の作法）で描く。
+     音の記号にした。線画（歯車マークと同じ stroke 1.6 の作法）で描く。
      一時停止は従来どおり二本線（塗り）のまま */
   const SPEAKER_ATTRS = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
   const ICON_PLAY_PATHS =
@@ -1183,7 +1197,7 @@ export function createReader(book: BookData): Reader {
     }
   }
   /* 再生アイコンの出し分け：耳で読むでは3画面とも出す、目で読むでは3画面とも
-     出さない（家マーク＝メニューは両モード・3画面とも常時出す） */
+     出さない（歯車マーク＝設定は両モード・3画面とも常時出す） */
   function syncPlayChrome(): void {
     for (const id of PLAY_BTN_IDS) $(id).hidden = isEye();
     // 文送りは本文専用・耳で読むときだけ（v1.12.4）
@@ -1215,7 +1229,7 @@ export function createReader(book: BookData): Reader {
       // 位置指定できなくても続行する
     }
   }
-  /* 再生速度の選択肢（文字の並び）の選択状態を、aria-pressed と藍色で示す */
+  /* 速さの選択肢（文字の並び）の選択状態を、aria-pressed と藍色で示す */
   function syncSpeedChoices(): void {
     document.querySelectorAll<HTMLButtonElement>('#speedChoices .speed-choice').forEach((b) => {
       b.setAttribute('aria-pressed', String(Number(b.dataset.speedIdx) === speedIdx));
@@ -1471,9 +1485,33 @@ export function createReader(book: BookData): Reader {
     li.appendChild(btn);
     return li;
   }
-  function refreshTocCurrent(): void {
+  /* 目次に残す印は「しおりのある章」の小さなリボンアイコンだけ（v1.13.11）。
+     「今の章」の常時ハイライト帯は廃止した（意味が伝わらずバグに見えると
+     いう実機指摘と、目次を開く利用者は自分がいた章を分かっているという
+     判断）。印は再開位置を示すものなので、根拠は現在章ではなく保存済み
+     しおりの章にする */
+  function refreshTocMark(): void {
+    const bm = loadBookmark();
+    const marked = bm ? bm.chapter : -1;
     document.querySelectorAll<HTMLElement>('#tocList .toc-item').forEach((el) => {
-      el.classList.toggle('current', Number(el.dataset.idx) === current);
+      const on = Number(el.dataset.idx) === marked;
+      const mark = el.querySelector<HTMLElement>('.toc-mark');
+      if (on && !mark) {
+        const s = document.createElement('span');
+        s.className = 'toc-mark';
+        s.setAttribute('aria-hidden', 'true');
+        // しおりのリボン型アイコン（🔖と同形。本の世界観に合わせて藍で描く）
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 32');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M5 2h14v28l-7-5.5L5 30z');
+        path.setAttribute('fill', 'currentColor');
+        svg.appendChild(path);
+        s.appendChild(svg);
+        el.appendChild(s);
+      } else if (!on && mark) {
+        mark.remove();
+      }
     });
   }
   /* 列を実測して目次ページに分ける。本文の paginateChapter と同じく、隠し
@@ -1538,7 +1576,7 @@ export function createReader(book: BookData): Reader {
     pager.hidden = tocPages.length <= 1;
     // ノンブルは本文と同じ体裁（― N ―）・帯の中央に置く（v1.12.4）
     pager.textContent = tocPages.length > 1 ? '― ' + String(tocPage + 1) + ' / ' + String(tocPages.length) + ' ―' : '';
-    refreshTocCurrent();
+    refreshTocMark();
   }
   function tocPageIndexOf(chIdx: number): number {
     const p = tocPages.findIndex((g) => g.includes(chIdx));
@@ -1555,7 +1593,7 @@ export function createReader(book: BookData): Reader {
     // 後方連鎖（扉から前へ）で開いたら、本の並び順で扉の直前にある
     // 目次の最終ページに着地する（v1.12.4 で修正：以前は第一章のある
     // 1枚目に着地してしまい、扉の直前に戻れなかった）。
-    // それ以外（表紙・メニューから）は、今読んでいる章のあるページ
+    // それ以外（表紙・設定から）は、今読んでいる章のあるページ
     paginateToc();
     tocPage = from === 'gate' ? tocPages.length - 1 : tocPageIndexOf(current);
     renderTocPage();
@@ -1585,13 +1623,13 @@ export function createReader(book: BookData): Reader {
     };
     $('earModeBtn').addEventListener('click', () => enterFromCover('ear'));
     $('eyeModeBtn').addEventListener('click', () => enterFromCover('eye'));
-    /* メニュー（入口は本文・扉・目次の家マークと表紙の「設定」、中身は1つ。
+    /* 設定（入口は本文・扉・目次の歯車マークと表紙の「設定」、中身は1つ。
        目次・設定はこの中にある） */
     $('menuBtn').addEventListener('click', openMenu);
     $('gateMenuBtn').addEventListener('click', openMenu);
     $('tocMenuBtn').addEventListener('click', openMenu);
     $('coverSettingsBtn').addEventListener('click', openMenu);
-    $('endMenuBtn').addEventListener('click', openMenu); // 奥付の家マークも他画面と同じくメニューを開く
+    $('endMenuBtn').addEventListener('click', openMenu); // 奥付の歯車マークも他画面と同じく設定を開く
     /* 扉の再生アイコン：表示中の扉が決めた gatePlay（入章して朗読開始） */
     $('gatePlayBtn').addEventListener('click', () => {
       if (gatePlay) gatePlay();
@@ -1783,7 +1821,7 @@ export function createReader(book: BookData): Reader {
       o.surface.addEventListener('pointercancel', (e) => finish(e, true));
       return { swipedRecently: () => sharedClickEcho || Date.now() - sharedSwipedAt < 350 };
     }
-    /* 目次ページへの入口はメニューの「目次を開く」に一本化（表紙にも読書中にも共通） */
+    /* 目次ページへの入口は設定の「目次を開く」に一本化（表紙にも読書中にも共通） */
     $('tocFromMenuBtn').addEventListener('click', () => {
       closeMenu();
       openTocPage();
@@ -1835,7 +1873,7 @@ export function createReader(book: BookData): Reader {
     $('nextSentBtn').addEventListener('click', () => stepSentence(1));
     /* 章移動の入口は画面上のボタンではなく、ページめくり（章またぎ）と目次に一本化した。
        前章／次章は Media Session の previoustrack / nexttrack でも行える */
-    /* 再生速度の選択肢は SPEEDS から生成する（候補の正は logic.ts の SPEEDS。
+    /* 速さの選択肢は SPEEDS から生成する（候補の正は logic.ts の SPEEDS。
        楕円ピルの巡回式は廃止し、文字サイズと同じ文字の並びにした：v1.13.3） */
     const speedChoicesEl = $('speedChoices');
     SPEEDS.forEach((s, i) => {
@@ -1907,8 +1945,8 @@ export function createReader(book: BookData): Reader {
       if (isBgmOn()) startBgm();
     });
     /* 本文のページめくり（共通ジェスチャー）。役割は「進む／戻る」だけに統一し、
-       メニューや再生はページ下の帯のボタンからのみ操作する（本文タップで
-       メニューや操作 UI が出ることはない）。ボタンの上と奥付ページ表示中は
+       設定や再生はページ下の帯のボタンからのみ操作する（本文タップで
+       設定や操作 UI が出ることはない）。ボタンの上と奥付ページ表示中は
        めくりジェスチャの対象にしない */
     const bodySwipe = attachSwipeNav({
       surface: pageWrap,
@@ -1937,8 +1975,8 @@ export function createReader(book: BookData): Reader {
        報告「奥付まで行くとスワイプで戻れない」への対応）。奥付は本文の上に
        重なる独立レイヤーなので、共通ジェスチャーを奥付自身にも付ける。
        遷移先は turnPage の奥付中の規則どおり：前へ＝本文の最終ページ、
-       次へ＝表紙。帯の家マークはボタンのため、ジェスチャーの対象から
-       外れてメニューを開く（docs/DESIGN.md に記録） */
+       次へ＝表紙。帯の歯車マークはボタンのため、ジェスチャーの対象から
+       外れて設定を開く（docs/DESIGN.md に記録） */
     const endPageEl = $('endPage');
     const endSwipe = attachSwipeNav({
       surface: endPageEl,

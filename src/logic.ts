@@ -81,7 +81,7 @@ export function tapDirection(ratio: number, nextSide: 'left' | 'right'): 1 | -1 
   return 0;
 }
 
-/* ---- 再生速度 ---- */
+/* ---- 朗読の速さ ---- */
 
 export const SPEEDS = [0.8, 1.0, 1.25, 1.5, 2.0];
 export const DEFAULT_SPEED_INDEX = 1; // 1.0
@@ -334,7 +334,7 @@ export function decideNav(state: NavState, dir: 1 | -1): NavTarget {
         return { type: 'gate', chapter: 0 };
       }
       if (state.page > 0) return { type: 'toc-page', page: state.page - 1 };
-      // 先頭ページでの前へ＝開いた元へ戻る。読書中（メニュー）から開いた
+      // 先頭ページでの前へ＝開いた元へ戻る。読書中（設定）から開いた
       // 目次なら本文へ帰り、それ以外（表紙から／後方連鎖から）は表紙へ進む
       // （扉へは次方向の操作で戻れるので、後方だけで表紙まで辿り着ける
       // 連鎖は途切れない）

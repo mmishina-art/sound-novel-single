@@ -74,7 +74,7 @@ body {
   /* 画面を上下に引っ張れないよう固定する：body をビューポートに固定し、
      ドキュメントのスクロール自体をなくす。overscroll-behavior だけでは
      iPhone Safari/PWA が従わない（バウンスと引っ張って更新が残る）ため、
-     固定化が本体。スクロールが要る場所（メニューのパネル等）は内部要素の
+     固定化が本体。スクロールが要る場所（設定のパネル等）は内部要素の
      overflow で閉じ、画面そのものは決して動かさない */
   position: fixed;
   inset: 0;
@@ -166,21 +166,22 @@ button.link {
   color: var(--muted);
 }
 
-/* インストール方法のダイアログ */
+/* インストール方法のダイアログ。地・角丸・背景の暗さ・閉じ方（右上の×）は
+   設定パネル（.modal-panel）と揃える（v1.13.11、他のパネルの設計統一） */
 .install-dialog {
   width: min(448px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 16px;
-  background: var(--surface);
+  background: #fff;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: none;
+  border-radius: 14px;
 }
 
 .install-dialog::backdrop {
-  background: rgb(0 0 0 / 0.5);
+  background: rgba(10, 16, 32, .6);
 }
 
 .install-dialog h2 {
@@ -208,7 +209,7 @@ button.link {
   padding-left: 1.4em;
 }
 
-.install-dialog button {
+.install-dialog button.primary {
   display: block;
   width: 100%;
   margin: 8px 0 0;
@@ -381,7 +382,7 @@ body.dir-vertical .gate-text { writing-mode: vertical-rl; -webkit-writing-mode: 
 
 /* ============ Reader — 机の上に開いた右綴じの本 ============ */
 /* 操作は「出す／隠す」をやめ、ページの備品として常時置く。本文タップはページ
-   めくり専用（進む／戻るの2択）で、メニューや再生はボタンからしか触れない。
+   めくり専用（進む／戻るの2択）で、設定や再生はボタンからしか触れない。
    上の帯（柱）に章題だけ、下の帯にノンブルと両端のボタンを置く。
    常時見えるのは他に、下端の進み具合ラインだけ。本文ページは画面いっぱいに取る */
 .view-reader { position: relative; height: 100dvh; background: radial-gradient(ellipse at 50% 20%, var(--desk2), var(--desk) 78%); display: flex; flex-direction: column; }
@@ -591,7 +592,7 @@ body.bound-left .page.turn-prev { animation: turnFromLeft .18s ease-out; }
 @keyframes turnFromLeft { from { transform: translateX(-16px); opacity: .35; } }
 @keyframes turnFromRight { from { transform: translateX(16px); opacity: .35; } }
 /* ページ下の帯：中央にノンブル、両端に操作ボタン（再生／停止＝小口側、
-   メニュー＝綴じ側。右綴じの場合）。帯自体はタップを受けず、ボタンだけが受ける */
+   設定＝綴じ側。右綴じの場合）。帯自体はタップを受けず、ボタンだけが受ける */
 .page-footer { position: absolute; left: 0; right: 0; bottom: var(--band-lift); height: var(--folio-band, 44px); z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; pointer-events: none; }
 /* ノンブルは帯の中央（絶対配置）。左の文送りグループと右の家マークで
    幅が違っても、紙の中央からずれない（扉・目次の帯と同じ考え方） */
@@ -602,10 +603,10 @@ body.bound-left .page.turn-prev { animation: turnFromLeft .18s ease-out; }
    グループの中の並びも鏡写しにする（小口側＝「次の文」が外） */
 .page-footer .sent-group { display: flex; align-items: center; gap: 2px; }
 body.bound-left .page-footer .sent-group { flex-direction: row-reverse; }
-/* 左綴じでは並びを鏡写しにする（再生＝小口側、メニュー＝綴じ側を保つ） */
+/* 左綴じでは並びを鏡写しにする（再生＝小口側、設定＝綴じ側を保つ） */
 body.bound-left .page-footer { flex-direction: row-reverse; }
 .folio { font-size: .78rem; letter-spacing: .32em; color: #9a8a64; }
-/* 下の帯のボタン（再生／メニュー）は、紙になじむアイコンだけにする
+/* 下の帯のボタン（再生／設定）は、紙になじむアイコンだけにする
    （2026-10-29 実機指摘：紺の大きなピルが主張しすぎる）。文字ラベルは置かず、
    地の生成りに近い薄いトーンで「一見は背景かと思うぐらい」に落とす。押せると
    分かる手がかりは、うっすらした輪郭（縁取り）と僅かな陰影だけに留める。
@@ -694,15 +695,19 @@ body.hl-off .unit.now { background: none; color: inherit; }
   position: relative; flex: 1; min-width: 0; overflow: hidden;
   background: linear-gradient(160deg, #fffdf6, var(--paper) 55%, #f7f0da);
   writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl;
-  padding: 7px 30px 34px;
-  /* 目次レイアウト A案（v1.12.4）＋上端の基準（v1.13.10）：各項目を1本の柱
-     として扱い、全項目の上端を完全に揃える。上端の位置は目次独自に決めず、
-     本文ページの組版に一致させる：シートの上余白 7px は本文の柱（.page-head
-     の top: 7px）と同じで、「目次」の見出しはそこから始める。項目の文字は
-     本文の始まる高さ（.page-content の上余白 46px）から始める：
-     --toc-top（項目の柱の padding-top 29px）＋項目自身の上余白 10px ＋
-     シートの上余白 7px ＝ 46px。旧仕様（柱の頭を版面の約1/3＝27dvh に置く）
-     では見出しと並びがページ中央に浮いて見えたため改めた */
+  /* シートの上余白は扉の題字ブロックの上端と一致させる（下のコメント参照） */
+  padding: calc((100dvh - var(--frame-mt) - var(--frame-mb)) * .11 + .15em) 30px 34px;
+  /* 目次レイアウト A案（v1.12.4）＋上端の基準（v1.13.11 で改定）：各項目を
+     1本の柱として扱い、全項目の上端を完全に揃える。上端の位置の基準は
+     本文ではなく「扉」：扉の題字ブロック（.gate-text）はシート上端から
+     11% の位置にあり、章番号（.gate-num）の文字はその内側の
+     padding-top .15em から始まる。目次シートの上余白を同じ値にすることで、
+     「目次」の「目」の開始位置が扉の「第一章」の「第」と揃う（シートの高さは
+     100dvh − 枠の上下余白で、扉・目次で共通）。v1.13.10 で本文の柱（7px）に
+     合わせたところ実機で「高すぎる」と指摘があり、合わせ先は扉だったと
+     確認して改めた。項目の文字は、見出しの開始位置から 39px 下
+     （--toc-top 29px ＋項目自身の上余白 10px）で、見出しとの相対配置は
+     従来どおりに保つ */
   --toc-top: 29px;
   /* 項目の統一高さ（A案）：一番長い第七章の題が自然に占める高さ（実測
      230.6px @412×915）に合わせ、全項目の印の領域を同じ背丈にする */
@@ -722,8 +727,9 @@ body.bound-left .toc-sheet {
   border-radius: 2px 6px 6px 2px;
   box-shadow: 0 16px 40px rgba(0,0,0,.55), 3px 3px 0 -1px #e7dec6, 6px 6px 0 -2px #d9cfb0;
 }
-/* 見出しの柱はシートの上端（＝本文の柱と同じ 7px）から始める（v1.13.10。
-   項目の並びとは頭の位置が違う：見出し＝柱の高さ、項目＝本文の開始位置） */
+/* 見出しの柱はシートの content 上端（＝扉の題字ブロックの上端）から
+   始める（v1.13.11。項目の並びとは頭の位置が違う：見出し＝扉の題字の
+   高さ、項目＝見出しから 39px 下） */
 .toc-heading { font-size: 1.45rem; letter-spacing: .35em; font-weight: 600; color: #1b2a4a; margin: 0; height: 100%; box-sizing: border-box; padding-top: 0; display: flex; flex-direction: row; justify-content: flex-start; }
 /* 見出しとの間はブロック方向（横）の余白で取る。列どうしの間隔も同じ軸で広めに空ける */
 .toc-list { list-style: none; margin: 0; padding: 0; margin-block-start: 2.8em; }
@@ -732,16 +738,27 @@ body.bound-left .toc-sheet {
 /* 各列は紙の高さいっぱいに伸ばすが、項目は中央ではなく上端に揃える（A案）。
    縦書きでは flex の主軸（row）がインライン方向＝上下になるので、
    justify-content: flex-start ＋ padding-top で全項目の頭が同じ高さに来る。
-   padding-top の値（--toc-top）は、項目の文字の頭が本文の開始位置（46px）に
-   揃うよう決めてある（.toc-sheet のコメント参照） */
+   padding-top の値（--toc-top）は、項目の文字の頭が見出しの開始位置から
+   39px 下に来るよう決めてある（.toc-sheet のコメント参照） */
 .toc-list li { display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start; box-sizing: border-box; padding-top: var(--toc-top); }
 .toc-list li + li { margin-block-start: 2em; }
-/* 項目の背丈は全項目で統一する（A案）：現在地の印（背景色）の領域が、題の
-   長さに依らず同じ高さになる。一番長い題が収まる高さに合わせる */
-.toc-item { text-align: start; background: none; border: none; border-radius: 8px; padding: 10px 9px; cursor: pointer; color: #2e2a24; font: inherit; height: var(--toc-item-h, auto); box-sizing: border-box; }
+/* 項目の背丈は全項目で統一する（A案）：しおり印の付く位置が、題の長さに
+   依らず同じ高さになる。一番長い題が収まる高さに合わせる */
+.toc-item { position: relative; text-align: start; background: none; border: none; border-radius: 8px; padding: 10px 9px; cursor: pointer; color: #2e2a24; font: inherit; height: var(--toc-item-h, auto); box-sizing: border-box; }
 .toc-item .toc-num { color: #8a6d2f; font-size: .85rem; letter-spacing: .15em; }
 .toc-item .toc-title { font-size: 1.08rem; margin-inline-start: .55em; }
-.toc-item.current { background: rgba(160, 128, 60, .12); }
+/* 「今の章」の常時ハイライト帯は v1.13.11 で廃止（意味が伝わらず、バグに
+   見えるという実機指摘。目次を開く利用者は自分がいた章を分かっている）。
+   残す印は「しおりのある章」の印だけ：小さなリボン型アイコン（藍）を、
+   柱の頭の上に小さく覗かせる。柱の中や足元は最長の題と重なるため、
+   li の上の余白（--toc-top の帯）に出す。独自の札や説明文は付けない。
+   押した瞬間の手応えとして、押下中だけ薄く光らせる */
+.toc-item:active { background: rgba(160, 128, 60, .12); }
+.toc-mark { position: absolute; top: -19px; left: 50%; transform: translateX(-50%); width: 12px; height: 16px; color: #1e2d52; opacity: .88; pointer-events: none; }
+.toc-mark svg { display: block; width: 100%; height: 100%; }
+/* 目次の下部の一文（ジャンプできることの手がかり。v1.13.11）：帯（ノンブル
+   の行）の邪魔にならないよう、帯のすぐ上に小さく薄く置く */
+.toc-hint { position: absolute; left: 0; right: 0; bottom: calc(var(--band-lift) + var(--folio-band, 44px) + 6px); z-index: 2; margin: 0; text-align: center; writing-mode: horizontal-tb; font-size: .72rem; letter-spacing: .1em; color: rgba(122, 106, 74, .55); pointer-events: none; }
 /* 目次のノンブルは帯の中央に置く（本文の .page-footer と同じ考え方・同じ
    .folio の体裁。帯は .sheet-footer 側に持つ） */
 .sheet-footer .folio { position: absolute; left: 0; right: 0; top: 0; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
@@ -755,22 +772,33 @@ body.bound-left .toc-sheet {
 /* ============ 奥付ページ（「おわり」の次の1ページ。紙の体裁は本文とそろえる） ============ */
 
 
-/* メニュー内の設定グループ見出し（音／表示） */
+/* 設定内の分類見出し（音／表示／朗読） */
 .setting-group { font-size: .75rem; letter-spacing: .25em; color: #8a7c5f; margin: 12px 2px 2px; font-weight: 600; }
 
-/* メニューモーダル：機能の入口をここに集約する */
+/* 設定モーダル：機能の入口をここに集約する */
 .menu-panel .menu-section { margin-top: 13px; }
 /* スクロールの示唆（v1.12.2）：パネル下端を穏やかにフェードさせ、「下に続く」
    ことが分かるようにする（最下部の見出しだけが切れて見える状態を避ける）。
    あわせて末尾に余白を持たせ、最後の行まで読み切れるようにする */
 .menu-panel { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); padding-bottom: 26px; }
-/* メニューの見出し（v1.12.2 で整理）：項目行と強さを分け、本の配色（金の茶系）の
-   小さなラベル＋細い罫線で区切る */
-.menu-panel .menu-section h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: .78rem; font-weight: 600; color: #8a6d2f; letter-spacing: .22em; }
+/* 設定の分類見出し（v1.12.2 で整理し、v1.13.11 で段差を強めた）：項目行に
+   埋もれて見えないよう、上の余白を項目間より広く取り、生成りの薄い帯＋
+   藍の小さな印（菱形）＋濃いめの金茶の字で「構造」として読めるようにする */
+.menu-panel .menu-section h4 { display: flex; align-items: center; gap: 9px; margin: 22px 0 4px; padding: 5px 10px; font-size: .8rem; font-weight: 700; color: #7a5f27; letter-spacing: .24em; background: rgba(247, 242, 231, .9); border-radius: 6px; }
+.menu-panel .menu-section h4:first-of-type { margin-top: 8px; }
+.menu-panel .menu-section h4::before { content: ''; flex: none; width: 7px; height: 7px; background: var(--indigo2); transform: rotate(45deg); }
 .menu-panel .menu-section h4::after { content: ''; flex: 1; border-top: 1px solid rgba(138, 109, 47, .35); }
-/* 移動の行（目次を開く／表紙に戻る）は、他の行と同じ体裁に揃える：
-   ラベル＋右端に進む印。大きなピルボタンにはしない */
-/* メニューを閉じる：楕円ピルはやめ、線画の×だけにする（v1.13.2、形の統一）。
+/* 移動のボタン（表紙へ／目次へ）はパネル上部に枠つきボタンで並べる
+   （v1.13.11、設定画面の整理）。表紙から開いたときは「表紙へ」を隠し、
+   「目次へ」が幅いっぱいになる */
+.menu-nav-btns { display: flex; gap: 10px; margin-top: 12px; }
+.menu-nav-btn { flex: 1 1 0; min-height: 44px; padding: 6px 10px; border: 1px solid rgba(146, 128, 84, .45); border-radius: 12px; background: rgba(247, 242, 231, .55); color: var(--text); font: inherit; font-size: .95rem; cursor: pointer; }
+.menu-nav-btn:active { background: rgba(163, 130, 62, .10); }
+.menu-nav-btn[hidden] { display: none; }
+/* インストール案内はパネル末尾の静かな行として残す（v1.13.11） */
+.menu-foot { margin-top: 12px; }
+.menu-foot .menu-nav-row { border-bottom: none; border-top: 1px solid rgba(101, 84, 52, .14); }
+/* 設定を閉じる：楕円ピルはやめ、線画の×だけにする（v1.13.2、形の統一）。
    トーンは帯のアイコン（.page-icon-btn）に合わせ、タップ領域は 44px を確保する */
 .menu-close-btn { width: 44px; height: 44px; min-width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; cursor: pointer; background: transparent; border: 1px solid rgba(146, 128, 84, .30); color: rgba(146, 124, 78, .62); box-shadow: 0 1px 2px rgba(90, 74, 40, .10), inset 0 0 0 1px rgba(255, 255, 255, .25); }
 .menu-close-btn svg { width: 19px; height: 19px; }
@@ -780,7 +808,7 @@ body.bound-left .toc-sheet {
 .font-choice { font: inherit; font-size: .95rem; background: none; border: none; cursor: pointer; color: #9a8a64; min-height: 44px; padding: 0 10px; }
 .font-choice[aria-pressed="true"] { color: var(--indigo2); font-weight: 600; }
 .font-sep { color: rgba(101, 84, 52, .4); }
-/* 再生速度：楕円ピル（押すたび巡回）はやめ、文字サイズと同じ「文字の選択肢の
+/* 速さ：楕円ピル（押すたび巡回）はやめ、文字サイズと同じ「文字の選択肢の
    並び」にした（v1.13.3）。候補が5つある分、字と余白を一段詰める */
 .speed-choices { display: flex; align-items: center; }
 .speed-choice { font: inherit; font-size: .9rem; background: none; border: none; cursor: pointer; color: #9a8a64; min-height: 44px; padding: 0 5px; white-space: nowrap; }
@@ -798,10 +826,13 @@ body.bound-left .toc-sheet {
 /* 項目行は薄い区切り線で揃え、行間を詰める（間延びさせない） */
 .menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 3px 2px; font-size: .95rem; border-bottom: 1px solid rgba(101, 84, 52, .14); }
 .menu-row.toggle-label { font-size: .95rem; }
-/* チェックは iOS 標準の青に頼らず、本の配色で描く（v1.12.2）：オン＝藍で
-   塗って生成りの印、オフ＝輪郭だけ。色の意味は全行で一貫させる */
-.menu-row input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 22px; height: 22px; margin: 0; border-radius: 6px; border: 1.5px solid rgba(106, 92, 51, .55); background: transparent; cursor: pointer; }
-.menu-row input[type="checkbox"]:checked { background-color: var(--indigo2); border-color: var(--indigo2); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 13.5 10 18 19 7' fill='none' stroke='%23f3ecd9' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-size: 15px; background-position: center; background-repeat: no-repeat; }
+/* オン／オフは細いスイッチで示す（v1.13.11、設定画面の整理。旧・四角い
+   チェックは廃止）：オン＝藍の帯に白い丸が右、オフ＝生成りの帯に白い丸が左。
+   色の意味は全行で一貫させる */
+.menu-row input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 42px; height: 24px; margin: 0; border: none; border-radius: 999px; background: #ddd3b8; cursor: pointer; transition: background-color .18s ease; }
+.menu-row input[type="checkbox"]::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fffdf6; box-shadow: 0 1px 2px rgba(90, 74, 40, .35); transition: transform .18s ease; }
+.menu-row input[type="checkbox"]:checked { background: var(--indigo2); }
+.menu-row input[type="checkbox"]:checked::after { transform: translateX(18px); }
 .menu-row input[type="checkbox"]:focus-visible { outline: 2px solid rgba(138, 109, 47, .6); outline-offset: 2px; }
 .menu-panel .link { margin: 10px 0 0; color: var(--navy); }
 
@@ -811,7 +842,7 @@ body.bound-left .toc-sheet {
 .cover-settings-link { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(4px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; justify-content: flex-end; gap: .35em; min-width: 44px; min-height: 36px; padding: 4px 0; background: transparent; border: none; color: var(--desk-text); font-size: .78rem; letter-spacing: .12em; opacity: .68; cursor: pointer; }
 .cover-settings-link span { font-size: .92rem; line-height: 1; }
 /* 表紙の「しおりから再開」：しおりがあるときだけ出す。表紙の静けさを壊さないよう、
-   入口（メニュー）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
+   入口（設定）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
 /* （「しおりから再開」ボタンは v1.12.2 で廃止し、モードの2ボタンに一本化した） */
 /* 読書モードの入口（v1.12.0）：本の装丁に合わせ、藍の地に淡い金の罫で2枚の
    小さなプレートを並べる。主表記「耳で読む／目で読む」の下に、違いを一言添える */

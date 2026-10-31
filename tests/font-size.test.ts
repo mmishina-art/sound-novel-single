@@ -10,7 +10,7 @@ const css = readFileSync(resolve(root, 'src/style.css'), 'utf8');
 const reader = readFileSync(resolve(root, 'src/reader.ts'), 'utf8');
 
 describe('文字サイズ（標準／大）', () => {
-  it('メニューの表示グループに文字サイズの項目がある', () => {
+  it('設定の表示グループに文字サイズの項目がある', () => {
     // 形は「標準／大」の文字の選択肢（v1.13.2 で楕円ピルから変更）。
     // 選択中は aria-pressed と藍色で示す
     expect(html).toMatch(/id="fontStdBtn"/);
