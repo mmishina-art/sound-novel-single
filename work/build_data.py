@@ -124,6 +124,9 @@ data = {
     'author': '桜井 みゅう',
     # 本ごとの方向設定：'vertical'＝縦書き・右綴じ（既定）／'horizontal'＝横書き・左綴じ（アプリ側は将来対応）
     'direction': 'vertical',
+    # 本ごとの基調色（テーマカラー）：表紙ページの机の地と読書灯の光の色味の元になる色。
+    # 表紙の絵と対になる色を1色だけ指定し、濃淡はアプリ側（CSS）がこの色から作る（v1.13.15〜）
+    'themeColor': '#1e2d52',
     'totalChars': total,
     'chapters': chapters,
 }

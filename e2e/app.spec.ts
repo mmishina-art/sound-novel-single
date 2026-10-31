@@ -37,7 +37,7 @@ async function openMenuInReader(page: import('@playwright/test').Page): Promise<
   await expect(page.locator('#menuModal')).toBeVisible();
 }
 
-/** 表紙から設定パネル（入口は最下部右端の「⚙ 設定」リンク）を開く */
+/** 表紙から設定パネル（入口はフッター右端の「⚙ 設定」）を開く */
 async function openMenuOnCover(page: import('@playwright/test').Page): Promise<void> {
   await page.locator('#coverSettingsBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
@@ -170,14 +170,14 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
-  await expect(page.locator('#coverSettingsBtn')).toBeVisible(); // 設定の入口は最下部のリンク1つ
+  await expect(page.locator('#coverSettingsBtn')).toBeVisible(); // 設定の入口はフッターの1つだけ
   await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンは廃止（モードボタンに一本化）
   await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // 補足文は固定（v1.13.3）
   await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
-  await expect(page.locator('#coverResume')).toBeHidden(); // しおりがなければ再開の小行は出ない
+  await expect(page.locator('#coverResume')).toBeHidden(); // しおりがなければ再開カードは出ない
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // 旧しおり案内行の要素は置かない（廃止のまま）
   await expect(page.locator('#coverTocBtn')).toHaveCount(0); // 表紙に目次ボタンは置かない（設定に一本化）
-  // 読み始めて表紙に戻ると、ヒントは消え、ボタン上の小行に「つづきから」が出る（補足文は固定のまま）
+  // 読み始めて表紙に戻ると、ヒントは消え、モードカードの上の再開カードに「つづきから」が出る（補足文は固定のまま）
   await enterViaToc(page, '#earModeBtn');
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await backToCover(page);
@@ -188,24 +188,46 @@ test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だ�
   await expect(page.locator('#coverResume')).toContainText('つづきから');
 });
 
-test('表紙の下部は B3 案：設定は最下部右端の小リンク、再開情報は小さく1回だけ出す', async ({ page }) => {
+test('表紙ページは共通テンプレート：フッターは本の幅に揃え、再開は紙カードで出す', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  // 旧「設定」楕円ボタンは置かず、最下部の右端にだけ「⚙ 設定」を置く
+  // 旧「設定」楕円ボタンは置かず、フッターの右端にだけ「⚙ 設定」を置く
   await expect(page.locator('#coverMenuBtn')).toHaveCount(0);
   const settings = page.locator('#coverSettingsBtn');
   await expect(settings).toBeVisible();
   await expect(settings).toHaveText(/⚙\s*設定/);
-  await expect(page.locator('#coverResume')).toBeHidden(); // しおりが無ければ情報文は出ない
-  const settingsBox = await settings.boundingBox();
-  const versionBox = await page.locator('#version-line').boundingBox();
-  const viewport = page.viewportSize();
-  if (!settingsBox || !versionBox || !viewport) throw new Error('bounding box / viewport not found');
-  expect(Math.abs(settingsBox.x + settingsBox.width - viewport.width)).toBeLessThanOrEqual(20); // 右端
-  const settingsCy = settingsBox.y + settingsBox.height / 2;
-  const versionCy = versionBox.y + versionBox.height / 2;
-  expect(Math.abs(settingsCy - versionCy)).toBeLessThanOrEqual(7); // バージョンと同じ最下部の行
-  expect(Math.abs(versionBox.x + versionBox.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(3); // 版数は中央のまま
+  await expect(page.locator('#coverResume')).toBeHidden(); // しおりが無ければ再開カードは出ない
+  // フッターは本の幅に両端を揃えた細い罫線1本＋左にバージョン、右に設定（同じベースライン）
+  const geo = await page.evaluate(() => {
+    const rect = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
+    const textRect = (sel: string) => {
+      const range = document.createRange();
+      range.selectNodeContents(document.querySelector(sel)!);
+      return range.getBoundingClientRect();
+    };
+    const book = rect('.book-cover');
+    const foot = rect('.cover-foot');
+    const version = rect('#version-line');
+    const settingsR = rect('#coverSettingsBtn');
+    const versionText = textRect('#version-line');
+    const settingsText = textRect('#coverSettingsBtn');
+    return {
+      book: { left: book.left, right: book.right },
+      foot: { left: foot.left, right: foot.right },
+      version: { left: version.left },
+      settings: { right: settingsR.right },
+      versionText: { top: versionText.top, bottom: versionText.bottom },
+      settingsText: { top: settingsText.top, bottom: settingsText.bottom },
+      borderTop: parseFloat(getComputedStyle(document.querySelector('.cover-foot')!).borderTopWidth),
+    };
+  });
+  expect(Math.abs(geo.foot.left - geo.book.left)).toBeLessThanOrEqual(2); // 罫線の左端＝本の左端
+  expect(Math.abs(geo.foot.right - geo.book.right)).toBeLessThanOrEqual(2); // 罫線の右端＝本の右端
+  expect(geo.borderTop).toBe(1); // 細い罫線1本
+  expect(Math.abs(geo.version.left - geo.book.left)).toBeLessThanOrEqual(2); // バージョンは左端
+  expect(Math.abs(geo.settings.right - geo.book.right)).toBeLessThanOrEqual(2); // 設定は右端
+  expect(Math.abs(geo.settingsText.top - geo.versionText.top)).toBeLessThanOrEqual(3); // 文字の上端が揃う
+  expect(Math.abs(geo.settingsText.bottom - geo.versionText.bottom)).toBeLessThanOrEqual(3); // 同じベースラインの行
   // 開く先は同じパネルだが、表紙から開いたときの呼び名は入口に合わせて「設定」
   await settings.click();
   await expect(page.locator('#menuModal')).toBeVisible();
@@ -221,7 +243,7 @@ test('表紙の下部は B3 案：設定は最下部右端の小リンク、再�
   await page.locator('#menuCloseBtn').click();
   await backToCover(page);
 
-  // しおりがあるときは「第N章のつづきから」を、ボタンより小さい情報文で1回だけ出す
+  // しおりがあるときは、モードカードの上に紙カードで「つづきから／第七章」を1枚だけ出す（B案）
   await page.evaluate((id) => {
     localStorage.setItem(
       `${id}-bookmark`,
@@ -230,14 +252,24 @@ test('表紙の下部は B3 案：設定は最下部右端の小リンク、再�
   }, APP_ID);
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverResume')).toHaveText('第七章のつづきから');
-  const resumeStyle = await page.evaluate(() => {
-    const resume = getComputedStyle(document.getElementById('coverResume')!);
-    const mode = getComputedStyle(document.getElementById('earModeBtn')!);
-    return { resumeSize: parseFloat(resume.fontSize), modeSize: parseFloat(mode.fontSize), opacity: parseFloat(resume.opacity) };
+  const resume = page.locator('#coverResume');
+  await expect(resume).toBeVisible();
+  await expect(resume).toContainText('つづきから');
+  await expect(page.locator('#coverResumeChapter')).toHaveText('第七章');
+  const card = await page.evaluate(() => {
+    const r = document.getElementById('coverResume')!.getBoundingClientRect();
+    const modes = document.querySelector('.cover-modes')!.getBoundingClientRect();
+    const book = document.querySelector('.book-cover')!.getBoundingClientRect();
+    return {
+      bg: getComputedStyle(document.getElementById('coverResume')!).backgroundColor,
+      width: r.width, top: r.top, bottom: r.bottom,
+      modesWidth: modes.width, modesTop: modes.top, bookBottom: book.bottom,
+    };
   });
-  expect(resumeStyle.resumeSize).toBeLessThan(resumeStyle.modeSize);
-  expect(resumeStyle.opacity).toBeLessThan(0.75);
+  expect(card.bg).toBe('rgb(248, 242, 226)'); // 紙カードの地（オフホワイト #f8f2e2）
+  expect(Math.abs(card.width - card.modesWidth)).toBeLessThanOrEqual(2); // モードカードの並びと同幅
+  expect(card.bottom).toBeLessThanOrEqual(card.modesTop); // モードカードの上に置く
+  expect(card.top).toBeGreaterThanOrEqual(card.bookBottom); // 表紙絵（特に著者名）には重ねない
 });
 
 test('表紙タップでは開かず、「耳で読む」からは目次→章扉と進んで本文へ入る', async ({ page }) => {
@@ -617,8 +649,9 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開もモードボタンから（ボタン上の情報文が「第一章のつづきから」を示す。補足文は固定。設定には入れない）
-  await expect(page.locator('#coverResume')).toHaveText('第一章のつづきから');
+  // 再開もモードボタンから（モードカードの上の再開カードが「つづきから／第一章」を示す。補足文は固定。設定には入れない）
+  await expect(page.locator('#coverResume')).toContainText('つづきから');
+  await expect(page.locator('#coverResumeChapter')).toHaveText('第一章');
   await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
   await page.locator('#earModeBtn').click();
   // 再開は扉を経由せず、しおりのページ（2ページ目）へ直接着地する（v1.13.11）
@@ -1880,7 +1913,7 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverResume')).toContainText('つづきから'); // しおりが残っている（ボタン上の小行が再開を示す）
+  await expect(page.locator('#coverResume')).toContainText('つづきから'); // しおりが残っている（再開カードが再開を示す）
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
@@ -1889,13 +1922,12 @@ test('デバッグモード: 表紙のバージョン表記を 5 回タップで
   await page.goto('/');
   const panel = page.locator('#debug-panel');
   await expect(panel).toBeHidden();
-  // バージョン表記は表紙画面の下部中央にある（設定は開かない）
+  // バージョン表記は表紙フッターの左端にある（本の左端に揃う。設定は開かない）
   await expect(page.locator('#version-line')).toBeVisible();
   const verBox = await page.locator('#version-line').boundingBox();
-  const viewport = page.viewportSize();
-  if (!verBox || !viewport) throw new Error('bounding box / viewport not found');
-  const verCx = verBox.x + verBox.width / 2;
-  expect(Math.abs(verCx - viewport.width / 2)).toBeLessThanOrEqual(3); // 画面中央
+  const bookBox = await page.locator('.book-cover').boundingBox();
+  if (!verBox || !bookBox) throw new Error('bounding box not found');
+  expect(Math.abs(verBox.x - bookBox.x)).toBeLessThanOrEqual(2); // フッター左端＝本の左端
   for (let i = 0; i < 5; i++) await page.locator('#version-line').click();
   await expect(panel).toBeVisible();
   await page.getByRole('button', { name: '最終章の扉へ飛ぶ' }).click();

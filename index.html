@@ -40,21 +40,27 @@
            v1.12.2 で仕様変更）。モードは本を開いている間だけの選択で、設定には
            保存しない。しおりがあるときは、どちらの入口からでも続きから再開する
            （v1.12.2 で入り口をこの2ボタンに一本化し、「しおりから再開」ボタンは
-           廃止）。補足文（small）は「朗読つき／朗読なし」固定。再開の情報は
-           ボタン上の小さな情報文 #coverResume に「第N章のつづきから」と
-           1回だけ示す（v1.13.10 で B3 案に合わせて独立行を置き換えた） -->
-      <p id="coverResume" class="cover-resume" hidden></p>
+           廃止）。補足文（small）は「朗読つき／朗読なし」固定。
+           v1.13.15 で表紙ページを共通テンプレートの体裁に作り替えた：ボタンは
+           アプリUI風の枠ではなく、本の下に置かれた「紙のカード」の様式にし、
+           再開の情報は同じ様式の幅広カード #coverResume（B案）に
+           「つづきから／第N章」と1枚だけ示す（カード自体は操作要素ではない。
+           v1.13.10〜v1.13.14 のボタン上の小さな情報文は廃止） -->
+      <p id="coverResume" class="cover-resume paper-card" hidden><span class="resume-lead">つづきから</span><span class="resume-chapter" id="coverResumeChapter"></span></p>
       <div class="cover-modes">
-        <button id="earModeBtn" type="button" class="cover-mode">耳で読む<small id="earModeSub">朗読つき</small></button>
-        <button id="eyeModeBtn" type="button" class="cover-mode">目で読む<small id="eyeModeSub">朗読なし</small></button>
+        <button id="earModeBtn" type="button" class="cover-mode paper-card">耳で読む<small id="earModeSub">朗読つき</small></button>
+        <button id="eyeModeBtn" type="button" class="cover-mode paper-card">目で読む<small id="eyeModeSub">朗読なし</small></button>
       </div>
 
-      <!-- 設定は最下部の行の右端に小さな文字リンクとして置く。開く先は
-           他画面の歯車マークから開くものと同じパネルで、表紙では「設定」と呼ぶ。
+      <!-- フッター（v1.13.15〜）：本の幅に両端を揃えた細い罫線1本の下に、
+           左＝バージョン、右＝設定（歯車＋文字）を同じベースラインで静かに置く。
+           設定の開く先は他画面の歯車マークから開くものと同じパネルで、
            目次ページへの入口はパネル内の「目次を開く」に一本化する -->
-      <button id="coverSettingsBtn" type="button" class="cover-settings-link"><span aria-hidden="true">⚙</span> 設定</button>
-      <!-- バージョン表記は同じ最下部の行の中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
-      <p id="version-line" class="cover-version">v<span id="version"></span></p>
+      <footer class="cover-foot">
+        <!-- バージョン表記（デバッグモードの入口も兼ねる：続けて5回タップ） -->
+        <p id="version-line" class="cover-version">v<span id="version"></span></p>
+        <button id="coverSettingsBtn" type="button" class="cover-settings-link"><span aria-hidden="true">⚙</span> 設定</button>
+      </footer>
     </section>
 
     <!-- ============ GATE / CHAPTER TITLE VIEW （中扉） ============ -->

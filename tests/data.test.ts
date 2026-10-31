@@ -14,6 +14,10 @@ describe('本のデータ', () => {
     expect(book.direction).toBe('vertical');
   });
 
+  it('基調色（テーマカラー）が #rrggbb で入っている（表紙ページの地の材料）', () => {
+    expect(book.themeColor).toBe('#1e2d52');
+  });
+
   it('全7章あり、各章に必須項目とルビ・読み上げ文がある', () => {
     expect(book.chapters).toHaveLength(7);
     for (const ch of book.chapters) {

@@ -42,6 +42,18 @@
   --indigo: #0a1220;
   --indigo2: #1e2d52;
   --desk-text: #c9bda0;
+  /* 表紙ページ（共通テンプレート、v1.13.15〜）の材料。
+     --theme は本ごとの基調色で、data.json の themeColor から reader.ts が
+     差し替える（この既定値は適用第一号『空の郵便が届くまで』の藍 #1e2d52。
+     未指定の本はこの色になる）。机の濃淡と読書灯の光は、この1色から
+     .view-cover が color-mix で作る（本ごとに色を直書きしない） */
+  --theme: #1e2d52;
+  /* 紙カード（モード入口・再開カード）の色：温かみのあるオフホワイト、
+     二重罫の線、墨。本が替わっても変えない共通部品の色 */
+  --card-paper: #f8f2e2;
+  --card-line: #b3a284;
+  --card-ink: #2c2620;
+  --card-ink-sub: #6a5f4c;
   --serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "YuMincho", "Noto Serif JP", "MS PMincho", serif;
 }
 
@@ -260,32 +272,46 @@ button.link {
 .btn-play { min-width: 9em; font-size: 1.05rem; padding: .7em 1.4em; border-radius: 999px; }
 
 /* ============ Cover — a right-bound book lying on a desk ============ */
-.view-cover { position: relative; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: max(20px, var(--safe-top)) max(16px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(16px, env(safe-area-inset-left)); background: radial-gradient(ellipse at 50% 30%, var(--indigo2), var(--indigo) 75%); }
-/* バージョン表記は表紙画面の下部中央に小さく（デバッグモードの入口を兼ねるので、タップは受ける） */
-.cover-version { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); margin: 0; font-size: .72rem; letter-spacing: .08em; color: var(--desk-text); opacity: .55; cursor: pointer; }
+/* 表紙ページの地（v1.13.15 で共通テンプレート化）：本ごとの基調色 --theme を
+   基に、上部から読書灯のような柔らかい放射グラデーション（光の色味は基調色に
+   寄せて控えめに）＋四隅を落とすビネットで「机の上に本が置かれている」場にする。
+   濃淡はすべて color-mix で --theme の1色から作るので、表紙の絵と基調色を
+   差し替えるだけで他作品でもそのまま使える。
+   --book-w が本の幅の唯一の決め手で、フッターの罫線と両端を揃える。
+   --card-w は本の下に置く紙カードの幅（モック実測で本の幅の約84%） */
+.view-cover { --book-w: min(88vw, 420px, calc(67.55dvh - 174px)); --card-w: calc(var(--book-w) * .84); position: relative; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: max(20px, var(--safe-top)) max(16px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(16px, env(safe-area-inset-left)); background-color: var(--indigo); background-image: radial-gradient(ellipse 120% 58% at 50% -4%, color-mix(in srgb, var(--theme) 40%, #ffedb8 60%), transparent 62%), radial-gradient(ellipse 150% 110% at 50% 42%, color-mix(in srgb, var(--theme) 68%, #000 32%) 0%, color-mix(in srgb, var(--theme) 30%, #000 70%) 80%), radial-gradient(ellipse 125% 100% at 50% 46%, transparent 56%, rgba(0, 0, 0, .48) 100%); }
+/* フッター（v1.13.15〜）：本の幅に両端を揃えた細い罫線1本＋左にバージョン、
+   右に設定を、同じベースラインに静かに置く（v1.13.14 までの「中央に浮く
+   バージョン＋右端に絶対配置の設定」は、この行に置き換えた） */
+.cover-foot { width: var(--book-w); margin-top: 2px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--desk-text) 38%, transparent); display: flex; align-items: baseline; justify-content: space-between; }
+/* バージョン表記はフッターの左端に小さく（デバッグモードの入口を兼ねるので、タップは受ける） */
+.cover-version { margin: 0; font-size: .72rem; letter-spacing: .08em; color: var(--desk-text); opacity: .55; cursor: pointer; }
 .cover-tap { background: none; border: none; padding: 0; line-height: 1.5; text-align: inherit; }
 /* 綴じ側は body.bound-* で切り替える（right＝右綴じ／left＝左綴じ）。
    姉妹アプリ『サウンドノベル』本棚の表紙と同言語：綴じ側に背の陰影、
    角丸は小口側を大きく、綴じ側を小さくする */
 .book-cover {
   /* 縦横比は四六判（127mm × 188mm）と同じ 127:188。
-     幅の3つ目は高さの上限ガード：表紙の高さが 100dvh - 258px を超えない幅
-     （(100dvh - 258px) × 127/188 = 67.55dvh - 174px）で、モード入口と
-     入口のボタンまで含めて画面内に収める（v1.12.0 でモード入口が増えた分、
+     幅は .view-cover の --book-w（フッターと幅を共有する唯一の決め手）。
+     その3つ目の項が高さの上限ガード：表紙の高さが 100dvh - 258px を超えない幅
+     （(100dvh - 258px) × 127/188 = 67.55dvh - 174px）で、本の下の紙カードと
+     フッターまで含めて画面内に収める（v1.12.0 でモード入口が増えた分、
      190px から 258px に広げた） */
   position: relative; display: block;
-  width: min(88vw, 420px, calc(67.55dvh - 174px)); aspect-ratio: 127/188;
+  width: var(--book-w); aspect-ratio: 127/188;
   overflow: hidden; background: #10182b;
   container-type: inline-size;
 }
+/* 接地影（v1.13.15 で強めた）：本のすぐ下に締まった影＋大きく柔らかい影を
+   重ね、「机に置かれた本」の接地感を出す。ページの重なり（小口側の段）は従来どおり */
 body.bound-right .book-cover {
   border-radius: 7px 2px 2px 7px;
-  box-shadow: 0 18px 48px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.07),
+  box-shadow: 0 26px 52px rgba(0,0,0,.62), 0 8px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.07),
     -3px 3px 0 -1px #e7dec6, -6px 6px 0 -2px #d9cfb0;
 }
 body.bound-left .book-cover {
   border-radius: 2px 7px 7px 2px;
-  box-shadow: 0 18px 48px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.07),
+  box-shadow: 0 26px 52px rgba(0,0,0,.62), 0 8px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.07),
     3px 3px 0 -1px #e7dec6, 6px 6px 0 -2px #d9cfb0;
 }
 .book-cover::before { /* 背（綴じ側）の陰影 */
@@ -333,10 +359,19 @@ body.bound-left .cover-vtitle { left: 14%; }
 }
 .cover-vtitle .vt-line { display: block; }
 .cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }
-/* 再開の情報文（v1.13.10 で B3 案に変更）：しおりがあるときだけ、モード
-   ボタンの上に「第N章のつづきから」を1回だけ出す。ボタンに見えないよう、
-   操作要素より小さく・薄くし、独立した「つづきから（第N章）」行は置かない */
-.cover-resume { color: var(--desk-text); font-size: .78rem; margin: 2px 0 0; text-align: center; opacity: .68; letter-spacing: .12em; }
+/* 紙カードの共通様式（v1.13.15〜）：温かみのあるオフホワイトの地に、
+   外枠＋内側にもう1本の二重罫、柔らかい影、明朝の墨文字。本の下に
+   置かれた紙のカードとして、モード入口と再開カードで同じ様式を使う */
+.paper-card { background: var(--card-paper); color: var(--card-ink); border: 1px solid var(--card-line); border-radius: 3px; box-shadow: inset 0 0 0 3px var(--card-paper), inset 0 0 0 4px var(--card-line), 0 10px 22px rgba(0,0,0,.34), 0 2px 6px rgba(0,0,0,.28); }
+/* 再開カード（B案、v1.13.15〜）：しおりがあるときだけ、モードカードの上に
+   同じ紙カードの様式で「つづきから／第N章」を1枚だけ出す。幅はモード
+   カードの並びに揃え、本の下に置く（表紙絵、特に著者名には重ねない）。
+   カード自体は操作要素ではない——再開は従来どおり、どちらのモード
+   カードからでも同じ章から始まる（v1.13.10〜v1.13.14 のボタン上の
+   小さな情報文は、このカードに置き換えた） */
+.cover-resume { width: var(--card-w); margin: 0; padding: 9px 14px 11px; display: flex; flex-direction: column; align-items: center; gap: 1px; text-align: center; }
+.cover-resume .resume-lead { font-size: .74rem; letter-spacing: .34em; margin-right: -.34em; color: var(--card-ink-sub); }
+.cover-resume .resume-chapter { font-size: 1.08rem; font-weight: 600; letter-spacing: .22em; margin-right: -.22em; }
 
 /* ============ Gate — 中扉（紙の扉ページ） ============ */
 /* touch-action は本文（.page-wrap）と同じ契約にする：横の払いはアプリ側で受け、
@@ -846,16 +881,17 @@ body.bound-left .toc-sheet {
 .menu-row input[type="checkbox"]:focus-visible { outline: 2px solid rgba(138, 109, 47, .6); outline-offset: 2px; }
 .menu-panel .link { margin: 10px 0 0; color: var(--navy); }
 
-/* 表紙の「設定」入口（v1.13.10 で B3 案に変更）：楕円ボタンは廃止し、
-   バージョンと同じ最下部の行の右端へ、歯車＋小さな文字のリンクとして置く。
-   中央のバージョン表記とは重ならないよう、右端に絶対配置する */
-.cover-settings-link { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(4px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; justify-content: flex-end; gap: .35em; min-width: 44px; min-height: 36px; padding: 4px 0; background: transparent; border: none; color: var(--desk-text); font-size: .78rem; letter-spacing: .12em; opacity: .68; cursor: pointer; }
+/* 表紙の「設定」入口（v1.13.15〜）：フッター（.cover-foot）の右端に、
+   歯車＋小さな文字で置く。バージョン（左端）と同じベースラインに揃える
+   （v1.13.10〜v1.13.14 は最下部右端への絶対配置だった） */
+.cover-settings-link { display: inline-flex; align-items: center; justify-content: flex-end; gap: .35em; min-width: 44px; min-height: 36px; padding: 4px 0; background: transparent; border: none; color: var(--desk-text); font-size: .78rem; letter-spacing: .12em; opacity: .68; cursor: pointer; }
 .cover-settings-link span { font-size: .92rem; line-height: 1; }
-/* 表紙の「しおりから再開」：しおりがあるときだけ出す。表紙の静けさを壊さないよう、
-   入口（設定）と同じピル型で、ごく淡い金の地だけを引いて少しだけ前に出す */
-/* （「しおりから再開」ボタンは v1.12.2 で廃止し、モードの2ボタンに一本化した） */
-/* 読書モードの入口（v1.12.0）：本の装丁に合わせ、藍の地に淡い金の罫で2枚の
-   小さなプレートを並べる。主表記「耳で読む／目で読む」の下に、違いを一言添える */
-.cover-modes { display: flex; gap: 12px; justify-content: center; margin-top: 4px; padding: 0 6px; }
-.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; max-width: 196px; min-width: 0; min-height: 52px; justify-content: center; background: rgba(8,14,29,.28); border: 1px solid rgba(218,205,175,.48); color: var(--desk-text); border-radius: 12px; padding: .5em .5em; font-size: 1rem; letter-spacing: .16em; cursor: pointer; }
-.cover-mode small { font-size: .68rem; letter-spacing: .06em; opacity: .75; white-space: nowrap; }
+/* 表紙の「しおりから再開」ボタンは v1.12.2 で廃止し、モードの2ボタンに一本化した
+   （再開の情報はモードカードの上の再開カード #coverResume が示す） */
+/* 読書モードの入口（v1.12.0。v1.13.15 で紙カード様式に作り替え）：本の下に
+   置かれた2枚の紙カード（.paper-card と共通様式）。主表記「耳で読む／
+   目で読む」の下に、違いを一言添える。並びの幅は再開カードと揃える */
+.cover-modes { display: flex; gap: 12px; justify-content: center; width: var(--card-w); }
+.cover-mode { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 0; min-height: 62px; justify-content: center; padding: .55em .5em; font-size: 1.02rem; letter-spacing: .16em; cursor: pointer; }
+.cover-mode:active { transform: scale(.985); }
+.cover-mode small { font-size: .68rem; letter-spacing: .08em; color: var(--card-ink-sub); white-space: nowrap; }

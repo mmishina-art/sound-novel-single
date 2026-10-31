@@ -59,6 +59,12 @@ export function createReader(book: BookData): Reader {
   const DIR: Direction = directionOf(book.direction);
   document.body.classList.add('dir-' + DIR.mode, 'bound-' + DIR.bound);
   document.title = book.title + ' — ' + book.author;
+  // 本ごとの基調色（テーマカラー）を表紙ページの地に渡す。机の濃淡と読書灯の
+  // 光は CSS が --theme の1色から color-mix で作る（v1.13.15〜）。値の形が
+  // #rrggbb のときだけ採用し、壊れた値では既定の藍（:root の --theme）のままにする
+  if (book.themeColor && /^#[0-9a-fA-F]{6}$/.test(book.themeColor)) {
+    document.documentElement.style.setProperty('--theme', book.themeColor);
+  }
 
   const coverView = $('coverView');
   const gateView = $('gateView');
@@ -716,13 +722,15 @@ export function createReader(book: BookData): Reader {
   function loadBookmark(): Bookmark | null {
     return load<Bookmark | null>('bookmark', null);
   }
-  /* 表紙は「表紙だけが静かに出ている」状態が原則。入り口はモードの2ボタンと
-     最下部右端の「設定」リンクだけ（v1.12.2 で表紙タップでの開始と
-     「しおりから再開」ボタンを廃止し、2ボタンに一本化。v1.13.10 で B3 案に
-     合わせ、楕円の「設定」ボタンを廃止した）。
+  /* 表紙は「机に置かれた本と、その下の紙のカードだけが静かに出ている」状態が
+     原則。入り口はモードの2ボタン（紙カード）と、フッター右端の「設定」だけ
+     （v1.12.2 で表紙タップでの開始と「しおりから再開」ボタンを廃止し、2ボタンに
+     一本化。v1.13.15 で表紙ページを共通テンプレートの体裁に作り替えた）。
      補足文は「朗読つき／朗読なし」固定。しおりがあるときの再開情報は、
-     補足文に混ぜずボタン上の小さな情報文 #coverResume に「第N章の
-     つづきから」と1回だけ示す（どちらの入口からでも同じ章から再開する）。
+     モードカードの上に同じ紙カードの様式で「つづきから／第N章」と1枚だけ
+     出す（#coverResume。カード自体は操作要素ではなく、再開は従来どおり
+     どちらの入口からでも同じ章から。v1.13.10〜v1.13.14 のボタン上の小さな
+     情報文は、この B 案カードに置き換えた）。
      ヒント文は初回（しおりがなく、まだ読み始めた記録もないとき）だけの控えめな案内 */
   function refreshResume(): void {
     const bm = loadBookmark();
@@ -731,7 +739,7 @@ export function createReader(book: BookData): Reader {
     $('eyeModeSub').textContent = '朗読なし';
     const resumeEl = $('coverResume');
     resumeEl.hidden = !has;
-    resumeEl.textContent = has && bm ? chapters[bm.chapter].num + 'のつづきから' : '';
+    $('coverResumeChapter').textContent = has && bm ? chapters[bm.chapter].num : '';
     $('coverHint').hidden = has || load<boolean>('seen', false);
   }
 

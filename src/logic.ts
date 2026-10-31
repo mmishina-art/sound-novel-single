@@ -26,6 +26,9 @@ export interface BookData {
   title: string;
   author: string;
   direction?: string;
+  /** 本ごとの基調色（テーマカラー、#rrggbb）。表紙ページの机の地と読書灯の光は
+      この1色から CSS が濃淡を作って描く（v1.13.15〜。未指定の本では既定の藍） */
+  themeColor?: string;
   totalChars?: number;
   /** 全章の音声の総容量（バイト）。初回ダウンロード案内の表示に使う。
       work/build_data.py が全章そろっているときだけ入れる（無い本では案内文に
