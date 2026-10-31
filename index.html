@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-BPmmxUTu.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BZwSs4xL.css">
+    <script type="module" crossorigin src="./assets/index-aC9eE-RI.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B8_mlEGx.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -112,13 +112,19 @@
           <!-- 下の帯：ノンブルを中央に、操作ボタンは両端に（ボタン上のタップはめくりに使わない） -->
           <div class="page-footer">
             <!-- 文単位の送り（v1.12.4）：耳で読むときだけ、再生の並びに
-                 [前の文][再生/停止][次の文] を薄いアイコンで置く（本文専用。
-                 扉・目次には付けない）。図柄はメディア標準のスキップ型
-                 （三角＋棒）で、向きの迷いをなくす -->
+                 薄いアイコンで置く（本文専用。扉・目次には付けない）。
+                 並びは本の進み方向に合わせる（v1.13.12、ユーザー確定）：
+                 縦書き右開きは右から左へ読み進めるので、[次の文][再生/停止]
+                 [前の文] の順に置き、左ボタン＝一文進む／右ボタン＝一文戻る。
+                 メディアプレイヤーの慣習（右＝次）とは逆になるが、本の
+                 読み方向を正とする（実機で「方向が逆」と繰り返し指摘され、
+                 メディア順で「反転なし」とした過去の測定・記録は、この
+                 確定で上書きされた）。図柄も向きに合わせ、左ボタンは
+                 進む方向（左向き）の送り印、右ボタンは戻る印にする -->
             <div class="sent-group">
-              <button id="prevSentBtn" type="button" class="page-icon-btn" aria-label="前の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h2v13h-2z" fill="currentColor" /><path d="M18.5 5.5v13L8 12z" fill="currentColor" /></svg></button>
+              <button id="nextSentBtn" type="button" class="page-icon-btn" aria-label="次の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h2v13h-2z" fill="currentColor" /><path d="M18.5 5.5v13L8 12z" fill="currentColor" /></svg></button>
               <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
-              <button id="nextSentBtn" type="button" class="page-icon-btn" aria-label="次の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5v13L16 12z" fill="currentColor" /><path d="M17.5 5.5h2v13h-2z" fill="currentColor" /></svg></button>
+              <button id="prevSentBtn" type="button" class="page-icon-btn" aria-label="前の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5v13L16 12z" fill="currentColor" /><path d="M17.5 5.5h2v13h-2z" fill="currentColor" /></svg></button>
             </div>
             <span id="pageFolio" class="folio"></span>
             <button id="menuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
@@ -170,14 +176,17 @@
       <div class="modal-panel menu-panel">
         <div class="modal-head">
           <h3 id="menuTitle">設定</h3>
-          <button id="menuCloseBtn" class="menu-close-btn" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
-        </div>
-
-        <!-- 移動のボタンはパネル上部に並べる（v1.13.11、設定画面の整理。
-             ユーザー決定）：「表紙へ」は表紙から開いたときだけ隠す -->
-        <div class="menu-nav-btns">
-          <button id="toCoverFromMenuBtn" type="button" class="menu-nav-btn" hidden>表紙へ</button>
-          <button id="tocFromMenuBtn" type="button" class="menu-nav-btn">目次へ</button>
+          <!-- 移動の入口は見出し「設定」と同じ行のカプセルに置く（v1.13.12、
+               ユーザー決定。モック navclean-i3）：細線のカプセルの中に
+               線画アイコン＋文字を一緒に入れる。独立したボタン行
+               （v1.13.11 の .menu-nav-btns）は廃止した。「表紙へ」は
+               表紙から開いたときだけ隠す。押下範囲はカプセルの見た目
+               より広く取る（.menu-cap-btn が 44px を確保する） -->
+          <div class="menu-head-nav">
+            <button id="toCoverFromMenuBtn" type="button" class="menu-cap-btn" hidden><span class="menu-cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.4v13.4" /><path d="M12 5.4C9.7 4.2 6.9 3.7 4.3 4.3v13.2c2.6-.6 5.4-.1 7.7 1.3 2.3-1.4 5.1-1.9 7.7-1.3V4.3c-2.6-.6-5.4-.1-7.7 1.1Z" /></svg><span>表紙へ</span></span></button>
+            <button id="tocFromMenuBtn" type="button" class="menu-cap-btn"><span class="menu-cap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14" /></svg><span>目次へ</span></span></button>
+            <button id="menuCloseBtn" class="menu-close-btn" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+          </div>
         </div>
 
         <!-- 設定の中身は開いた場所と読書モードで組み替える（reader.ts の
