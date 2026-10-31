@@ -4,26 +4,67 @@ import { expect, test } from '@playwright/test';
 // アプリの ID（package.json の name）。保存データのキーの接頭辞になる
 const APP_ID = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { name: string }).name;
 
-/** 表紙のモードボタンから入り、初めて読むときの目次（v1.12.4〜）で目的の章を
+/** 表紙の本をタップして入り、初めて読むときの目次（v1.12.4〜）で目的の章を
     選んで扉まで進む。しおりがある場合は目次を経由しないので、そのケースでは
-    使わない（再開はモードボタンを直接押す） */
+    使わない（再開は本のタップで直接）。v1.13.16〜表紙の入口は本のタップ
+    だけになり、朗読の有無は設定の「音読」で決まる */
 async function enterViaToc(
   page: import('@playwright/test').Page,
-  btn: '#earModeBtn' | '#eyeModeBtn',
   idx = 0,
 ): Promise<void> {
-  await page.locator(btn).click();
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await clickTocChapter(page, idx);
   await expect(page.locator('#gateView')).toBeVisible();
 }
 
+/** 音読をオフにしてから本を開き、目次→扉まで進む（音読オフ＝従来の
+    目で読む相当。オフは設定の「音読」スイッチで決める永続設定） */
+async function enterEyeViaToc(
+  page: import('@playwright/test').Page,
+  idx = 0,
+): Promise<void> {
+  await setNarrationFromCover(page, false);
+  await enterViaToc(page, idx);
+}
+
+/** 表紙の設定で「音読」のオン／オフを設定する。スイッチ自体はオフの
+    状態でも常時見える・操作できる（朗読グループの先頭行） */
+async function setNarrationFromCover(
+  page: import('@playwright/test').Page,
+  on: boolean,
+): Promise<void> {
+  await openMenuOnCover(page);
+  const t = page.locator('#narrationToggle');
+  await expect(t).toBeVisible();
+  if ((await t.isChecked()) !== on) await t.click();
+  await expect(t).toBeChecked({ checked: on });
+  await page.locator('#menuCloseBtn').click();
+  await expect(page.locator('#menuModal')).toBeHidden();
+}
+
+/** 本文の設定で「音読」のオン／オフを切り替える（読書の途中。読んでいる
+    位置は文字アンカーで引き継がれる） */
+async function setNarrationFromReader(
+  page: import('@playwright/test').Page,
+  on: boolean,
+): Promise<void> {
+  await page.locator('#menuBtn').click();
+  await expect(page.locator('#menuModal')).toBeVisible();
+  const t = page.locator('#narrationToggle');
+  await expect(t).toBeVisible();
+  if ((await t.isChecked()) !== on) await t.click();
+  await expect(t).toBeChecked({ checked: on });
+  await page.locator('#menuCloseBtn').click();
+  await expect(page.locator('#menuModal')).toBeHidden();
+}
+
 /** 表紙 → 目次 → 章扉（自動で進む）→ 本文まで開く。
-    耳モードの扉は自動で本文へ進むので、この関数では扉の操作は要らない */
+    音読オンの扉は自動で本文へ進むので、この関数では扉の操作は要らない */
 async function openReader(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' }); // 本のデータが届いてから
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   // 扉のコールは実時間で再生される。この VM では音声の進行が実時間より
   // 遅れることがあり（実測で約0.6倍速）、10秒では競合して落ちるため余裕を持つ
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 30000 });
@@ -166,29 +207,29 @@ test('表紙は新装丁：地絵の上に題字・著者名・線画ロゴを�
   expect(geo.author.bottom).toBeLessThan(0.08);
 });
 
-test('表紙の常時表示は表紙と入口だけ。ヒント文は初回だけで、読み始めると出なくなる', async ({ page }) => {
+test('表紙の常時表示は本とフッターだけ（選択肢・カード・ヒント文は置かない）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverHint')).toBeVisible(); // 初回だけの案内
   await expect(page.locator('#coverSettingsBtn')).toBeVisible(); // 設定の入口はフッターの1つだけ
-  await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンは廃止（モードボタンに一本化）
-  await expect(page.locator('#earModeSub')).toHaveText('朗読つき'); // 補足文は固定（v1.13.3）
-  await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
-  await expect(page.locator('#coverResume')).toBeHidden(); // しおりがなければ再開カードは出ない
-  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // 旧しおり案内行の要素は置かない（廃止のまま）
+  // v1.13.16〜：モード入口（耳で読む／目で読む）・再開カード・ヒント文は置かない
+  await expect(page.locator('#earModeBtn')).toHaveCount(0);
+  await expect(page.locator('#eyeModeBtn')).toHaveCount(0);
+  await expect(page.locator('#coverResume')).toHaveCount(0);
+  await expect(page.locator('#coverHint')).toHaveCount(0);
+  await expect(page.locator('#resumeBtn')).toHaveCount(0); // 「しおりから再開」ボタンも置かない
+  await expect(page.locator('#coverBookmarkNote')).toHaveCount(0); // 旧しおり案内行の要素も置かない
   await expect(page.locator('#coverTocBtn')).toHaveCount(0); // 表紙に目次ボタンは置かない（設定に一本化）
-  // 読み始めて表紙に戻ると、ヒントは消え、モードカードの上の再開カードに「つづきから」が出る（補足文は固定のまま）
-  await enterViaToc(page, '#earModeBtn');
+  // 読み始めて表紙に戻っても、表紙に出るものは増えない（しおり自体は保存されている）
+  await enterViaToc(page);
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await backToCover(page);
-  await expect(page.locator('#coverHint')).toBeHidden();
-  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
-  await expect(page.locator('#eyeModeSub')).toHaveText('朗読なし');
-  await expect(page.locator('#coverResume')).toBeVisible();
-  await expect(page.locator('#coverResume')).toContainText('つづきから');
+  await expect(page.locator('#coverResume')).toHaveCount(0);
+  await expect(page.locator('#earModeBtn')).toHaveCount(0);
+  const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bm).not.toBeNull();
 });
 
-test('表紙ページは共通テンプレート：フッターは本の幅に揃え、再開は紙カードで出す', async ({ page }) => {
+test('表紙ページは共通テンプレート：フッターは本の幅に揃え、しおりがあっても表紙にカードは出ない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   // 旧「設定」楕円ボタンは置かず、フッターの右端にだけ「⚙ 設定」を置く
@@ -196,7 +237,7 @@ test('表紙ページは共通テンプレート：フッターは本の幅に�
   const settings = page.locator('#coverSettingsBtn');
   await expect(settings).toBeVisible();
   await expect(settings).toHaveText(/⚙\s*設定/);
-  await expect(page.locator('#coverResume')).toBeHidden(); // しおりが無ければ再開カードは出ない
+  await expect(page.locator('#coverResume')).toHaveCount(0); // 再開カードは置かない（v1.13.16〜）
   // フッターは本の幅に両端を揃えた細い罫線1本＋左にバージョン、右に設定（同じベースライン）
   const geo = await page.evaluate(() => {
     const rect = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
@@ -236,14 +277,15 @@ test('表紙ページは共通テンプレート：フッターは本の幅に�
   await page.locator('#menuCloseBtn').click();
 
   // 本文の歯車マークから開くときも、呼び名は同じく「設定」（v1.13.11 で統一）
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await openMenuInReader(page);
   await expect(page.locator('#menuTitle')).toHaveText('設定');
   await page.locator('#menuCloseBtn').click();
   await backToCover(page);
 
-  // しおりがあるときは、モードカードの上に紙カードで「つづきから／第七章」を1枚だけ出す（B案）
+  // しおりがあっても表紙には何も出ない。本をタップすれば、そのまま
+  // しおりの章・ページから再開する（再開先は文字アンカーで決まる）
   await page.evaluate((id) => {
     localStorage.setItem(
       `${id}-bookmark`,
@@ -252,36 +294,22 @@ test('表紙ページは共通テンプレート：フッターは本の幅に�
   }, APP_ID);
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  const resume = page.locator('#coverResume');
-  await expect(resume).toBeVisible();
-  await expect(resume).toContainText('つづきから');
-  await expect(page.locator('#coverResumeChapter')).toHaveText('第七章');
-  const card = await page.evaluate(() => {
-    const r = document.getElementById('coverResume')!.getBoundingClientRect();
-    const modes = document.querySelector('.cover-modes')!.getBoundingClientRect();
-    const book = document.querySelector('.book-cover')!.getBoundingClientRect();
-    return {
-      bg: getComputedStyle(document.getElementById('coverResume')!).backgroundColor,
-      width: r.width, top: r.top, bottom: r.bottom,
-      modesWidth: modes.width, modesTop: modes.top, bookBottom: book.bottom,
-    };
-  });
-  expect(card.bg).toBe('rgb(248, 242, 226)'); // 紙カードの地（オフホワイト #f8f2e2）
-  expect(Math.abs(card.width - card.modesWidth)).toBeLessThanOrEqual(2); // モードカードの並びと同幅
-  expect(card.bottom).toBeLessThanOrEqual(card.modesTop); // モードカードの上に置く
-  expect(card.top).toBeGreaterThanOrEqual(card.bookBottom); // 表紙絵（特に著者名）には重ねない
+  await expect(page.locator('#coverResume')).toHaveCount(0);
+  await expect(page.locator('#earModeBtn')).toHaveCount(0);
+  await expect(page.locator('#eyeModeBtn')).toHaveCount(0);
+  await page.locator('#coverTap').click();
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#readerChapterLabel')).toHaveText('第七章 空の郵便が届くまで');
+  // 着地ページの細部は、整合したしおりで確かめる再開専用テストに任せる
+  // （ここで置いたしおりは章だけを見るための不整合な値を含むため）
 });
 
-test('表紙タップでは開かず、「耳で読む」からは目次→章扉と進んで本文へ入る', async ({ page }) => {
+test('本をタップすると開く：初めては目次→章扉と進んで本文へ入る', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  // 表紙の絵をタップしても本は開かない（入り口はモードの2ボタンだけ）
+  // 表紙の入口は本のタップだけ（v1.13.16〜）。初めて読むときは、まず
+  // 目次ページが開く（v1.12.4）
   await page.locator('.cover-tap').click();
-  await page.waitForTimeout(600);
-  await expect(page.locator('#gateView')).toBeHidden();
-  await expect(page.locator('#coverView')).toBeVisible();
-  // 初めて読むときは、まず目次ページが開く（v1.12.4）
-  await page.locator('#earModeBtn').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await clickTocChapter(page, 0);
   await expect(page.locator('#gateView')).toBeVisible();
@@ -295,7 +323,7 @@ test('表紙タップでは開かず、「耳で読む」からは目次→章�
 test('章扉では語り手名が「語り・」なしで、タイトルと同じ列に続けて表示される', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateNarrator')).toHaveText('柏木 遥'); // 「語り・柏木 遥」ではない
   // 縦書きでは「同じ列」＝ x の帯が重なり、「続く」＝ 題より下（y が大きい）に名前がある
@@ -320,7 +348,7 @@ test('章扉の要素（章番号・題・語り手）は、かたまりとし�
     expect(Math.abs(textCx - sheetCx)).toBeLessThanOrEqual(4);
   };
   // 短い題（第一章）
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   await expectCentered();
   // 長い題（第七章）：目次ページから開く
@@ -378,7 +406,7 @@ test('回帰（v1.13.5）：第三章の扉で戻ると、第二章の最終本�
   // 最終ページを飛ばしていた。扉の「戻る」は前章の最終ページへ直接着くのが仕様
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#eyeModeBtn', 2); // 目モードは扉で止まる
+  await enterEyeViaToc(page, 2); // 目モードは扉で止まる
   await expect(page.locator('#gateNum')).toHaveText('第三章');
   await swipeGate(page, 'prev');
   await expect(page.locator('#readerView')).toBeVisible();
@@ -395,7 +423,7 @@ test('回帰（v1.13.5）：第三章の扉で戻ると、第二章の最終本�
 test('回帰（v1.13.5）：第三章の扉で戻ると、第二章の最終本文ページへ直接着く（耳で読む）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn', 2);
+  await enterViaToc(page, 2);
   await expect(page.locator('#gateNum')).toHaveText('第三章');
   await swipeGate(page, 'prev'); // コールの自動送りより先に払う
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 1000 });
@@ -406,7 +434,7 @@ test('回帰（v1.13.5）：第三章の扉で戻ると、第二章の最終本�
 test('章扉の枠と本文ページの枠の大きさ・位置が一致する', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   const gate = await page.locator('.gate-sheet').boundingBox();
   await swipeGate(page, 'next');
@@ -516,12 +544,10 @@ test('自動送り（朗読追随）では、ページがアニメーション�
   expect(seen).toBe(false);
 });
 
-test('文送りボタンで朗読位置とハイライトが文単位で移る（耳で読む・本文のみ）', async ({ page }) => {
+test('文タップでその文から朗読が始まり、強調が追随する（音読オン）', async ({ page }) => {
   await openReader(page);
-  /* 物差しは「章通しの文インデックス」（v1.13.12 で差し替え）：unitTimes と
-     現在時刻から割り出す絶対位置で、増えたか減えたかを見る。ページ内の
-     ハイライト位置やボタンの ID ではなく、画面の左右で押して確かめる
-     （過去の測定は ID 基準＋メディア順の前提で、実機の向きと食い違った） */
+  /* 物差しは「章通しの文インデックス」：unitTimes と現在時刻から割り出す
+     絶対位置で見る（v1.13.12 の物差しを文タップでも使う） */
   await page.evaluate(async () => {
     const res = await fetch('book/data.json');
     const book = await res.json();
@@ -537,87 +563,120 @@ test('文送りボタンで朗読位置とハイライトが文単位で移る�
       return {
         t: a.currentTime,
         idx,
-        unitStart: times[idx],
         paused: a.paused,
         nowIdx: units.findIndex((u) => u.classList.contains('now')),
       };
     });
-  // 左右のボタンは座標で特定する（左＝次の文／右＝前の文が物理配置）
-  const sides = await page.evaluate(() => {
-    const cx = (id: string) => {
-      const r = document.getElementById(id)!.getBoundingClientRect();
-      return r.x + r.width / 2;
-    };
-    return { leftId: cx('nextSentBtn') < cx('prevSentBtn') ? 'nextSentBtn' : 'prevSentBtn' };
-  });
-  expect(sides.leftId).toBe('nextSentBtn'); // 左にあるのが「次の文」
-  const leftBtn = page.locator('#nextSentBtn');
-  const rightBtn = page.locator('#prevSentBtn');
-  // 止めて、10文目の頭に置いてから確かめる
+  // 止めて、先頭の文に置いてから確かめる
   await page.locator('#playPauseBtn').click();
   await expect(page.locator('#playPauseBtn')).toHaveAttribute('aria-label', '再生');
   await page.evaluate(() => {
     const a = document.getElementById('audioEl') as HTMLAudioElement;
     const times = (window as unknown as { __unitTimes: number[] }).__unitTimes;
-    a.currentTime = times[10];
+    a.currentTime = times[0];
   });
-  await expect.poll(async () => (await state()).idx).toBe(10);
-  const s0 = await state();
-  expect(s0.paused).toBe(true);
-  // 左ボタン（次の文）：インデックスが増える。停止は保たれる
-  await leftBtn.click();
-  await expect.poll(async () => (await state()).idx).toBe(11);
-  const s1 = await state();
-  expect(s1.t).toBeGreaterThan(s0.t + 0.5);
-  expect(s1.paused).toBe(true);
-  // 右ボタン（前の文）：文の頭にいるので、インデックスが減る
-  await rightBtn.click();
-  await expect.poll(async () => (await state()).idx).toBe(10);
-  const s2 = await state();
-  expect(Math.abs(s2.t - s0.t)).toBeLessThan(0.6);
-  // 文の途中から右ボタンは、その文の頭に戻す（従来の「前の文」の作法）
-  await page.evaluate(() => {
-    const a = document.getElementById('audioEl') as HTMLAudioElement;
-    a.currentTime = a.currentTime + 2.5; // 10文目の途中へ
-  });
-  await page.waitForTimeout(300);
-  await rightBtn.click();
-  await expect.poll(async () => Math.abs((await state()).t - s0.t)).toBeLessThan(0.6);
-  await expect.poll(async () => (await state()).idx).toBe(10);
-  // 目で読むでは文送りボタンは出ない
-  await backToCover(page);
-  await page.locator('#eyeModeBtn').click();
-  // しおり再開は扉を経由せず、しおりのページへ直接戻る（v1.13.11）
-  await expect(page.locator('#gateView')).toBeHidden();
-  await expect(page.locator('#readerView')).toBeVisible();
-  await expect(page.locator('#prevSentBtn')).toBeHidden();
-  await expect(page.locator('#nextSentBtn')).toBeHidden();
+  await expect.poll(async () => (await state()).idx).toBe(0);
+  const folio = await page.locator('#pageFolio').textContent();
+  // このページの5番目の文をタップする（1ページ目の文は章通しの文番号と一致する）
+  const count = await page.locator('#pageContent .unit').count();
+  expect(count).toBeGreaterThanOrEqual(5);
+  await page.locator('#pageContent .unit').nth(4).click();
+  // その文の頭から再生が始まり、強調（.now）もその文に移る。ページは替わらない
+  await expect.poll(async () => (await state()).idx).toBe(4);
+  const s = await state();
+  expect(s.paused).toBe(false);
+  await expect.poll(async () => (await state()).nowIdx).toBe(4);
+  await expect(page.locator('#pageFolio')).toHaveText(folio ?? '');
 });
 
-test('文送りボタンの並びは本の進み方向（左=次の文／中央=再生／右=前の文）', async ({ page }) => {
-  await openReader(page);
-  // 画面上の実測順序：次の文 < 再生/停止 < 前の文（v1.13.12、ユーザー確定）。
-  // 縦書き右綴じは右から左へ読み進めるので、進む操作は左に置く。
-  // メディア標準（右=次）で固定していた旧テストはこの確定で差し替えた
-  const boxes = await page.evaluate(() => {
-    const box = (id: string) => {
-      const r = document.getElementById(id)!.getBoundingClientRect();
-      return { x: r.x, w: r.width };
+test('音読オフで文をタップすると、音は出ず読書位置（アンカー）だけがその文に合う', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+  await enterEyeViaToc(page);
+  await swipeGate(page, 'next'); // 音読オフの扉は止まっているので、前進操作で本文へ
+  await expect(page.locator('#readerView')).toBeVisible();
+  await page.evaluate(async () => {
+    const res = await fetch('book/data.json');
+    const book = await res.json();
+    const w = window as unknown as { __unitTimes: number[]; __unitStarts: number[] };
+    w.__unitTimes = book.chapters[0].unitTimes;
+    // 文の開始文字位置は、アプリの buildUnits と同じ規則で数える
+    // （段落を文に割り、ルビ記法を除いた文字数の累積。区切りの「---」は長さ0）
+    const ch = book.chapters[0] as { ruby?: string[]; paragraphs?: string[] };
+    const src = ch.ruby && ch.ruby.length ? ch.ruby : ch.paragraphs || [];
+    const plainLen = (s: string): number => s.replace(/｜/g, '').replace(/《[^》]*》/g, '').length;
+    const splitSentences = (text: string): string[] => {
+      const out: string[] = [];
+      let buf = '';
+      let inRuby = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        buf += c;
+        if (c === '《') inRuby = true;
+        else if (c === '》') inRuby = false;
+        else if (c === '。' && !inRuby) {
+          while (i + 1 < text.length && '」』）】〉・…'.indexOf(text[i + 1]) >= 0) buf += text[++i];
+          out.push(buf);
+          buf = '';
+        }
+      }
+      if (buf) out.push(buf);
+      return out;
     };
-    return { prev: box('prevSentBtn'), play: box('playPauseBtn'), next: box('nextSentBtn') };
+    const starts: number[] = [];
+    let acc = 0;
+    for (const p of src) {
+      if (p.trim() === '---') {
+        starts.push(acc);
+        continue;
+      }
+      for (const s of splitSentences(p)) {
+        starts.push(acc);
+        acc += plainLen(s);
+      }
+    }
+    w.__unitStarts = starts;
   });
-  expect(boxes.next.w).toBeGreaterThan(0);
-  expect(boxes.next.x).toBeLessThan(boxes.play.x);
-  expect(boxes.play.x).toBeLessThan(boxes.prev.x);
-  // 図柄も向きに一致させる：左ボタン（進む）は左向きの送り印、
-  // 右ボタン（戻る）は右向きの戻し印
-  const glyphs = await page.evaluate(() => {
-    const d = (id: string) =>
-      [...document.getElementById(id)!.querySelectorAll('svg path')].map((p) => p.getAttribute('d'));
-    return { prev: d('prevSentBtn'), next: d('nextSentBtn') };
-  });
-  expect(glyphs.next).toEqual(['M4.5 5.5h2v13h-2z', 'M18.5 5.5v13L8 12z']);
-  expect(glyphs.prev).toEqual(['M5.5 5.5v13L16 12z', 'M17.5 5.5h2v13h-2z']);
+  const count = await page.locator('#pageContent .unit').count();
+  expect(count).toBeGreaterThan(3);
+  await page.locator('#pageContent .unit').nth(2).click();
+  // 音は出ない（停止のまま）。音声側の位置も、その文の頭に合う
+  const start2 = await page.evaluate(
+    () => (window as unknown as { __unitTimes: number[] }).__unitTimes[2],
+  );
+  await expect
+    .poll(async () => {
+      const t = await page.evaluate(
+        () => (document.getElementById('audioEl') as HTMLAudioElement).currentTime,
+      );
+      return Math.abs(t - start2) < 0.6;
+    })
+    .toBe(true);
+  const paused = await page.evaluate(
+    () => (document.getElementById('audioEl') as HTMLAudioElement).paused,
+  );
+  expect(paused).toBe(true);
+  // しおりのアンカーが、タップした文の開始文字位置になっている
+  const bm = JSON.parse(
+    (await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID)) as string,
+  ) as { chapter: number; anchor?: number };
+  const want = await page.evaluate(
+    () => (window as unknown as { __unitStarts: number[] }).__unitStarts[2],
+  );
+  expect(bm.chapter).toBe(0);
+  expect(bm.anchor).toBe(want);
+  // 強調（.now）は朗読前提の表示なので、音読オフでは出ない
+  await expect(page.locator('#pageContent .unit.now')).toHaveCount(0);
+});
+
+test('文送りボタンは無く、帯の操作は再生と設定だけ。再生の図柄は3画面ともスピーカー', async ({ page }) => {
+  await openReader(page);
+  // v1.13.16 で文送り／文戻しボタンは廃止した（文単位の移動は文タップ）
+  await expect(page.locator('#nextSentBtn')).toHaveCount(0);
+  await expect(page.locator('#prevSentBtn')).toHaveCount(0);
+  await expect(page.locator('#playPauseBtn')).toBeVisible();
+  await expect(page.locator('#menuBtn')).toBeVisible();
+  await expect(page.locator('#pageFolio')).toBeVisible();
   // 再生の図柄はスピーカー＋波紋（v1.13.1）：右向き三角（▶）は綴じ方向と競合する
   // ため廃止。止めて「再生」表示にしたうえで、本文・扉・目次の3ボタンとも
   // 同じ記号になっていることを確かめる（一時停止の二本線は従来のまま）
@@ -649,11 +708,9 @@ test('しおりが残り、表紙から再開できる', async ({ page }) => {
   await expect(page.locator('#coverBookmarkNote')).toHaveCount(0);
   const bm = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(JSON.parse(bm as string)).toMatchObject({ chapter: 0, page: 2 });
-  // 再開もモードボタンから（モードカードの上の再開カードが「つづきから／第一章」を示す。補足文は固定。設定には入れない）
-  await expect(page.locator('#coverResume')).toContainText('つづきから');
-  await expect(page.locator('#coverResumeChapter')).toHaveText('第一章');
-  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
-  await page.locator('#earModeBtn').click();
+  // 再開は本のタップから（表紙に再開カード等の表示は無い。設定にも入れない）
+  await expect(page.locator('#coverResume')).toHaveCount(0);
+  await page.locator('#coverTap').click();
   // 再開は扉を経由せず、しおりのページ（2ページ目）へ直接着地する（v1.13.11）
   await expect(page.locator('#gateView')).toBeHidden();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
@@ -666,7 +723,7 @@ test('再開は扉を経由せず、しおりの位置へ直接着地する（�
   // 出さずにしおりのページへ着くことを確かめる（耳はその文から再生）
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#eyeModeBtn', 2);
+  await enterEyeViaToc(page, 2);
   const gateBox = await page.locator('#gateView').boundingBox();
   if (!gateBox) throw new Error('gateView not found');
   await swipeSurface(page, gateBox, 'next');
@@ -695,19 +752,21 @@ test('再開は扉を経由せず、しおりの位置へ直接着地する（�
     });
   const gateSeen = () =>
     page.evaluate(() => (window as unknown as { __gateSeen: boolean }).__gateSeen);
-  // 目モード：扉を出さず、しおりのページに止まったまま着地
+  // 音読オフ：扉を出さず、しおりのページに止まったまま着地
   await backToCover(page);
   await watchGate();
-  await page.locator('#eyeModeBtn').click();
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible();
   await expect(page.locator('#pageFolio')).toHaveText(mark.folio);
   expect(await page.evaluate(() => document.querySelector('#pageEl .unit')?.textContent?.slice(0, 16))).toBe(mark.first);
   expect(await gateSeen()).toBe(false);
   expect(await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).paused)).toBe(true);
-  // 耳モード：扉を出さず、しおりのページで、その文から再生が始まる
+  // 音読オン：設定でオンに戻してから開くと、扉を出さず、しおりのページで
+  // その文から再生が始まる
   await backToCover(page);
+  await setNarrationFromCover(page, true);
   await watchGate();
-  await page.locator('#earModeBtn').click();
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#pageFolio')).toHaveText(mark.folio);
   expect(await gateSeen()).toBe(false);
@@ -717,37 +776,6 @@ test('再開は扉を経由せず、しおりの位置へ直接着地する（�
   const t = await page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).currentTime);
   expect(t).toBeGreaterThan(bm.time - 1);
   expect(t).toBeLessThan(bm.time + 8); // 再生で進むぶんを見込む
-});
-
-test('文送りはIDではなく画面上の位置でも正しい向きに動く（左端=次／右端=前）', async ({ page }) => {
-  // 実機報告「文送りの進む方向が逆」の切り分け用：ID ではなく、画面上の
-  // 物理位置（x座標）でボタンを押して、移動先の文で判定する。
-  // v1.13.12 の確定（左=進む／右=戻る、本の進み方向）で向きを反転させた
-  await openReader(page);
-  const centers = await page.evaluate(() => {
-    const g = document.querySelector('.sent-group')!;
-    return [...g.querySelectorAll('button')]
-      .map((b) => {
-        const r = b.getBoundingClientRect();
-        return { id: b.id, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
-      })
-      .sort((a, b) => a.cx - b.cx);
-  });
-  expect(centers.map((c) => c.id)).toEqual(['nextSentBtn', 'playPauseBtn', 'prevSentBtn']);
-  const nowIdx = () =>
-    page.evaluate(() =>
-      [...document.querySelectorAll('#pageEl .unit')].findIndex((u) => u.classList.contains('now')),
-    );
-  await expect.poll(nowIdx).toBe(0);
-  // 左端（次の文）を座標で押す → 次の文へ
-  await page.mouse.click(centers[0].cx, centers[0].cy);
-  await expect.poll(nowIdx).toBe(1);
-  // 左端をタッチで押す → さらに次の文へ
-  await page.touchscreen.tap(centers[0].cx, centers[0].cy);
-  await expect.poll(nowIdx).toBe(2);
-  // 右端（前の文）を座標で押す → 前の文へ（進んだ直後で文頭から間もないため）
-  await page.mouse.click(centers[2].cx, centers[2].cy);
-  await expect.poll(nowIdx).toBe(1);
 });
 
 test('下部バーの入口は全画面で歯車アイコンに統一（家マークは置かない）', async ({ page }) => {
@@ -775,21 +803,23 @@ test('下部バーの入口は全画面で歯車アイコンに統一（家マ�
     expect(icons[k].label, k).toBe('設定'); // 呼び名は全画面で「設定」に統一（v1.13.11）
   }
   // 歯車から開くパネルは従来どおり（ナビ＋設定グループ）
-  await page.locator('#earModeBtn').click();
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await page.locator('#tocMenuBtn').click();
   await expect(page.locator('#menuModal')).toBeVisible();
   await expect(page.locator('#tocFromMenuBtn')).toBeVisible();
 });
 
-test('しおりがないときは再開の小行が出ず、設定にも再開の項目はない', async ({ page }) => {
+test('しおりがなくても表紙に再開の表示は出ず、設定にも再開の項目はない', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#earModeSub')).toHaveText('朗読つき');
-  await expect(page.locator('#coverResume')).toBeHidden();
+  await expect(page.locator('#coverResume')).toHaveCount(0); // 再開カードは置かない（v1.13.16〜）
   await openMenuOnCover(page);
   await expect(page.locator('#resumeFromMenuBtn')).toHaveCount(0);
   await expect(page.locator('#menuModal #version-line')).toHaveCount(0); // バージョン表記は設定ではなく表紙にある
+  // 設定には「音読」スイッチがある（朗読グループの先頭行。初期値はオン）
+  await expect(page.locator('#menuGroupPlay #rowNarration')).toBeVisible();
+  await expect(page.locator('#narrationToggle')).toBeChecked();
 });
 
 test('本文の最終ページには改列・中央の「おわり」があり、その次に独立した奥付ページが来る', async ({ page }) => {
@@ -867,7 +897,7 @@ test('最終章の朗読が終わっても、最終ページに留まり奥付�
   // 楽しみたい）。以前は朗読終了で自動的に奥付ページへ進んでいた
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn', 6); // 最終章（第七章）を耳で読む
+  await enterViaToc(page, 6); // 最終章（第七章）を耳で読む
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 15000 });
   // 朗読が始まっていることを確認してから、最終章の音声を末尾近くへ進めて
   // 自然に ended を迎える
@@ -903,7 +933,7 @@ test('読了したらしおりは消え、表紙から進むと目次に着く�
   // 開いたり表紙へ戻ったりしても、しおりが第七章で保存し直されないこと
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn', 6); // 最終章（第七章）を耳で読む
+  await enterViaToc(page, 6); // 最終章（第七章）を耳で読む
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 15000 });
   await page.waitForFunction(() => {
     const a = document.getElementById('audioEl') as HTMLAudioElement;
@@ -929,9 +959,9 @@ test('読了したらしおりは消え、表紙から進むと目次に着く�
   await backToCover(page);
   const bmOnCover = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(bmOnCover).toBeNull();
-  await expect(page.locator('#coverResume')).toBeHidden();
-  // しおりが無い状態で表紙から進む先は目次ページ
-  await page.locator('#earModeBtn').click();
+  await expect(page.locator('#coverResume')).toHaveCount(0); // 表紙に再開の表示は無い（v1.13.16〜）
+  // しおりが無い状態で本をタップして進む先は目次ページ
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await expect(page.locator('#gateView')).toBeHidden();
 });
@@ -942,7 +972,7 @@ test('読了したらしおりは消える（目で読む：最終ページ到�
   // も復活しないこと
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#eyeModeBtn', 6); // 最終章（第七章）を目で読む（扉で止まる）
+  await enterEyeViaToc(page, 6); // 最終章（第七章）を目で読む（扉で止まる）
   await swipeGate(page, 'next'); // 扉から本文へ
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   // 「おわり」のある最終ページまで送る
@@ -961,8 +991,8 @@ test('読了したらしおりは消える（目で読む：最終ページ到�
   await backToCover(page);
   const bmOnCover = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
   expect(bmOnCover).toBeNull();
-  await expect(page.locator('#coverResume')).toBeHidden();
-  await page.locator('#eyeModeBtn').click();
+  await expect(page.locator('#coverResume')).toHaveCount(0); // 表紙に再開の表示は無い（v1.13.16〜）
+  await page.locator('#coverTap').click(); // 音読オフのまま開いても、進む先は目次
   await expect(page.locator('#tocView')).toBeVisible();
   await expect(page.locator('#gateView')).toBeHidden();
 });
@@ -1168,7 +1198,7 @@ test('文字サイズを「大」にすると本文が一回り大きくなり�
   // 再読み込みしても「大」が保たれる
   await page.reload();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#earModeBtn').click();
+  await page.locator('#coverTap').click();
   // しおりがあれば扉を経由せず直接再開し、無ければ目次経由で第一章へ（どちらでも本文に着く。v1.13.11 で再開は扉を経ない）
   await page.waitForSelector('#readerView:not([hidden]), #tocView:not([hidden]), #gateView:not([hidden])', { timeout: 5000 });
   if (await page.locator('#tocView').isVisible()) await clickTocChapter(page, 0);
@@ -1305,11 +1335,13 @@ test('フリガナの保存済み設定は、初回の初期値より優先さ�
   await expect(page.locator('#rubyToggle')).toBeChecked();
 });
 
-test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝前へ／中央20%＝無反応、ボタンは別）', async ({ page }) => {
-  // v1.13.9（ユーザー決定）：タップめくりを復活。ゾーンは次側40%／
-  // 反対側40%、中央20%は無反応帯（この本は右綴じ＝次側は左）。
-  // スワイプも従来どおり併存する。境界ちょうど（0.4／0.6）の扱いは
-  // 単体テスト（logic.tapDirection）が固定し、ここでは境界の内外を確かめる
+test('タップでめくれる：ゾーン判定（端25%＝次へ／前へ、中央50%は無反応、文タップは優先）', async ({ page }) => {
+  // v1.13.9（ユーザー決定）：タップめくりを復活。v1.13.16 で文タップ優先に
+  // 合わせ、ゾーンは端25%ずつ（次側／反対側）、中央50%は無反応帯に寄せた
+  // （この本は右綴じ＝次側は左）。本文で文に当たるタップは文タップになり、
+  // めくりにはならない（文タップの確認は文タップのテストで）。スワイプも
+  // 従来どおり併存する。境界ちょうど（0.25／0.75）の扱いは単体テスト
+  // （logic.tapDirection）が固定し、ここでは端のゾーンの内外を確かめる
   await openReader(page);
   const box = await page.locator('#pageWrap').boundingBox();
   if (!box) throw new Error('pageWrap not found');
@@ -1327,24 +1359,15 @@ test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝�
     });
     w.__tapMo.observe(el, { attributes: true, attributeFilter: ['class'] });
   });
-  // 左端（次側の端）タップ → 次ページ
+  // 左端（次側の端ゾーン）タップ → 次ページ。端ゾーンは本文の余白に当たる
   await tapSurfaceAt(page, box, 0.03);
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
-  // 40%境界の内側（0.38）タップ → 次ページ
-  await tapSurfaceAt(page, box, 0.38);
+  await tapSurfaceAt(page, box, 0.05);
   await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
-  // 中央（0.5）と境界の外側（0.42／0.58）は無反応。設定も開かない
-  for (const ratio of [0.42, 0.5, 0.58]) {
-    await tapSurfaceAt(page, box, ratio);
-    await page.waitForTimeout(250);
-    await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
-    await expect(page.locator('#menuModal')).toBeHidden();
-  }
-  // 60%境界の内側（0.62）タップ → 前ページ
-  await tapSurfaceAt(page, box, 0.62);
-  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
-  // 右端タップ → 前ページ
+  // 右端（前側の端ゾーン）タップ → 前ページ
   await tapSurfaceAt(page, box, 0.97);
+  await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
+  await tapSurfaceAt(page, box, 0.95);
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
   await page.waitForTimeout(100); // MutationObserver の通知を拾い切る
   const tapAnimSeen = await page.evaluate(() => {
@@ -1364,11 +1387,12 @@ test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝�
   await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
   await swipeSurface(page, box, 'prev');
   await expect(page.locator('#pageFolio')).toHaveText('― 1 ―');
-  // 扉でもゾーン判定が効く（目で読むは扉で止まるので、そのまま確かめられる）。
+  // 扉でもゾーン判定が効く（音読オフは扉で止まるので、そのまま確かめられる）。
   // 扉へは目次から入る（しおり再開は v1.13.11 で扉を経由しないため、再開では
   // 扉に着かない。再開そのものの確認は「再開は扉を経由せず」のテストで）
   await backToCover(page);
-  await page.locator('#eyeModeBtn').click();
+  await setNarrationFromCover(page, false);
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible(); // 再開は本文へ直接
   await openMenuInReader(page);
   await page.locator('#tocFromMenuBtn').click();
@@ -1382,7 +1406,7 @@ test('タップでめくれる：ゾーン判定（左40%＝次へ／右40%＝�
   await page.waitForTimeout(400);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#readerView')).toBeHidden();
-  // 左（次側）タップで入れる
+  // 左端（次側ゾーン）タップで入れる
   await tapSurfaceAt(page, gateBox, 0.2);
   await expect(page.locator('#readerView')).toBeVisible();
 });
@@ -1400,7 +1424,7 @@ test('初回の案内：初めて本文を開くと「タップかスワイプ�
   await expect(hint).toBeHidden();
   // 表紙に戻って開き直しても、二度と出ない
   await backToCover(page);
-  await page.locator('#earModeBtn').click();
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(hint).toBeHidden();
 });
@@ -1458,7 +1482,7 @@ test('スワイプでめくれる：大きく払うと進み、小さい払い�
 test('扉でもスワイプで遷移できる：左で後方へ（後方扉→目次）、右で本文へ', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateNum')).toHaveText('第一章');
   const box = await page.locator('#gateView').boundingBox();
@@ -1605,7 +1629,8 @@ test('回帰：扉の後方スワイプに遅れて届く相方クリックが�
   const bodyBox = await page.locator('#pageWrap').boundingBox();
   if (!bodyBox) throw new Error('pageWrap not found');
   const folio = await page.locator('#pageFolio').textContent();
-  // 抑止窓（350ms）を十分に過ぎてから、次側の位置へ相方クリックを届ける
+  // 抑止窓（350ms）を十分に過ぎてから、次側ゾーンの位置へ相方クリックを届ける
+  // （ゾーンは v1.13.16 で端25%に寄せたので、次側ゾーンの内側＝0.1 で試す）
   await page.waitForTimeout(700);
   await page.evaluate(
     ({ x, y }) => {
@@ -1613,18 +1638,18 @@ test('回帰：扉の後方スワイプに遅れて届く相方クリックが�
         .getElementById('pageWrap')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
     },
-    { x: bodyBox.x + bodyBox.width * 0.25, y: bodyBox.y + bodyBox.height * 0.5 },
+    { x: bodyBox.x + bodyBox.width * 0.1, y: bodyBox.y + bodyBox.height * 0.5 },
   );
   await page.waitForTimeout(500);
   await expect(page.locator('#pageFolio')).toHaveText(folio as string);
   await expect(page.locator('#readerView')).toBeVisible();
   // 本物のタップは、自分の pointerdown が先に来て抑止を下ろすので効く：
-  // 中央（無反応帯）では変わらず、前側ゾーンでは前ページへ戻る
-  await page.mouse.click(bodyBox.x + bodyBox.width * 0.5, bodyBox.y + bodyBox.height * 0.5);
+  // 中央（無反応帯。文の無い柱の辺り）では変わらず、端の前側ゾーンでは前ページへ戻る
+  await page.mouse.click(bodyBox.x + bodyBox.width * 0.5, bodyBox.y + bodyBox.height * 0.06);
   await page.waitForTimeout(300);
   await expect(page.locator('#pageFolio')).toHaveText(folio as string);
   const folioNum = parseInt((folio as string).replace(/[^0-9]/g, ''), 10);
-  await page.mouse.click(bodyBox.x + bodyBox.width * 0.75, bodyBox.y + bodyBox.height * 0.5);
+  await page.mouse.click(bodyBox.x + bodyBox.width * 0.97, bodyBox.y + bodyBox.height * 0.5);
   await expect(page.locator('#pageFolio')).toHaveText(`― ${folioNum - 1} ―`);
 });
 
@@ -1666,7 +1691,7 @@ test('本を開いた直後は、設定が勝手に出ない', async ({ page }) 
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('#menuModal')).toBeHidden(); // 起動直後
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await swipeGate(page, 'next'); // 扉スワイプで即本文へ（実機の速い操作を再現）
   await expect(page.locator('#readerView')).toBeVisible();
   await expect(page.locator('#pageFolio')).not.toHaveText('');
@@ -1692,7 +1717,7 @@ test('BGMは最初のタップで流れ始め、設定でオン/オフが切り�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   await expect(page.locator('body')).not.toHaveAttribute('data-bgm', 'on'); // まだ操作していないので鳴らない
-  await page.locator('#earModeBtn').click(); // 最初のタップで流れ始める
+  await page.locator('#coverTap').click(); // 最初のタップで流れ始める
   await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
   await expect(page.locator('#tocView')).toBeVisible(); // 初回は目次から始まる
   await clickTocChapter(page, 0);
@@ -1724,9 +1749,10 @@ test('更新バナーは通常は隠れている', async ({ page }) => {
 test('章の扉に下部の案内文言は出ない（タイトルブロックは残る）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#eyeModeBtn').click();
+  await setNarrationFromCover(page, false);
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible(); // 初回は目次から始まる
-  await clickTocChapter(page, 0); // 目で読むは扉で止まるので、そのまま確認できる
+  await clickTocChapter(page, 0); // 音読オフは扉で止まるので、そのまま確認できる
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gateHint')).toHaveCount(0);
   await expect(page.locator('#gateView')).not.toContainText('タップで本文へ');
@@ -1913,7 +1939,9 @@ test('起動できないときは「なおす」ボタンが出て、押すと�
   await page.unroute('**/assets/*.js');
   await page.getByRole('button', { name: 'なおす' }).click();
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await expect(page.locator('#coverResume')).toContainText('つづきから'); // しおりが残っている（再開カードが再開を示す）
+  // しおりが残っている（表紙に再開の表示は無いので、保存データで確かめる）
+  const bmKept = await page.evaluate((id) => localStorage.getItem(`${id}-bookmark`), APP_ID);
+  expect(bmKept).not.toBeNull();
   await expect(page.locator('#boot-error')).toBeHidden();
   expect(await page.evaluate(() => caches.has('other-app-v1'))).toBe(true);
 });
@@ -2171,8 +2199,9 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await setHidden(false);
     await expect.poll(bgmOn).toBe(true); // 前面に戻れば設定どおり再開する
 
-    // 目で読む：BGM は鳴るが、背面化で止まる
-    await page.locator('#eyeModeBtn').click();
+    // 音読オフ：BGM は鳴るが、背面化で止まる
+    await setNarrationFromCover(page, false);
+    await page.locator('#coverTap').click();
     await expect(page.locator('#tocView')).toBeVisible(); // 初回は目次から始まる
     await clickTocChapter(page, 0);
     await expect(page.locator('#gateView')).toBeVisible();
@@ -2180,7 +2209,7 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await expect(page.locator('#readerView')).toBeVisible();
     await expect.poll(bgmOn).toBe(true);
     await setHidden(true);
-    await expect.poll(bgmOn).toBe(false); // 目で読むではバックグラウンド再生は効かない
+    await expect.poll(bgmOn).toBe(false); // 音読オフではバックグラウンド再生は効かない
     await setHidden(false);
     await expect.poll(bgmOn).toBe(true);
   });
@@ -2214,7 +2243,7 @@ test.describe('安全領域のある画面（iPhone Air 相当）', () => {
     await applySafeAreaInsets(page);
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     const gate = await page.locator('.gate-sheet').boundingBox();
     if (!gate) throw new Error('gate box not found');
@@ -2313,7 +2342,7 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   expect(await wlHeld()).toBe(false); // 表紙では取らない
   expect(await wlState()).toBe('off');
 
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await expect(page.locator('#pageFolio')).not.toHaveText('');
   await expect.poll(wlHeld).toBe(true); // 読書画面では取得する
@@ -2330,7 +2359,7 @@ test('画面を暗くしない: 読書画面では Wake Lock を取り、表紙�
   await page.locator('#wakeLockToggle').click();
   await expect(page.locator('#wakeLockToggle')).not.toBeChecked();
   await page.locator('#menuCloseBtn').click();
-  await page.locator('#earModeBtn').click();
+  await page.locator('#coverTap').click(); // しおりがあるので本文へ直接再開する
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await page.waitForTimeout(600);
   expect(await wlHeld()).toBe(false);
@@ -2457,7 +2486,7 @@ test.describe('章題コール（扉の朗読）', () => {
   test('扉では章題コールが鳴り、読み終わってから本文が始まる', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#gateAudio')).toHaveAttribute('src', /ch1-title\.mp3$/);
     // コール（約5秒）の途中では、まだ本文へ進んでいない
@@ -2470,7 +2499,7 @@ test.describe('章題コール（扉の朗読）', () => {
   test('扉をスワイプするとコールを止めてすぐ本文へ進む', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     await page.waitForTimeout(400);
     await swipeGate(page, 'next');
@@ -2481,7 +2510,7 @@ test.describe('章題コール（扉の朗読）', () => {
     await page.route('**/book/audio/*-title.mp3', (route) => route.abort());
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 20000 });
   });
@@ -2579,7 +2608,7 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
   test('扉でも短いフリックで遷移できる（本文と同じ判定）', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     // 確定量に届かない短い速い払いでも、フリックとして入章できる
     await swipeOn(page, '#gateView', 0.46, 0.54);
@@ -2604,7 +2633,7 @@ test.describe('ページ操作の統一（本文・扉・目次）', () => {
     await expect(page.locator('#coverView')).toBeVisible();
     // もう一度チェーンで目次まで来て、今度は短いフリックでも表紙へ戻れる
     // （しおりがあるので、再開は扉を経由せず本文へ直接着地する。v1.13.11）
-    await page.locator('#earModeBtn').click();
+    await page.locator('#coverTap').click();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
     const box2 = await page.locator('#pageWrap').boundingBox();
     if (!box2) throw new Error('pageWrap not found');
@@ -2760,7 +2789,7 @@ test('扉と目次にも本文と同じアイコン（再生・歯車マーク�
   const playing = (): Promise<boolean> =>
     page.evaluate(() => !(document.getElementById('audioEl') as HTMLAudioElement).paused);
   // 耳で読む：扉に両アイコンがあり、再生アイコンで入章して朗読が始まる
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('#gatePlayBtn')).toBeVisible();
   await expect(page.locator('#gateMenuBtn')).toBeVisible();
@@ -2782,10 +2811,11 @@ test('扉と目次にも本文と同じアイコン（再生・歯車マーク�
   await page.locator('#tocPlayBtn').click();
   await expect(page.locator('#readerView')).toBeVisible();
   await expect.poll(playing, { timeout: 8000 }).toBe(true);
-  // 目で読む：扉では再生アイコンだけが消え、歯車マークは残る。
+  // 音読オフ：扉では再生アイコンだけが消え、歯車マークは残る。
   // 再開は扉を経由しない（v1.13.11）ため、扉の確認は目次ジャンプ経由にする
   await backToCover(page);
-  await page.locator('#eyeModeBtn').click();
+  await setNarrationFromCover(page, false);
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await openMenuInReader(page);
   await page.locator('#tocFromMenuBtn').click();
@@ -2807,7 +2837,7 @@ test('アイコンの位置は全画面・全モードで統一（左下＝再�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   // 耳で読む・扉：再生は左、歯車マークは右
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   expect(await ratio('#gateView', '#gatePlayBtn')).toBeLessThan(0.5);
   expect(await ratio('#gateView', '#gateMenuBtn')).toBeGreaterThan(0.5);
@@ -2817,7 +2847,8 @@ test('アイコンの位置は全画面・全モードで統一（左下＝再�
   await expect(page.locator('#menuModal')).toBeVisible();
   await page.locator('#toCoverFromMenuBtn').click();
   await expect(page.locator('#coverView')).toBeVisible();
-  await page.locator('#eyeModeBtn').click();
+  await setNarrationFromCover(page, false);
+  await page.locator('#coverTap').click();
   await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
   await openMenuInReader(page);
   await page.locator('#tocFromMenuBtn').click();
@@ -2842,7 +2873,8 @@ test('アイコンの位置は全画面・全モードで統一（左下＝再�
     await page.waitForTimeout(250);
   }
   await expect(page.locator('#coverView')).toBeVisible();
-  await page.locator('#earModeBtn').click();
+  await setNarrationFromCover(page, true); // 音読オンに戻してから本文へ
+  await page.locator('#coverTap').click();
   // 扉が出たらスワイプで本文へ（しおりから直接本文が開いた場合はそのまま）
   if (await page.locator('#gateView').isVisible()) {
     await swipeGate(page, 'next');
@@ -2852,21 +2884,22 @@ test('アイコンの位置は全画面・全モードで統一（左下＝再�
   expect(await ratio('#readerView', '#menuBtn')).toBeGreaterThan(0.5);
 });
 
-test('初めて読むときは、どちらのモードでも目次から始まる（しおりなし）', async ({ page }) => {
+test('初めて読むときは、音読のオン／オフどちらでも目次から始まる（しおりなし）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  // 耳で読む：扉へ直行せず、まず目次ページが開く
-  await page.locator('#earModeBtn').click();
+  // 音読オン（既定）：扉へ直行せず、まず目次ページが開く
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible();
   await expect(page.locator('#gateView')).toBeHidden();
   // 章を選べば扉へ進む
   await clickTocChapter(page, 0);
   await expect(page.locator('#gateView')).toBeVisible();
-  // 目で読むでも同じ（新しいページ＝しおりなしの状態で確認する）
+  // 音読オフでも同じ（新しいページ＝しおりなしの状態で確認する）
   const page2 = await page.context().newPage();
   await page2.goto('/');
   await page2.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page2.locator('#eyeModeBtn').click();
+  await setNarrationFromCover(page2, false);
+  await page2.locator('#coverTap').click();
   await expect(page2.locator('#tocView')).toBeVisible();
   await expect(page2.locator('#gateView')).toBeHidden();
   await clickTocChapter(page2, 0);
@@ -2877,7 +2910,7 @@ test('初めて読むときは、どちらのモードでも目次から始ま�
 test('しおりがあるときは目次を経由せず、つづきから再開する', async ({ page }) => {
   await openReader(page); // 読み始める（しおりが付く）
   await backToCover(page);
-  await page.locator('#eyeModeBtn').click();
+  await page.locator('#coverTap').click();
   // 目次も扉も経由せず、本文へ直接着地する（v1.13.11）
   await expect(page.locator('#tocView')).toBeHidden();
   await expect(page.locator('#gateView')).toBeHidden();
@@ -2887,7 +2920,7 @@ test('しおりがあるときは目次を経由せず、つづきから再開�
 test('目次の体裁は本文・扉と揃っている：戻るピルなし、ノンブルは帯の中央、項目は上端揃えで同じ高さ（A案）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#earModeBtn').click(); // 初回は目次から始まる
+  await page.locator('#coverTap').click(); // 初回は目次から始まる
   await expect(page.locator('#tocView')).toBeVisible();
   // 「戻る」ピルは無い。ノンブルは帯（.sheet-footer）の中にあり、本文と同じ .folio の体裁
   await expect(page.locator('#tocBackBtn')).toHaveCount(0);
@@ -2934,7 +2967,8 @@ test('目次の体裁は本文・扉と揃っている：戻るピルなし、�
 test('目次の見出しの開始位置は扉の題字ブロックの上端と一致する（v1.13.11）', async ({ page }) => {
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-  await page.locator('#eyeModeBtn').click(); // 初回は目次から始まる
+  await setNarrationFromCover(page, false);
+  await page.locator('#coverTap').click(); // 初回は目次から始まる
   await expect(page.locator('#tocView')).toBeVisible();
   await page.waitForTimeout(200);
   // 目次側：見出し（「目次」）の文字の上端と、章の並びの頭（第一章の章番号の
@@ -2982,7 +3016,7 @@ test('目次の印はしおりのある章のリボンだけ：ヒント文は�
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' });
   // 第二章を少し読んでしおりを作る（目モード：目次→扉→本文→1ページめくる）
-  await enterViaToc(page, '#eyeModeBtn', 1);
+  await enterEyeViaToc(page, 1);
   await swipeGate(page, 'next');
   await expect(page.locator('#readerView')).toBeVisible();
   const readerBox = await page.locator('#readerView').boundingBox();
@@ -3053,8 +3087,8 @@ test('デザインの約束事：帯の家具は全画面で同じ部品・寸�
     expect(m.color).toBe(refColor); // 全画面で同じトーン
     expect(Math.abs(m.gap - 10)).toBeLessThanOrEqual(1); // 帯の浮き --band-lift: 10px
   };
-  // 目次（耳で読むの入口＝初回は目次から）
-  await page.locator('#earModeBtn').click();
+  // 目次（本のタップ＝初回は目次から）
+  await page.locator('#coverTap').click();
   await expect(page.locator('#tocView')).toBeVisible();
   const tocMenu = await measure('#tocMenuBtn', '.toc-sheet');
   const tocPlay = await measure('#tocPlayBtn', '.toc-sheet');
@@ -3090,19 +3124,33 @@ test('デザインの約束事：帯の家具は全画面で同じ部品・寸�
   await expect(page.locator('#endPlayBtn')).toBeHidden(); // 奥付に再生は出さない
 });
 
-test.describe('読書モード（耳で読む／目で読む）', () => {
-  test('表紙に2つの入口があり、目で読むでは人の声だけが鳴らず再生ボタンも出ない（BGMとめくり音はある）', async ({ page }) => {
+test.describe('音読設定（オン＝朗読あり／オフ＝電子書籍）', () => {
+  test('表紙に入口は無く、音読オフでは人の声だけが鳴らず再生ボタンも出ない（BGMとめくり音はある）', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await expect(page.locator('#earModeBtn')).toBeVisible();
-    await expect(page.locator('#eyeModeBtn')).toBeVisible();
+    // v1.13.16〜：表紙にモードの入口は無い。朗読の有無は設定の「音読」で決める
+    await expect(page.locator('#earModeBtn')).toHaveCount(0);
+    await expect(page.locator('#eyeModeBtn')).toHaveCount(0);
+    // 「音読」の初期値はオンで、設定は保存されて開き直しても維持される
+    await openMenuOnCover(page);
+    await expect(page.locator('#narrationToggle')).toBeChecked();
+    await page.locator('#narrationToggle').click();
+    await expect(page.locator('#narrationToggle')).not.toBeChecked();
+    await page.locator('#menuCloseBtn').click();
+    await page.reload();
+    await page.locator('#tocList li').first().waitFor({ state: 'attached' });
+    await openMenuOnCover(page);
+    await expect(page.locator('#narrationToggle')).not.toBeChecked(); // オフが維持されている
+    await page.locator('#menuCloseBtn').click();
     // 音の発音フックと音声要素の再生を監視する
     await page.evaluate(() => {
       const w = window as unknown as { __sounds: number };
       w.__sounds = 0;
       document.addEventListener('app:sound', () => w.__sounds++);
     });
-    await enterViaToc(page, '#eyeModeBtn');
+    await page.locator('#coverTap').click();
+    await expect(page.locator('#tocView')).toBeVisible();
+    await clickTocChapter(page, 0);
     await expect(page.locator('#gateView')).toBeVisible();
     // 扉はコールなしで自動でも進まない（少し待っても扉のまま）
     await page.waitForTimeout(2500);
@@ -3142,25 +3190,36 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     expect(after.sounds).toBeGreaterThan(silent.sounds);
     expect(after.nowCount).toBe(0);
     expect(after.bodyPaused).toBe(true);
-    // 設定はモード別：BGM とめくり音は出し、朗読に紐づく項目は出さない
+    // 設定：BGM とめくり音は出し、朗読に紐づく項目は出さない。ただし
+    // 「音読」スイッチ自体と「朗読」の見出しは、オフでも常時見える・
+    // 操作できる（v1.13.16 の例外規則。ここからオンに戻せること）
     await openMenuInReader(page);
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
     await expect(page.locator('#bgPlayToggle')).toBeHidden();
     await expect(page.locator('#rowSpeed')).toBeHidden();
-    // 朗読に紐づく行が無くなるので「朗読」の見出しも出ない
-    await expect(page.locator('#menuHeadPlay')).toBeHidden();
+    await expect(page.locator('#menuHeadPlay')).toBeVisible();
+    await expect(page.locator('#rowNarration')).toBeVisible();
+    await expect(page.locator('#narrationToggle')).not.toBeChecked();
     await expect(page.locator('#hlToggle')).toBeHidden();
     await expect(page.locator('#fontStdBtn')).toBeVisible();
     await expect(page.locator('#rubyToggle')).toBeVisible();
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#tocFromMenuBtn')).toBeVisible();
+    await page.locator('#menuCloseBtn').click();
+    // 読書の途中でオンに戻すと、再生ボタンと朗読の項目がその場で戻る
+    await setNarrationFromReader(page, true);
+    await expect(page.locator('#playPauseBtn')).toBeVisible();
+    await openMenuInReader(page);
+    await expect(page.locator('#rowSpeed')).toBeVisible();
+    await expect(page.locator('#narrationToggle')).toBeChecked();
+    await page.locator('#menuCloseBtn').click();
   });
 
-  test('耳で読むは従来どおり：再生ボタンが出て朗読が始まり、設定に音の項目がある', async ({ page }) => {
+  test('音読オンは従来どおり：再生ボタンが出て朗読が始まり、設定に音の項目がある', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    await enterViaToc(page, '#earModeBtn');
+    await enterViaToc(page);
     await expect(page.locator('#gateView')).toBeVisible();
     await swipeGate(page, 'next');
     await expect(page.locator('#readerView')).toBeVisible();
@@ -3172,36 +3231,39 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#bgmToggle')).toBeVisible();
     await expect(page.locator('#pageSoundToggle')).toBeVisible();
     await expect(page.locator('#rowSpeed')).toBeVisible();
+    await expect(page.locator('#narrationToggle')).toBeChecked(); // 既定はオン
     await expect(page.locator('#menuHeadAudio')).toHaveText('音');
     await expect(page.locator('#menuHeadDisplay')).toHaveText('表示');
     await expect(page.locator('#menuHeadPlay')).toHaveText('朗読');
   });
 
-  test('モードをまたいでも、しおりの位置（同じページ）から再開できる', async ({ page }) => {
+  test('音読を切り替えても、しおりの位置（同じページ）から再開できる', async ({ page }) => {
     await page.goto('/');
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
-    // 耳で読むで入り、2ページ目まで進める
-    await enterViaToc(page, '#earModeBtn');
+    // 音読オンで入り、2ページ目まで進める
+    await enterViaToc(page);
     await swipeGate(page, 'next');
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
     const box = await page.locator('#pageWrap').boundingBox();
     if (!box) throw new Error('pageWrap not found');
     await swipeSurface(page, box, 'next');
     await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
-    // 表紙へ戻り、目で読むで入り直す → 同じページから（再開は扉を経由しない。v1.13.11）
+    // 表紙へ戻り、音読をオフにして開き直す → 同じページから（再開は扉を経由しない。v1.13.11）
     await backToCover(page);
-    await page.locator('#eyeModeBtn').click();
+    await setNarrationFromCover(page, false);
+    await page.locator('#coverTap').click();
     await expect(page.locator('#gateView')).toBeHidden();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#pageFolio')).toHaveText('― 2 ―');
     await expect(page.locator('#playPauseBtn')).toBeHidden();
-    // さらに目で読むで3ページ目へ進め、耳で読むで入り直しても同じページ
+    // さらにオフのまま3ページ目へ進め、オンに戻して開き直しても同じページ
     const box2 = await page.locator('#pageWrap').boundingBox();
     if (!box2) throw new Error('pageWrap not found');
     await swipeSurface(page, box2, 'next');
     await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
     await backToCover(page);
-    await page.locator('#earModeBtn').click();
+    await setNarrationFromCover(page, true);
+    await page.locator('#coverTap').click();
     await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('#pageFolio')).toHaveText('― 3 ―');
   });
@@ -3223,10 +3285,14 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     await expect(page.locator('#wakeLockToggle')).toBeVisible();
     await expect(page.locator('#hlToggle')).toBeVisible();
     // 分類の中身：音＝めくり音・BGM／表示＝画面を暗くしない ほか／
-    // 朗読＝速さ・強調・バックグラウンド再生（強調は v1.13.11 で表示から移動）
+    // 朗読＝音読（先頭行）・速さ・強調・バックグラウンド再生
+    // （強調は v1.13.11 で表示から移動、音読は v1.13.16 で追加）
     const grouping = await page.evaluate(() => ({
       soundInAud: !!document.querySelector('#menuGroupAudio #rowPageSound'),
       bgmInAud: !!document.querySelector('#menuGroupAudio #rowBgm'),
+      narrationInPlay: !!document.querySelector('#menuGroupPlay #rowNarration'),
+      narrationFirst:
+        document.querySelector('#menuGroupPlay .menu-row')?.id === 'rowNarration',
       speedInPlay: !!document.querySelector('#menuGroupPlay #rowSpeed'),
       bgPlayInPlay: !!document.querySelector('#menuGroupPlay #rowBgPlay'),
       hlInPlay: !!document.querySelector('#menuGroupPlay #rowHl'),
@@ -3235,6 +3301,8 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     expect(grouping).toEqual({
       soundInAud: true,
       bgmInAud: true,
+      narrationInPlay: true,
+      narrationFirst: true,
       speedInPlay: true,
       bgPlayInPlay: true,
       hlInPlay: true,
@@ -3330,7 +3398,7 @@ test('復帰を繰り返してもBGMのマスターゲインは1つだけが生�
   });
   await page.goto('/');
   await expect(page.locator('#tocList li')).toHaveCount(7);
-  await enterViaToc(page, '#earModeBtn');
+  await enterViaToc(page);
   await expect(page.locator('#gateView')).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-bgm', 'on');
   const gateBox = await page.locator('#gateView').boundingBox();

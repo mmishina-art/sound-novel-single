@@ -70,15 +70,18 @@ export function directionOf(name: string | undefined): Direction {
 
 /* ---- タップのゾーン判定 ----
    画面幅に対するタップ位置の割合（0=左端、1=右端）から、ページ送りの
-   方向を決める純関数。次側の40%＝次へ（1）、反対側の40%＝前へ（-1）、
-   中央20%は無反応（0）。境界（ちょうど0.4／0.6）は中央側に含める。
-   v1.13.6 でタップめくりを廃止したが、v1.13.9 でユーザー決定により復活。
-   半分判定だった旧仕様と違い、中央に無反応帯を置くことで、左右どちらへ
-   倒れるか曖昧なタップを拾わない */
+   方向を決める純関数。次側の端25%＝次へ（1）、反対側の端25%＝前へ（-1）、
+   中央50%は無反応（0）。境界（ちょうど0.25／0.75）は中央側に含める。
+   v1.13.6 でタップめくりを廃止したが、v1.13.9 でユーザー決定により復活
+   （当時は次側40%／反対側40%／中央20%）。v1.13.16 で本文に「文タップで
+   その文から読む」を入れたのに合わせ、タップめくりは画面の端のゾーン
+   （余白・端）だけに寄せた：本文の中央域のタップは文タップ（文に当たった
+   とき）か無反応になり、めくりと競合しない。ゾーン判定そのものは全画面
+   （本文・扉・目次・奥付）で共通のまま */
 export function tapDirection(ratio: number, nextSide: 'left' | 'right'): 1 | -1 | 0 {
   if (!Number.isFinite(ratio)) return 0;
-  const onNextSide = nextSide === 'left' ? ratio < 0.4 : ratio > 0.6;
-  const onPrevSide = nextSide === 'left' ? ratio > 0.6 : ratio < 0.4;
+  const onNextSide = nextSide === 'left' ? ratio < 0.25 : ratio > 0.75;
+  const onPrevSide = nextSide === 'left' ? ratio > 0.75 : ratio < 0.25;
   if (onNextSide) return 1;
   if (onPrevSide) return -1;
   return 0;

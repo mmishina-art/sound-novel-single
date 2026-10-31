@@ -56,7 +56,7 @@ const clickTocChapterShots = async (page, idx) => {
 };
 const openReader = async (page) => {
   await waitBook(page);
-  await page.click('#earModeBtn');
+  await page.click('#coverTap');
   // 初めて読むときは目次から始まる（v1.12.4）。第一章を選んで扉へ。
   // しおりがあるときは扉を経由せず本文へ直接再開する（v1.13.11〜。撮影は
   // 同一コンテキストで続くため、前の画面が置いたしおりが残っていることがある）
@@ -81,8 +81,9 @@ const SCREENS = [
   },
   { name: 'cover' },
   {
-    // しおりがあるときの表紙（モードカードの上の再開カードが「つづきから／第一章」になる状態）。
-    // しおりを置いて読み込み直す
+    // しおりがあるときの表紙。v1.13.16 で再開カードは廃止したため、表紙の
+    // 見た目はしおりの有無で変わらない（本とフッターだけ）。しおりを置いて
+    // 読み込み直し、カード類が何も出ていないことを目視確認するための1枚
     name: 'cover-resume',
     open: async (page) => {
       await page.evaluate(() => {
@@ -92,7 +93,6 @@ const SCREENS = [
       await page.reload();
       await page.waitForFunction(() => globalThis.__appStarted === true);
       await waitBook(page);
-      await page.waitForFunction(() => globalThis.document.getElementById('coverResume')?.textContent?.includes('つづきから'));
     },
   },
   { name: 'toc-page', open: openToc },
@@ -108,7 +108,7 @@ const SCREENS = [
       await page.reload();
       await page.waitForFunction(() => globalThis.__appStarted === true);
       await waitBook(page);
-      await page.click('#earModeBtn');
+      await page.click('#coverTap');
       await page.waitForSelector('#tocView:not([hidden])');
       await page.locator('.toc-item').first().click();
       await page.waitForSelector('#gateView:not([hidden])');

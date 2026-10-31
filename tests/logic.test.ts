@@ -115,27 +115,29 @@ describe('directionOf', () => {
   });
 });
 
-describe('tapDirection（タップのゾーン判定：次側40%／中央20%無反応／反対側40%）', () => {
-  it('次側が左（右綴じ）：左40%＝次へ、右40%＝前へ', () => {
+describe('tapDirection（タップのゾーン判定：次側の端25%／中央50%無反応／反対側の端25%。v1.13.16 で文タップ優先に合わせて端へ寄せた）', () => {
+  it('次側が左（右綴じ）：左端25%＝次へ、右端25%＝前へ', () => {
     expect(tapDirection(0, 'left')).toBe(1); // 左端
     expect(tapDirection(0.2, 'left')).toBe(1);
-    expect(tapDirection(0.399, 'left')).toBe(1); // 境界の内側
+    expect(tapDirection(0.249, 'left')).toBe(1); // 境界の内側
     expect(tapDirection(0.8, 'left')).toBe(-1);
-    expect(tapDirection(0.601, 'left')).toBe(-1); // 境界の内側
+    expect(tapDirection(0.751, 'left')).toBe(-1); // 境界の内側
     expect(tapDirection(1, 'left')).toBe(-1); // 右端
   });
-  it('中央20%と境界（0.4／0.6ちょうど）は無反応', () => {
-    expect(tapDirection(0.4, 'left')).toBe(0);
+  it('中央50%と境界（0.25／0.75ちょうど）は無反応', () => {
+    expect(tapDirection(0.25, 'left')).toBe(0);
+    expect(tapDirection(0.4, 'left')).toBe(0); // 旧ゾーン（40%）では次側だった位置も、今は無反応
     expect(tapDirection(0.5, 'left')).toBe(0);
-    expect(tapDirection(0.6, 'left')).toBe(0);
+    expect(tapDirection(0.6, 'left')).toBe(0); // 旧ゾーンでは前側だった位置も、今は無反応
+    expect(tapDirection(0.75, 'left')).toBe(0);
   });
   it('次側が右（左綴じ）では左右が入れ替わる', () => {
     expect(tapDirection(0, 'right')).toBe(-1);
-    expect(tapDirection(0.399, 'right')).toBe(-1);
-    expect(tapDirection(0.4, 'right')).toBe(0);
+    expect(tapDirection(0.249, 'right')).toBe(-1);
+    expect(tapDirection(0.25, 'right')).toBe(0);
     expect(tapDirection(0.5, 'right')).toBe(0);
-    expect(tapDirection(0.6, 'right')).toBe(0);
-    expect(tapDirection(0.601, 'right')).toBe(1);
+    expect(tapDirection(0.75, 'right')).toBe(0);
+    expect(tapDirection(0.751, 'right')).toBe(1);
     expect(tapDirection(1, 'right')).toBe(1);
   });
   it('割合が数でないときは無反応', () => {
