@@ -781,20 +781,27 @@ body.bound-left .toc-sheet {
    ことが分かるようにする（最下部の見出しだけが切れて見える状態を避ける）。
    あわせて末尾に余白を持たせ、最後の行まで読み切れるようにする */
 .menu-panel { mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent 100%); padding-bottom: 26px; }
-/* 設定の分類見出し（v1.12.2 で整理し、v1.13.11 で段差を強めた）：項目行に
-   埋もれて見えないよう、上の余白を項目間より広く取り、生成りの薄い帯＋
-   藍の小さな印（菱形）＋濃いめの金茶の字で「構造」として読めるようにする */
-.menu-panel .menu-section h4 { display: flex; align-items: center; gap: 9px; margin: 22px 0 4px; padding: 5px 10px; font-size: .8rem; font-weight: 700; color: #7a5f27; letter-spacing: .24em; background: rgba(247, 242, 231, .9); border-radius: 6px; }
+/* 設定の分類見出し（案2、v1.13.12 で差し替え。モック headings-plan2）：
+   項目行に埋もれて見えないよう、上の余白を項目間より広く取り、生成りの
+   帯（#f7f2e7）を項目行より左右に少し広く敷き、文字の左に藍の小さな
+   四角印を置いて「面」で区切る。罫線は引かない。字は墨色にする
+   （v1.13.11 の菱形＋罫線＋金茶の字という「段差」表現から差し替えた） */
+.menu-panel .menu-section h4 { display: flex; align-items: center; gap: 9px; margin: 22px -8px 4px; padding: 6px 16px; font-size: .82rem; font-weight: 700; color: var(--text); letter-spacing: .18em; background: #f7f2e7; border-radius: 6px; }
 .menu-panel .menu-section h4:first-of-type { margin-top: 8px; }
-.menu-panel .menu-section h4::before { content: ''; flex: none; width: 7px; height: 7px; background: var(--indigo2); transform: rotate(45deg); }
-.menu-panel .menu-section h4::after { content: ''; flex: 1; border-top: 1px solid rgba(138, 109, 47, .35); }
-/* 移動のボタン（表紙へ／目次へ）はパネル上部に枠つきボタンで並べる
-   （v1.13.11、設定画面の整理）。表紙から開いたときは「表紙へ」を隠し、
-   「目次へ」が幅いっぱいになる */
-.menu-nav-btns { display: flex; gap: 10px; margin-top: 12px; }
-.menu-nav-btn { flex: 1 1 0; min-height: 44px; padding: 6px 10px; border: 1px solid rgba(146, 128, 84, .45); border-radius: 12px; background: rgba(247, 242, 231, .55); color: var(--text); font: inherit; font-size: .95rem; cursor: pointer; }
-.menu-nav-btn:active { background: rgba(163, 130, 62, .10); }
-.menu-nav-btn[hidden] { display: none; }
+.menu-panel .menu-section h4::before { content: ''; flex: none; width: 8px; height: 8px; background: var(--indigo2); }
+/* 移動の入口（表紙へ／目次へ）は、見出し「設定」と同じ行のカプセルに
+   置く（v1.13.12、モック navclean-i3。v1.13.11 の独立したボタン行は
+   廃止）：細線のカプセルの中に、線画アイコン（開いた本／横線3本）と
+   文字を一緒に入れる。内側はモックより少しゆとりを持たせ（左右 13px・
+   印と文字の間 7px）、ボタン自体は 44px の押下範囲を確保して、見た目
+   より広く当たるようにする。×（円）は右端で現行のまま */
+.menu-head-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.menu-cap-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0; background: none; border: none; font: inherit; cursor: pointer; }
+.menu-cap-btn[hidden] { display: none; }
+.menu-cap { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 13px; border: 1px solid #cec4ac; border-radius: 999px; color: #6e614a; font-size: .8rem; letter-spacing: .04em; white-space: nowrap; }
+.menu-cap svg { flex: none; width: 16px; height: 16px; color: #60543e; }
+.menu-cap-btn:active .menu-cap { background: rgba(163, 130, 62, .10); }
+.menu-cap-btn:focus-visible { outline: 2px solid rgba(138, 109, 47, .6); outline-offset: 2px; border-radius: 999px; }
 /* インストール案内はパネル末尾の静かな行として残す（v1.13.11） */
 .menu-foot { margin-top: 12px; }
 .menu-foot .menu-nav-row { border-bottom: none; border-top: 1px solid rgba(101, 84, 52, .14); }

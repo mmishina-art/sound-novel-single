@@ -376,7 +376,25 @@ export function createReader(book: BookData): Reader {
       headPlay.textContent = '朗読';
     }
   }
+  /* 設定パネルが開いている間（v1.13.12）。扉の開始処理（showGate の
+     start／fallback）が、開いている間は自動で本文へ進まないための旗 */
+  let menuOpen = false;
   function openMenu(): void {
+    menuOpen = true;
+    /* 設定を開いたら朗読は止める（v1.13.12、ユーザー決定。対象は全画面共通）。
+       閉じても自動では再開しない（再生は利用者がボタンを押す。予測しやすい
+       方を採る）。BGM は対象外：設定の切り替えをその場で聞いて確かめられる
+       よう、従来どおり鳴らし続ける。pause の通知で再生ボタンの図柄・
+       しおり・Media Session は既存の経路で同期する */
+    if (!audio.paused && !audio.ended) audio.pause();
+    /* 扉（通常扉）で開いた場合は、章題コールと自動入章のタイマーも止める。
+       そうしないと、開いている間にコールが終わって本文の朗読が始まって
+       しまう。扉そのものと開始セッションは残すので、閉じた後はスワイプや
+       再生アイコンで従来どおり本文へ進める（自動では進まない） */
+    if (gateOpen && !gateBack) {
+      stopGateCall();
+      if (gateTimer !== undefined) clearTimeout(gateTimer);
+    }
     // 分類（音／表示／再生）は全画面で共通。目で読むのときだけ朗読に紐づく行を隠す
     arrangeMenu(coverView.hidden ? readMode : 'cover');
     // パネルの呼び名は開いた場所によらず「設定」に統一する（v1.13.11。
@@ -388,7 +406,10 @@ export function createReader(book: BookData): Reader {
     $('menuModal').hidden = false;
   }
   function closeMenu(): void {
+    menuOpen = false;
     $('menuModal').hidden = true;
+    // 朗読は自動では再開しない（v1.13.12。開くときに止めた分も、利用者が
+    // 再生ボタンを押すまで止めたままにする）
   }
   function audioSrc(idx: number): string {
     return 'book/audio/ch' + (idx + 1) + '.mp3';
@@ -870,7 +891,10 @@ export function createReader(book: BookData): Reader {
     if (gateTimer !== undefined) clearTimeout(gateTimer);
     let started = false;
     const start = (): void => {
-      if (started || myGate !== gateSeq) return; // 既に進んだ／既に別の扉に替わった
+      // 設定パネルが開いている間は自動で進まない（v1.13.12。開くときに
+      // コールとタイマーを止めてあるが、残った経路からも開始しない。
+      // started は立てないので、閉じた後はスワイプで進める）
+      if (started || myGate !== gateSeq || menuOpen) return; // 既に進んだ／既に別の扉に替わった
       started = true;
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       stopGateCall();
@@ -928,7 +952,7 @@ export function createReader(book: BookData): Reader {
       // play() の中断など）では、進み直さない。世代も見るのは、替わった先の
       // 扉が開いている間（gateOpen は真に戻る）に旧い扉のフォールバックが
       // 割り込んで、タイマーを上書きしてしまうため
-      if (!gateOpen || myGate !== gateSeq) return;
+      if (!gateOpen || myGate !== gateSeq || menuOpen) return; // 設定を開いている間は入章を予約し直さない（v1.13.12）
       if (gateTimer !== undefined) clearTimeout(gateTimer);
       gateTimer = setTimeout(start, 1800);
     };
@@ -1324,12 +1348,11 @@ export function createReader(book: BookData): Reader {
     };
     set('play', () => playAudio());
     set('pause', () => audio.pause());
-    set('previoustrack', () => {
-      if (current > 0) showGate(current - 1);
-    });
-    set('nexttrack', () => {
-      if (current < chapters.length - 1) showGate(current + 1);
-    });
+    // next／previous は画面の文送りボタンと同じ「次の文／前の文」に統一する
+    // （v1.13.12、ユーザー確定。「進む＝次の文」。旧仕様の章単位の移動
+    // （前章／次章の扉を開く）は廃止した）
+    set('previoustrack', () => stepSentence(-1));
+    set('nexttrack', () => stepSentence(1));
     set('seekbackward', (d) => {
       audio.currentTime = Math.max(0, audio.currentTime - (d.seekOffset || 10));
     });
@@ -1449,6 +1472,18 @@ export function createReader(book: BookData): Reader {
       else if (hiddenNarrationWasPlaying && bgPlay && !isEye() && audio.paused && !audio.ended) playAudio();
       if (hiddenStoppedBgm && isBgmOn()) startBgm();
       else resyncBgmIfDesynced();
+      /* 復帰の瞬間だけは例外として、表示ページを朗読位置に追いつかせる
+         （v1.13.12、ユーザー決定）。バックグラウンド再生で朗読が進んだ分、
+         画面が取り残されているため。通常再生中の追従（前方のみ・手で開いた
+         ページを引っ張らない）はこの限りではない。対象は耳で読むモードで
+         本文を開いているときだけ：朗読が止まっている（再開もされない）とき、
+         位置が同じときは何もしない（syncPageToAudio の force は、同じ
+         ページなら何もせず、違うページなら向きを問わず合わせる） */
+      const narrationResumed =
+        (!audio.paused && !audio.ended) || hiddenPausedAudio || (hiddenNarrationWasPlaying && bgPlay);
+      if (!isEye() && !readerView.hidden && !gateOpen && !endOpen && narrationResumed && !audio.ended) {
+        syncPageToAudio(true);
+      }
       hiddenPausedAudio = false;
       hiddenStoppedBgm = false;
       hiddenNarrationWasPlaying = false;
@@ -1872,7 +1907,8 @@ export function createReader(book: BookData): Reader {
     $('prevSentBtn').addEventListener('click', () => stepSentence(-1));
     $('nextSentBtn').addEventListener('click', () => stepSentence(1));
     /* 章移動の入口は画面上のボタンではなく、ページめくり（章またぎ）と目次に一本化した。
-       前章／次章は Media Session の previoustrack / nexttrack でも行える */
+       Media Session の previoustrack / nexttrack は章移動ではなく、上の文送り
+       ボタンと同じ文単位の送りに統一した（v1.13.12。setupMediaSession 参照） */
     /* 速さの選択肢は SPEEDS から生成する（候補の正は logic.ts の SPEEDS。
        楕円ピルの巡回式は廃止し、文字サイズと同じ文字の並びにした：v1.13.3） */
     const speedChoicesEl = $('speedChoices');

@@ -24,7 +24,9 @@ async function openReader(page: import('@playwright/test').Page): Promise<void> 
   await page.goto('/');
   await page.locator('#tocList li').first().waitFor({ state: 'attached' }); // 本のデータが届いてから
   await enterViaToc(page, '#earModeBtn');
-  await expect(page.locator('#readerView')).toBeVisible({ timeout: 10000 });
+  // 扉のコールは実時間で再生される。この VM では音声の進行が実時間より
+  // 遅れることがあり（実測で約0.6倍速）、10秒では競合して落ちるため余裕を持つ
+  await expect(page.locator('#readerView')).toBeVisible({ timeout: 30000 });
   await expect(page.locator('#pageFolio')).not.toHaveText('');
 }
 
@@ -484,51 +486,72 @@ test('自動送り（朗読追随）では、ページがアニメーション�
 
 test('文送りボタンで朗読位置とハイライトが文単位で移る（耳で読む・本文のみ）', async ({ page }) => {
   await openReader(page);
+  /* 物差しは「章通しの文インデックス」（v1.13.12 で差し替え）：unitTimes と
+     現在時刻から割り出す絶対位置で、増えたか減えたかを見る。ページ内の
+     ハイライト位置やボタンの ID ではなく、画面の左右で押して確かめる
+     （過去の測定は ID 基準＋メディア順の前提で、実機の向きと食い違った） */
+  await page.evaluate(async () => {
+    const res = await fetch('book/data.json');
+    const book = await res.json();
+    (window as unknown as { __unitTimes: number[] }).__unitTimes = book.chapters[0].unitTimes;
+  });
   const state = () =>
     page.evaluate(() => {
       const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const times = (window as unknown as { __unitTimes: number[] }).__unitTimes;
+      let idx = 0;
+      for (let i = 0; i < times.length; i++) if (times[i] <= a.currentTime + 1e-9) idx = i;
       const units = [...document.querySelectorAll('#pageContent .unit')];
       return {
         t: a.currentTime,
+        idx,
+        unitStart: times[idx],
         paused: a.paused,
         nowIdx: units.findIndex((u) => u.classList.contains('now')),
-        folio: document.getElementById('pageFolio')?.textContent || '',
       };
     });
-  // 再生中は1文目がハイライトされている。止めて、先頭に戻してから文送りを確かめる
-  await expect.poll(async () => (await state()).nowIdx).toBe(0);
+  // 左右のボタンは座標で特定する（左＝次の文／右＝前の文が物理配置）
+  const sides = await page.evaluate(() => {
+    const cx = (id: string) => {
+      const r = document.getElementById(id)!.getBoundingClientRect();
+      return r.x + r.width / 2;
+    };
+    return { leftId: cx('nextSentBtn') < cx('prevSentBtn') ? 'nextSentBtn' : 'prevSentBtn' };
+  });
+  expect(sides.leftId).toBe('nextSentBtn'); // 左にあるのが「次の文」
+  const leftBtn = page.locator('#nextSentBtn');
+  const rightBtn = page.locator('#prevSentBtn');
+  // 止めて、10文目の頭に置いてから確かめる
   await page.locator('#playPauseBtn').click();
   await expect(page.locator('#playPauseBtn')).toHaveAttribute('aria-label', '再生');
   await page.evaluate(() => {
-    (document.getElementById('audioEl') as HTMLAudioElement).currentTime = 0;
+    const a = document.getElementById('audioEl') as HTMLAudioElement;
+    const times = (window as unknown as { __unitTimes: number[] }).__unitTimes;
+    a.currentTime = times[10];
   });
-  await expect.poll(async () => (await state()).t).toBeLessThan(0.3);
+  await expect.poll(async () => (await state()).idx).toBe(10);
   const s0 = await state();
   expect(s0.paused).toBe(true);
-  // 次の文へ：位置が2文目の頭へ移り、ハイライトも2文目へ。停止は保たれる
-  await page.locator('#nextSentBtn').click();
-  await expect.poll(async () => (await state()).nowIdx).toBe(1);
+  // 左ボタン（次の文）：インデックスが増える。停止は保たれる
+  await leftBtn.click();
+  await expect.poll(async () => (await state()).idx).toBe(11);
   const s1 = await state();
   expect(s1.t).toBeGreaterThan(s0.t + 0.5);
   expect(s1.paused).toBe(true);
-  expect(s1.folio).toBe(s0.folio); // 2文目は同じページにある
-  // もう1つ次へ → 3文目
-  await page.locator('#nextSentBtn').click();
-  await expect.poll(async () => (await state()).nowIdx).toBe(2);
-  // 前の文へ：文の頭にいるので、前の文（2文目）の頭へ戻る
-  await page.locator('#prevSentBtn').click();
-  await expect.poll(async () => (await state()).nowIdx).toBe(1);
+  // 右ボタン（前の文）：文の頭にいるので、インデックスが減る
+  await rightBtn.click();
+  await expect.poll(async () => (await state()).idx).toBe(10);
   const s2 = await state();
-  expect(Math.abs(s2.t - s1.t)).toBeLessThan(0.6);
-  // 文の途中から「前の文へ」は、その文の頭に戻す（一般的な作法）
+  expect(Math.abs(s2.t - s0.t)).toBeLessThan(0.6);
+  // 文の途中から右ボタンは、その文の頭に戻す（従来の「前の文」の作法）
   await page.evaluate(() => {
     const a = document.getElementById('audioEl') as HTMLAudioElement;
-    a.currentTime = a.currentTime + 2.5; // 2文目の途中へ
+    a.currentTime = a.currentTime + 2.5; // 10文目の途中へ
   });
   await page.waitForTimeout(300);
-  await page.locator('#prevSentBtn').click();
-  await expect.poll(async () => Math.abs((await state()).t - s1.t)).toBeLessThan(0.6);
-  await expect.poll(async () => (await state()).nowIdx).toBe(1);
+  await rightBtn.click();
+  await expect.poll(async () => Math.abs((await state()).t - s0.t)).toBeLessThan(0.6);
+  await expect.poll(async () => (await state()).idx).toBe(10);
   // 目で読むでは文送りボタンは出ない
   await backToCover(page);
   await page.locator('#eyeModeBtn').click();
@@ -539,10 +562,11 @@ test('文送りボタンで朗読位置とハイライトが文単位で移る�
   await expect(page.locator('#nextSentBtn')).toBeHidden();
 });
 
-test('文送りボタンの並びはメディア標準（左=前の文／中央=再生／右=次の文）', async ({ page }) => {
+test('文送りボタンの並びは本の進み方向（左=次の文／中央=再生／右=前の文）', async ({ page }) => {
   await openReader(page);
-  // 画面上の実測順序：前の文 < 再生/停止 < 次の文（進むは右）。
-  // 本の綴じ方向（右綴じ＝次ページは左）に寄せて反転させないことを座標で固定する
+  // 画面上の実測順序：次の文 < 再生/停止 < 前の文（v1.13.12、ユーザー確定）。
+  // 縦書き右綴じは右から左へ読み進めるので、進む操作は左に置く。
+  // メディア標準（右=次）で固定していた旧テストはこの確定で差し替えた
   const boxes = await page.evaluate(() => {
     const box = (id: string) => {
       const r = document.getElementById(id)!.getBoundingClientRect();
@@ -550,17 +574,18 @@ test('文送りボタンの並びはメディア標準（左=前の文／中央=
     };
     return { prev: box('prevSentBtn'), play: box('playPauseBtn'), next: box('nextSentBtn') };
   });
-  expect(boxes.prev.w).toBeGreaterThan(0);
-  expect(boxes.prev.x).toBeLessThan(boxes.play.x);
-  expect(boxes.play.x).toBeLessThan(boxes.next.x);
-  // 図柄も並びに一致させる：前の文は棒+左向き三角（|◀）、次の文は右向き三角+棒（▶|）
+  expect(boxes.next.w).toBeGreaterThan(0);
+  expect(boxes.next.x).toBeLessThan(boxes.play.x);
+  expect(boxes.play.x).toBeLessThan(boxes.prev.x);
+  // 図柄も向きに一致させる：左ボタン（進む）は左向きの送り印、
+  // 右ボタン（戻る）は右向きの戻し印
   const glyphs = await page.evaluate(() => {
     const d = (id: string) =>
       [...document.getElementById(id)!.querySelectorAll('svg path')].map((p) => p.getAttribute('d'));
     return { prev: d('prevSentBtn'), next: d('nextSentBtn') };
   });
-  expect(glyphs.prev).toEqual(['M4.5 5.5h2v13h-2z', 'M18.5 5.5v13L8 12z']);
-  expect(glyphs.next).toEqual(['M5.5 5.5v13L16 12z', 'M17.5 5.5h2v13h-2z']);
+  expect(glyphs.next).toEqual(['M4.5 5.5h2v13h-2z', 'M18.5 5.5v13L8 12z']);
+  expect(glyphs.prev).toEqual(['M5.5 5.5v13L16 12z', 'M17.5 5.5h2v13h-2z']);
   // 再生の図柄はスピーカー＋波紋（v1.13.1）：右向き三角（▶）は綴じ方向と競合する
   // ため廃止。止めて「再生」表示にしたうえで、本文・扉・目次の3ボタンとも
   // 同じ記号になっていることを確かめる（一時停止の二本線は従来のまま）
@@ -661,9 +686,10 @@ test('再開は扉を経由せず、しおりの位置へ直接着地する（�
   expect(t).toBeLessThan(bm.time + 8); // 再生で進むぶんを見込む
 });
 
-test('文送りはIDではなく画面上の位置でも正しい向きに動く（左端=前／右端=次）', async ({ page }) => {
+test('文送りはIDではなく画面上の位置でも正しい向きに動く（左端=次／右端=前）', async ({ page }) => {
   // 実機報告「文送りの進む方向が逆」の切り分け用：ID ではなく、画面上の
-  // 物理位置（x座標）でボタンを押して、移動先の文で判定する
+  // 物理位置（x座標）でボタンを押して、移動先の文で判定する。
+  // v1.13.12 の確定（左=進む／右=戻る、本の進み方向）で向きを反転させた
   await openReader(page);
   const centers = await page.evaluate(() => {
     const g = document.querySelector('.sent-group')!;
@@ -674,20 +700,20 @@ test('文送りはIDではなく画面上の位置でも正しい向きに動く
       })
       .sort((a, b) => a.cx - b.cx);
   });
-  expect(centers.map((c) => c.id)).toEqual(['prevSentBtn', 'playPauseBtn', 'nextSentBtn']);
+  expect(centers.map((c) => c.id)).toEqual(['nextSentBtn', 'playPauseBtn', 'prevSentBtn']);
   const nowIdx = () =>
     page.evaluate(() =>
       [...document.querySelectorAll('#pageEl .unit')].findIndex((u) => u.classList.contains('now')),
     );
   await expect.poll(nowIdx).toBe(0);
-  // 右端（次の文）を座標で押す → 次の文へ
-  await page.mouse.click(centers[2].cx, centers[2].cy);
-  await expect.poll(nowIdx).toBe(1);
-  // 右端をタッチで押す → さらに次の文へ
-  await page.touchscreen.tap(centers[2].cx, centers[2].cy);
-  await expect.poll(nowIdx).toBe(2);
-  // 左端（前の文）を座標で押す → 前の文へ
+  // 左端（次の文）を座標で押す → 次の文へ
   await page.mouse.click(centers[0].cx, centers[0].cy);
+  await expect.poll(nowIdx).toBe(1);
+  // 左端をタッチで押す → さらに次の文へ
+  await page.touchscreen.tap(centers[0].cx, centers[0].cy);
+  await expect.poll(nowIdx).toBe(2);
+  // 右端（前の文）を座標で押す → 前の文へ（進んだ直後で文頭から間もないため）
+  await page.mouse.click(centers[2].cx, centers[2].cy);
   await expect.poll(nowIdx).toBe(1);
 });
 
@@ -2017,11 +2043,80 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     await page.locator('#bgPlayToggle').click();
     await expect(page.locator('#bgPlayToggle')).not.toBeChecked();
     await page.locator('#menuCloseBtn').click();
+    // v1.13.12 の仕様で設定を開くと朗読は止まる（閉じても自動再開しない）ため、
+    // 背面化の前提（朗読中）に戻すには再生を押し直す
+    await page.locator('#playPauseBtn').click();
+    await expect.poll(async () => (await calls()).at(-1)).toBe('play');
 
     await setHidden(true);
     expect(await calls()).toContain('pause'); // バックグラウンドで一時停止
     await setHidden(false);
     expect((await calls()).at(-1)).toBe('play'); // 戻ったら再開
+  });
+
+  test('設定を開くと朗読が止まり、閉じても自動では再開しない', async ({ page }) => {
+    /* v1.13.12（ユーザー決定）。対象は全画面の設定パネル共通で、ここでは
+       本文から開く分を確認する。BGM は対象外（止めない） */
+    await openReader(page);
+    const paused = (): Promise<boolean> =>
+      page.evaluate(() => (document.getElementById('audioEl') as HTMLAudioElement).paused);
+    await expect.poll(paused).toBe(false); // 朗読中
+    await openMenuInReader(page);
+    await expect.poll(paused).toBe(true); // 開いたら止まる
+    await expect(page.locator('#playPauseBtn')).toHaveAttribute('aria-label', '再生');
+    await page.locator('#menuCloseBtn').click();
+    await page.waitForTimeout(600);
+    expect(await paused()).toBe(true); // 閉じても自動では再開しない
+    // 再生は利用者のボタン操作で再開できる
+    await page.locator('#playPauseBtn').click();
+    await expect.poll(paused).toBe(false);
+  });
+
+  test('バックグラウンド再生から復帰すると、表示ページが朗読位置に追いつく', async ({ page }) => {
+    /* v1.13.12（ユーザー決定）。通常再生中の追従（前方のみ・手で開いた
+       ページを引っ張らない）とは別に、復帰の瞬間だけは位置合わせする。
+       Chromium では背面でも seeked の追随が先に働き、実機のような
+       「画面だけ取り残される」状態は再現できないため、ここでは
+       復帰後に表示ページと朗読位置が一致すること（復帰ハンドラの
+       force 合わせの配線）を確認するに留める */
+    await openReader(page);
+    await page.evaluate(async () => {
+      const res = await fetch('book/data.json');
+      const book = await res.json();
+      (window as unknown as { __unitTimes: number[] }).__unitTimes = book.chapters[0].unitTimes;
+    });
+    const setHidden = (hidden: boolean): Promise<void> =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+    const folio = (): Promise<string> =>
+      page.evaluate(() => document.getElementById('pageFolio')?.textContent || '');
+    // 背面化（バックグラウンド再生は既定オンなので朗読は止まらない）
+    await setHidden(true);
+    // 背面の間に朗読が先のページの文まで進んだことにする
+    await page.evaluate(() => {
+      const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const times = (window as unknown as { __unitTimes: number[] }).__unitTimes;
+      a.currentTime = times[30];
+    });
+    await page.waitForTimeout(400);
+    await setHidden(false);
+    // 復帰後、表示ページは朗読位置（30文目のあるページ）に一致する：
+    // その文のハイライトが表示ページに載っていることで確かめる
+    // （ページが取り残されていると、ハイライトはどの文にも付かない）
+    await expect.poll(folio).not.toBe('― 1 ―');
+    const caught = await page.evaluate(() => {
+      const a = document.getElementById('audioEl') as HTMLAudioElement;
+      const times = (window as unknown as { __unitTimes: number[] }).__unitTimes;
+      let idx = 0;
+      for (let i = 0; i < times.length; i++) if (times[i] <= a.currentTime + 1e-9) idx = i;
+      return { idx, nowOnPage: !!document.querySelector('#pageContent .unit.now'), paused: a.paused };
+    });
+    expect(caught.idx).toBe(30);
+    expect(caught.nowOnPage).toBe(true);
+    expect(caught.paused).toBe(false); // 朗読は続いている
   });
 
   test('バックグラウンド再生は朗読中だけ効く: 表紙と目で読むでは背面化で BGM が止まる', async ({ page }) => {
@@ -2337,7 +2432,7 @@ test.describe('章題コール（扉の朗読）', () => {
     await page.waitForTimeout(1500);
     await expect(page.locator('#readerView')).toBeHidden();
     // 読み終わると本文へ
-    await expect(page.locator('#readerView')).toBeVisible({ timeout: 12000 });
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 30000 });
   });
 
   test('扉をスワイプするとコールを止めてすぐ本文へ進む', async ({ page }) => {
@@ -2356,7 +2451,7 @@ test.describe('章題コール（扉の朗読）', () => {
     await page.locator('#tocList li').first().waitFor({ state: 'attached' });
     await enterViaToc(page, '#earModeBtn');
     await expect(page.locator('#gateView')).toBeVisible();
-    await expect(page.locator('#readerView')).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('#readerView')).toBeVisible({ timeout: 20000 });
   });
 
   test('再生中にページ送りで章をまたいでも、本文とコールが重ならない（2重再生の regression）', async ({ page }) => {
@@ -3129,20 +3224,39 @@ test.describe('読書モード（耳で読む／目で読む）', () => {
     expect(closeBox?.width).toBe(44);
     expect(closeBox?.height).toBe(44);
     await page.locator('#menuCloseBtn').click();
-    // 移動のボタンはパネル上部に横並び（表紙へ／目次へ）、インストール案内は末尾
+    // 移動の入口は見出し「設定」と同じ行のカプセル（表紙へ／目次へ、
+    // v1.13.12）。独立したボタン行は廃止した。インストール案内は末尾
     await openReader(page);
     await openMenuInReader(page);
     await expect(page.locator('#toCoverFromMenuBtn')).toHaveText('表紙へ');
     await expect(page.locator('#tocFromMenuBtn')).toHaveText('目次へ');
+    await expect(page.locator('.menu-nav-btns')).toHaveCount(0); // 旧ボタン行は無い
     const toCoverBox = await page.locator('#toCoverFromMenuBtn').boundingBox();
     const tocBox = await page.locator('#tocFromMenuBtn').boundingBox();
     const installBox = await page.locator('#install-open').boundingBox();
     const headAudBox = await page.locator('#menuHeadAudio').boundingBox();
     const bgPlayBox = await page.locator('#rowBgPlay').boundingBox();
+    const titleBox = await page.locator('#menuTitle').boundingBox();
     expect(Math.abs(toCoverBox!.y - tocBox!.y)).toBeLessThanOrEqual(2); // 横並び
     expect(toCoverBox!.x).toBeLessThan(tocBox!.x); // 表紙へ が左
     expect(tocBox!.y + tocBox!.height).toBeLessThanOrEqual(headAudBox!.y); // 分類より上
     expect(installBox!.y).toBeGreaterThan(bgPlayBox!.y); // 案内は末尾
+    // カプセルは見出しと同じ行にあり、押下範囲（ボタン）は 44px、
+    // 見た目のカプセルは 32px（見た目より広く当たる）
+    expect(Math.abs((toCoverBox!.y + toCoverBox!.height / 2) - (titleBox!.y + titleBox!.height / 2))).toBeLessThanOrEqual(22);
+    expect(Math.round(toCoverBox!.height)).toBe(44);
+    const capBox = await page.locator('#tocFromMenuBtn .menu-cap').boundingBox();
+    expect(Math.round(capBox!.height)).toBe(32);
+    // 分類見出しは案2（v1.13.12）：生成りの帯＋藍の四角印（回転なし）
+    const headStyle = await page.evaluate(() => {
+      const h = document.querySelector('#menuHeadAudio')!;
+      const cs = getComputedStyle(h);
+      const before = getComputedStyle(h, '::before');
+      return { bg: cs.backgroundColor, beforeTransform: before.transform, beforeBg: before.backgroundColor };
+    });
+    expect(headStyle.bg).toBe('rgb(247, 242, 231)');
+    expect(headStyle.beforeTransform).toBe('none'); // 菱形ではなく四角
+    expect(headStyle.beforeBg).toBe('rgb(30, 45, 82)');
     // オン／オフは細いスイッチ（42×24）で出す
     const switchBox = await page.locator('#bgmToggle').boundingBox();
     expect(Math.round(switchBox!.width)).toBe(42);
