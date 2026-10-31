@@ -253,13 +253,14 @@ test('表紙ページは共通テンプレート：フッターは本の幅に�
     const versionText = textRect('#version-line');
     const settingsText = textRect('#coverSettingsBtn');
     return {
-      book: { left: book.left, right: book.right },
-      foot: { left: foot.left, right: foot.right },
+      book: { left: book.left, right: book.right, top: book.top, bottom: book.bottom },
+      foot: { left: foot.left, right: foot.right, top: foot.top, bottom: foot.bottom },
       version: { left: version.left },
       settings: { right: settingsR.right },
       versionText: { top: versionText.top, bottom: versionText.bottom },
       settingsText: { top: settingsText.top, bottom: settingsText.bottom },
       borderTop: parseFloat(getComputedStyle(document.querySelector('.cover-foot')!).borderTopWidth),
+      viewportH: window.innerHeight,
     };
   });
   expect(Math.abs(geo.foot.left - geo.book.left)).toBeLessThanOrEqual(2); // 罫線の左端＝本の左端
@@ -269,6 +270,13 @@ test('表紙ページは共通テンプレート：フッターは本の幅に�
   expect(Math.abs(geo.settings.right - geo.book.right)).toBeLessThanOrEqual(2); // 設定は右端
   expect(Math.abs(geo.settingsText.top - geo.versionText.top)).toBeLessThanOrEqual(3); // 文字の上端が揃う
   expect(Math.abs(geo.settingsText.bottom - geo.versionText.bottom)).toBeLessThanOrEqual(3); // 同じベースラインの行
+  // v1.13.17〜：フッターは画面の下部にあり、本の上の余白 ≒ 本とフッターの間の余白
+  const topGap = geo.book.top; // 画面上部（ビューポート上端）から本の上辺まで
+  const midGap = geo.foot.top - geo.book.bottom; // 本の下辺からフッターの罫線まで
+  const bottomGap = geo.viewportH - geo.foot.bottom; // フッターの下端から画面下部まで
+  expect(bottomGap).toBeLessThanOrEqual(40); // フッターは画面の下部（下パディング＝セーフエリア内）に接する
+  expect(Math.abs(topGap - midGap)).toBeLessThanOrEqual(3); // 上の余白と本〜フッター間の余白がほぼ同じ
+  expect(topGap).toBeGreaterThanOrEqual(20); // 上のスペーサーの下限（安全領域の確保）
   // 開く先は同じパネルだが、表紙から開いたときの呼び名は入口に合わせて「設定」
   await settings.click();
   await expect(page.locator('#menuModal')).toBeVisible();

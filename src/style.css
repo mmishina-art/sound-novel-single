@@ -274,12 +274,26 @@ button.link {
    --book-w が本の幅の唯一の決め手で、フッターの罫線と両端を揃える。
    v1.13.16 で表紙の選択肢（モード入口・再開カード）を撤去し、表紙に残る
    のは本とフッターだけになった。高さの上限ガード（.book-cover の項）は
-   本の大きさを従来どおりに保つため、そのまま据え置く */
-.view-cover { --book-w: min(88vw, 420px, calc(67.55dvh - 174px)); position: relative; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: max(20px, var(--safe-top)) max(16px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(16px, env(safe-area-inset-left)); background-color: var(--indigo); background-image: radial-gradient(ellipse 120% 58% at 50% -4%, color-mix(in srgb, var(--theme) 40%, #ffedb8 60%), transparent 62%), radial-gradient(ellipse 150% 110% at 50% 42%, color-mix(in srgb, var(--theme) 68%, #000 32%) 0%, color-mix(in srgb, var(--theme) 30%, #000 70%) 80%), radial-gradient(ellipse 125% 100% at 50% 46%, transparent 56%, rgba(0, 0, 0, .48) 100%); }
+   本の大きさを従来どおりに保つため、そのまま据え置く。
+   高さ配分は v1.13.17 で組み直した（実機確認を受けた配置変更）：フッターを
+   画面の下部へ落とし、本の上の余白と本〜フッターの間の余白をほぼ同じに
+   する。本の上下に同じ高さの余白（.cover-gap、flex:1）を挟むことで両者を
+   揃え、フッターは下のパディング（セーフエリア内）に接する位置に来る。
+   上の余白の下限は上のスペーサーの min-height が担う（旧・上のパディング
+   max(20px, --safe-top) と同じ下限。画面が低く余白が潰れる場合でも、本が
+   画面上端の安全領域へは入らない） */
+.view-cover { --book-w: min(88vw, 420px, calc(67.55dvh - 174px)); position: relative; height: 100dvh; display: flex; flex-direction: column; align-items: center; padding: 0 max(16px, env(safe-area-inset-right)) max(28px, calc(env(safe-area-inset-bottom) + 16px)) max(16px, env(safe-area-inset-left)); background-color: var(--indigo); background-image: radial-gradient(ellipse 120% 58% at 50% -4%, color-mix(in srgb, var(--theme) 40%, #ffedb8 60%), transparent 62%), radial-gradient(ellipse 150% 110% at 50% 42%, color-mix(in srgb, var(--theme) 68%, #000 32%) 0%, color-mix(in srgb, var(--theme) 30%, #000 70%) 80%), radial-gradient(ellipse 125% 100% at 50% 46%, transparent 56%, rgba(0, 0, 0, .48) 100%); }
+/* 本の上下の余白（v1.13.17〜）：2つとも flex:1 で余りの高さを等分する。
+   上の余白＝画面上部から本の上辺まで、本の下の余白＝本の下辺からフッター
+   の罫線までで、両者はほぼ同じになる */
+.cover-gap { flex: 1 1 0; }
+.cover-gap-top { min-height: max(20px, var(--safe-top)); }
 /* フッター（v1.13.15〜）：本の幅に両端を揃えた細い罫線1本＋左にバージョン、
    右に設定を、同じベースラインに静かに置く（v1.13.14 までの「中央に浮く
-   バージョン＋右端に絶対配置の設定」は、この行に置き換えた） */
-.cover-foot { width: var(--book-w); margin-top: 2px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--desk-text) 38%, transparent); display: flex; align-items: baseline; justify-content: space-between; }
+   バージョン＋右端に絶対配置の設定」は、この行に置き換えた）。
+   置き場所は v1.13.17 で本の直下から画面の下部へ移した（上下の余白の
+   組み直しによる。本との間隔は .cover-gap が決める） */
+.cover-foot { width: var(--book-w); padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--desk-text) 38%, transparent); display: flex; align-items: baseline; justify-content: space-between; }
 /* バージョン表記はフッターの左端に小さく（デバッグモードの入口を兼ねるので、タップは受ける） */
 .cover-version { margin: 0; font-size: .72rem; letter-spacing: .08em; color: var(--desk-text); opacity: .55; cursor: pointer; }
 /* 本全体がタップ対象（v1.13.16〜。表紙の入口はこれだけ） */
