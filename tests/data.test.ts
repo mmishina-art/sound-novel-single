@@ -10,7 +10,7 @@ const book = JSON.parse(readFileSync(resolve(root, 'public/book/data.json'), 'ut
 describe('本のデータ', () => {
   it('タイトル・著者・方向が入っている', () => {
     expect(book.title).toBe('空の郵便が届くまで');
-    expect(book.author).toBe('水瀬 葵');
+    expect(book.author).toBe('桜井 みゅう');
     expect(book.direction).toBe('vertical');
   });
 

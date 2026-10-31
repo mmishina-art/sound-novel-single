@@ -116,7 +116,7 @@ test('表紙が開き、タイトルと著者が見える', async ({ page }) => 
   await page.goto('/');
   await expect(page.locator('#coverView')).toBeVisible();
   await expect(page.locator('.cover-vtitle')).toContainText('空の郵便が');
-  await expect(page.locator('.cover-author')).toContainText('水瀬');
+  await expect(page.locator('.cover-author')).toContainText('桜井');
   await expect(page).toHaveTitle(/空の郵便が届くまで/);
 });
 
@@ -793,7 +793,7 @@ test('本文の最終ページには改列・中央の「おわり」があり�
   // もう1つ送ると、独立した奥付ページ（ノンブルなし・奥付と表紙への導線）が開く
   await swipeSurface(page, box, 'next');
   await expect(page.locator('#endPage')).toBeVisible();
-  await expect(page.locator('.end-colophon')).toContainText('水瀬 葵');
+  await expect(page.locator('.end-colophon')).toContainText('桜井 みゅう');
   await expect(page.locator('.end-colophon')).toContainText('サウンド単行本');
   await expect(page.locator('.end-colophon')).toContainText('Leda');
   await expect(page.locator('.end-colophon')).toContainText('Charon');
@@ -1998,7 +1998,7 @@ test.describe('背景アニメーション・ノンブル・バックグラウ�
     expect(meta).not.toBeNull();
     expect(meta?.title).toContain('第一章');
     expect(meta?.title).toContain('雨の日の客');
-    expect(meta?.artist).toBe('水瀬 葵');
+    expect(meta?.artist).toBe('桜井 みゅう');
     expect(meta?.album).toBe('空の郵便が届くまで');
     expect(meta?.artwork).toBeGreaterThan(0);
   });

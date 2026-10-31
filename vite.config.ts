@@ -33,7 +33,7 @@ export default defineConfig({
       manifest: {
         name: APP_NAME,
         short_name: APP_NAME,
-        description: 'サウンド単行本：朗読つき電子書籍『空の郵便が届くまで』（著・水瀬 葵）',
+        description: 'サウンド単行本：朗読つき電子書籍『空の郵便が届くまで』（著・桜井 みゅう）',
         lang: 'ja',
         display: 'standalone',
         start_url: './',

@@ -35,7 +35,7 @@
 | 9 | `src/storage.ts` 45〜52行目 | 旧単体実装の移行キー `sora-yubin-*`（この本だけの歴史的遺物。次冊では不要） | 遺物 |
 | 10 | `package.json` | name `sound-novel-single`、version。name は保存キーの接頭辞（アプリID）に流用される＝本ごとに変える必要があるが、今は「形式名」であって本のIDではない | ID設計 |
 | 11 | `tests/data.test.ts` | 検証の中に**書名・著者・章数7がベタ書き**のアサーションがある（データ検証として正しいが、本が替われば書き換え対象） | テスト |
-| 12 | `work/build_data.py` 末尾 | 出力 data に title『空の郵便が届くまで』、author『水瀬 葵』、direction を直書き。章見出しの正規表現も「第[一二三四五六七]章」＝**7章・漢数字前提** | 生成側の固定値 |
+| 12 | `work/build_data.py` 末尾 | 出力 data に title『空の郵便が届くまで』、author『桜井 みゅう』、direction を直書き。章見出しの正規表現も「第[一二三四五六七]章」＝**7章・漢数字前提** | 生成側の固定値 |
 | 13 | `work/build_data.py` 章解析 | 語り手の男女判定が「語り手名が『遥』で終われば女性」という**この本固有のヒューリスティクス** | 生成側の埋没（要注意） |
 | 14 | `work/gen.py` / `gen_muse.py` / `gen_mai.py` / `gen_title_calls.py` | 生成スクリプトが**声の編成ごとに別ファイル**（Gemini版、Muse下書き版、男性声差し替え版、扉コール版）。声ID・速度・スタイル指示文・atempo値が各スクリプトに直書き | 声設定 |
 | 15 | `data/readings.py`（213行）＋ `data/readings.json`（740件）＋ `data/stems.py` | 読み辞書。本固有の固有名詞（柏木書店、柏木遥、西野悠真…）と全作品共通に効く汎用読みが**混在**している | 辞書（分離対象） |
@@ -67,7 +67,7 @@
   "id": "sora-yubin",              // 保存キー接頭辞・配信パスに使う一意ID
   "title": "空の郵便が届くまで",
   "titleLines": ["空の郵便が", "届くまで"],  // 表紙の行割り
-  "author": "水瀬 葵",
+  "author": "桜井 みゅう",
   "format": "サウンド単行本",
   "direction": "vertical",          // vertical=縦書き右綴じ / horizontal=横書き左綴じ
   "edition": "2026年10月 電子版",    // 奥付の版表記
