@@ -16,42 +16,29 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 桜井 みゅう</title>
-    <script type="module" crossorigin src="./assets/index-TDo4me79.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-c7i6cuHV.css">
+    <script type="module" crossorigin src="./assets/index-CZxLPhkk.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-C8YciSZq.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
     <section id="coverView" class="view view-cover">
-      <!-- 表紙の絵は表示だけ（タップでは開かない。入り口は下のモードボタンだけ：
-           v1.12.2 で表紙タップでの開始を廃止） -->
-      <div class="cover-tap">
+      <!-- 表紙に選択肢は置かない（v1.13.16〜、「声の出る本」への特化）。
+           残るのは本と、背景（基調色の読書灯グラデーション＋接地影）と、
+           フッター（本の幅の罫線＋版数・設定）だけ。本全体がタップ対象で、
+           しおりがあればその位置から直接開き、無ければまず目次を開く。
+           朗読の有無は表紙では選ばず、設定の「音読」（永続設定）が決める。
+           v1.12.0〜v1.13.15 のモード入口（耳で読む／目で読む）と再開カード
+           （B案）は廃止した -->
+      <div class="cover-tap" id="coverTap" role="button" tabindex="0" aria-label="本を開く">
         <span class="book-cover">
-          <!-- 地絵は生成イラスト（雨空の商店街）。題字・著者名・ロゴは描き込まず、
-               活字と公式SVGで後付けする（v1.13.3 で新装丁に差し替え） -->
+          <!-- 地絵は生成イラスト（紺の布目に切り絵の青い鳥）。題字・著者名・ロゴは
+               描き込まず、活字と公式SVGで後付けする（v1.13.3 で新装丁に差し替え、
+               v1.13.14 で紺版の地絵へ） -->
           <img src="book/cover-art.webp" alt="空の郵便が届くまで — 桜井 みゅう" class="cover-img" />
           <img src="icons/logo-line-white.svg" alt="" class="cover-logo" aria-hidden="true" />
           <span class="cover-vtitle" aria-hidden="true"><span class="vt-line">空の郵便が</span><span class="vt-line">届くまで</span></span>
           <span class="cover-author" aria-hidden="true">桜井　みゅう</span>
         </span>
-      </div>
-      <!-- ヒント文は初回だけの控えめな案内（reader.ts が出し分ける）。2回目以降は出さない -->
-      <p id="coverHint" class="cover-hint" hidden>「耳で読む」か「目で読む」を選んで開いてください</p>
-
-      <!-- 読書モードの入口（v1.12.0）。「耳で読む」＝朗読つき（従来どおり）、
-           「目で読む」＝朗読なし（人の声だけを止める。BGM・めくり音は鳴る：
-           v1.12.2 で仕様変更）。モードは本を開いている間だけの選択で、設定には
-           保存しない。しおりがあるときは、どちらの入口からでも続きから再開する
-           （v1.12.2 で入り口をこの2ボタンに一本化し、「しおりから再開」ボタンは
-           廃止）。補足文（small）は「朗読つき／朗読なし」固定。
-           v1.13.15 で表紙ページを共通テンプレートの体裁に作り替えた：ボタンは
-           アプリUI風の枠ではなく、本の下に置かれた「紙のカード」の様式にし、
-           再開の情報は同じ様式の幅広カード #coverResume（B案）に
-           「つづきから／第N章」と1枚だけ示す（カード自体は操作要素ではない。
-           v1.13.10〜v1.13.14 のボタン上の小さな情報文は廃止） -->
-      <p id="coverResume" class="cover-resume paper-card" hidden><span class="resume-lead">つづきから</span><span class="resume-chapter" id="coverResumeChapter"></span></p>
-      <div class="cover-modes">
-        <button id="earModeBtn" type="button" class="cover-mode paper-card">耳で読む<small id="earModeSub">朗読つき</small></button>
-        <button id="eyeModeBtn" type="button" class="cover-mode paper-card">目で読む<small id="eyeModeSub">朗読なし</small></button>
       </div>
 
       <!-- フッター（v1.13.15〜）：本の幅に両端を揃えた細い罫線1本の下に、
@@ -117,21 +104,10 @@
           <article id="pageContent" class="page-content" aria-label="本文"></article>
           <!-- 下の帯：ノンブルを中央に、操作ボタンは両端に（ボタン上のタップはめくりに使わない） -->
           <div class="page-footer">
-            <!-- 文単位の送り（v1.12.4）：耳で読むときだけ、再生の並びに
-                 薄いアイコンで置く（本文専用。扉・目次には付けない）。
-                 並びは本の進み方向に合わせる（v1.13.12、ユーザー確定）：
-                 縦書き右開きは右から左へ読み進めるので、[次の文][再生/停止]
-                 [前の文] の順に置き、左ボタン＝一文進む／右ボタン＝一文戻る。
-                 メディアプレイヤーの慣習（右＝次）とは逆になるが、本の
-                 読み方向を正とする（実機で「方向が逆」と繰り返し指摘され、
-                 メディア順で「反転なし」とした過去の測定・記録は、この
-                 確定で上書きされた）。図柄も向きに合わせ、左ボタンは
-                 進む方向（左向き）の送り印、右ボタンは戻る印にする -->
-            <div class="sent-group">
-              <button id="nextSentBtn" type="button" class="page-icon-btn" aria-label="次の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5.5h2v13h-2z" fill="currentColor" /><path d="M18.5 5.5v13L8 12z" fill="currentColor" /></svg></button>
-              <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
-              <button id="prevSentBtn" type="button" class="page-icon-btn" aria-label="前の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5v13L16 12z" fill="currentColor" /><path d="M17.5 5.5h2v13h-2z" fill="currentColor" /></svg></button>
-            </div>
+            <!-- 文単位の送りボタンは廃止した（v1.13.16）。文単位の移動は、
+                 本文の文をタップしてその文から読む形に置き換えた（reader.ts の
+                 文タップ）。帯に残るのは再生／停止だけ -->
+            <button id="playPauseBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
             <span id="pageFolio" class="folio"></span>
             <button id="menuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
           </div>
@@ -195,13 +171,14 @@
           </div>
         </div>
 
-        <!-- 設定の中身は開いた場所と読書モードで組み替える（reader.ts の
-             arrangeMenu）。分類は全画面で 音／表示／朗読 の3つに固定する
-             （v1.13.3 で再編し、v1.13.11 で「再生」を「朗読」へ改称）。
-             目で読むでは朗読に紐づく行（速さ・バックグラウンド再生・
-             朗読中の文を強調）を隠し、「朗読」の見出しも一緒に隠す。
+        <!-- 設定の中身は reader.ts の arrangeMenu が組み替える。分類は
+             全画面で 音／表示／朗読 の3つに固定する（v1.13.3 で再編し、
+             v1.13.11 で「再生」を「朗読」へ改称）。朗読グループの先頭には
+             「音読」オン／オフ（v1.13.16〜、永続設定）を常時置き、オフの
+             ときはグループの残りの行（速さ・バックグラウンド再生・朗読中の
+             文を強調）だけを隠す（見出しと音読の行は、オフでも必ず見える）。
              行要素は id で引いてグループ間を移すので、ここでの並びは
-             耳で読む（本文）の初期形としておく -->
+             音読オン（本文）の初期形としておく -->
         <div class="menu-section">
           <h4 class="setting-group" id="menuHeadAudio">音</h4>
           <div id="menuGroupAudio">
@@ -225,6 +202,12 @@
           </div>
           <h4 class="setting-group" id="menuHeadPlay">朗読</h4>
           <div id="menuGroupPlay">
+            <!-- 音読：朗読そのものの有無（v1.13.16〜）。既定はオンで、設定は
+                 保存され次に開いたときも維持される。オフ＝通常の電子書籍
+                 モード（朗読なし・手動送りのみ・再生系の操作は出ない）。
+                 表紙でモードを選ぶ旧仕様（耳で読む／目で読む）は、この設定に
+                 置き換えた。この行だけはオフでも隠さない -->
+            <label class="menu-row toggle-label" id="rowNarration"><span>音読</span><input type="checkbox" id="narrationToggle" checked /></label>
             <!-- 速さは楕円ピル（押すたび巡回）を廃止し、文字サイズと同じ
                  「文字の選択肢の並び」にした（v1.13.3）。候補は SPEEDS が正で、
                  ボタンは reader.ts が生成する -->
