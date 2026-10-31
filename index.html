@@ -16,8 +16,8 @@
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>空の郵便が届くまで — 水瀬 葵</title>
-    <script type="module" crossorigin src="./assets/index-BZkV4hJz.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Dgc66y5U.css">
+    <script type="module" crossorigin src="./assets/index-BPmmxUTu.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BZwSs4xL.css">
   <link rel="manifest" href="./manifest.webmanifest"></head>
   <body>
     <!-- ============ COVER VIEW ============ -->
@@ -52,7 +52,7 @@
       </div>
 
       <!-- 設定は最下部の行の右端に小さな文字リンクとして置く。開く先は
-           他画面の家マークから開くものと同じパネルで、表紙では「設定」と呼ぶ。
+           他画面の歯車マークから開くものと同じパネルで、表紙では「設定」と呼ぶ。
            目次ページへの入口はパネル内の「目次を開く」に一本化する -->
       <button id="coverSettingsBtn" type="button" class="cover-settings-link"><span aria-hidden="true">⚙</span> 設定</button>
       <!-- バージョン表記は同じ最下部の行の中央に控えめに置く（デバッグモードの入口も兼ねる：続けて5回タップ） -->
@@ -68,10 +68,10 @@
           <h2 class="gate-title"><span id="gateTitle"></span><span id="gateNarrator" class="gate-narrator"></span></h2>
         </div>
         <!-- 下の帯は本文と共通の家具（v1.12.2）：左下＝再生（入章して朗読開始）、
-             右下＝家マーク（メニュー）。位置・トーン・大きさは本文と同一 -->
+             右下＝歯車マーク（設定）。位置・トーン・大きさは本文と同一 -->
         <div class="sheet-footer">
           <button id="gatePlayBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
-          <button id="gateMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+          <button id="gateMenuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
         </div>
       </div>
     </section>
@@ -83,21 +83,23 @@
           <h2 id="tocHeading" class="toc-heading">目次</h2>
           <ul id="tocList" class="toc-list"></ul>
         </div>
+        <!-- ジャンプできることの手がかり（v1.13.11）：帯の上に小さく薄く一文だけ -->
+        <p id="tocHint" class="toc-hint">タップでその章へ</p>
         <!-- 下の帯は本文と完全に共通の家具（v1.12.4 で体裁を統一）：左下＝再生
-             （現在位置の章から朗読開始）、中央＝ノンブル、右下＝家マーク
-             （メニュー）。「戻る」ピルは廃止し、開いた元への帰りは後方操作
+             （現在位置の章から朗読開始）、中央＝ノンブル、右下＝歯車マーク
+             （設定）。「戻る」ピルは廃止し、開いた元への帰りは後方操作
              （先頭ページでの前へ）に統合した -->
         <div class="sheet-footer">
           <button id="tocPlayBtn" type="button" class="page-icon-btn" aria-label="再生"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
           <span id="tocPager" class="folio" hidden></span>
-          <button id="tocMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+          <button id="tocMenuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
         </div>
       </div>
     </section>
 
     <!-- ============ READER VIEW ============ -->
-    <!-- 操作はページの備品として常時置く：下の帯に再生／停止とメニュー、上の帯（柱）に
-         章題だけ。本文タップはページめくり（進む／戻る）だけに使い、メニューは
+    <!-- 操作はページの備品として常時置く：下の帯に再生／停止と設定、上の帯（柱）に
+         章題だけ。本文タップはページめくり（進む／戻る）だけに使い、設定は
          ボタンからしか開かない。常時見えるのは他に、画面下端の極細の進み具合ラインだけ -->
     <section id="readerView" class="view view-reader" hidden>
       <div id="pageWrap" class="page-wrap">
@@ -119,7 +121,7 @@
               <button id="nextSentBtn" type="button" class="page-icon-btn" aria-label="次の文へ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5v13L16 12z" fill="currentColor" /><path d="M17.5 5.5h2v13h-2z" fill="currentColor" /></svg></button>
             </div>
             <span id="pageFolio" class="folio"></span>
-            <button id="menuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+            <button id="menuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
           </div>
           <p id="audioError" class="audio-error" hidden></p>
         </div>
@@ -143,49 +145,49 @@
             <p class="end-colophon">『空の郵便が届くまで』　著者：水瀬 葵<br />朗読：AI音声（女性パート「Leda」・男性パート「Charon」／Gemini 3.8 Flash）／音楽：アプリ内で生成・再生される自作曲／形式：サウンド単行本／2026年10月 電子版</p>
           </div>
           <!-- 奥付の帯（v1.12.4 で仕様変更）：他のページと共通の帯を付け、
-               右下＝家マークのみ出す。再生は朗読対象が無いので出さない
+               右下＝歯車マークのみ出す。再生は朗読対象が無いので出さない
                （要素は置いて右下の位置を固定し、常時 hidden のまま）。
                「表紙に戻る」文字リンクは廃止し、表紙へは前方向のスワイプと、
-               家マーク→メニューから行く -->
+               歯車マーク→設定から行く -->
           <div class="sheet-footer">
             <button id="endPlayBtn" type="button" class="page-icon-btn" aria-label="再生" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.8v4.4c0 .3.2.5.5.5H7l4.5 3.8c.3.3.9.1.9-.3V5.7c0-.4-.6-.6-.9-.3L7 9.3H4.5c-.3 0-.5.2-.5.5z" /><path d="M15.3 9.4a3.8 3.8 0 0 1 0 5.2" /><path d="M17.8 6.9a7.2 7.2 0 0 1 0 10.2" /></svg></button>
-            <button id="endMenuBtn" type="button" class="page-icon-btn" aria-label="メニュー"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6.5 10v9h11v-9" /><path d="M10 19v-5h4v5" /></svg></button>
+            <button id="endMenuBtn" type="button" class="page-icon-btn" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 3.8v2.4M12 17.8v2.4M3.8 12h2.4M17.8 12h2.4M6.2 6.2l1.7 1.7M17.8 6.2l-1.7 1.7M6.2 17.8l1.7-1.7M17.8 17.8l-1.7-1.7" /></svg></button>
           </div>
         </div>
       </div>
 
-      <!-- 読書画面の操作はページ下の帯の再生／停止とメニューだけ。シークバーと
+      <!-- 読書画面の操作はページ下の帯の再生／停止と設定だけ。シークバーと
            前章／次章ボタンは置かない（章移動はページめくりと目次、細かなシークは
-           ロック画面等の Media Session が担う）。表紙へ戻るもメニューの中にある -->
+           ロック画面等の Media Session が担う）。表紙へ戻るも設定の中にある -->
 
       <!-- 進み具合（本全体のページ位置）。数字は出さず、極細の線だけ -->
       <div class="read-progress" aria-hidden="true"><span id="readProgressFill"></span></div>
     </section>
 
-    <!-- ============ MENU MODAL（入口は1つに集約：読書画面の「メニュー」と表紙の「メニュー」） ============ -->
-    <div id="menuModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="メニュー">
+    <!-- ============ MENU MODAL（入口は1つに集約：読書画面の「設定」と表紙の「設定」） ============ -->
+    <div id="menuModal" class="modal" hidden role="dialog" aria-modal="true" aria-label="設定">
       <div class="modal-backdrop" id="menuBackdrop"></div>
       <div class="modal-panel menu-panel">
         <div class="modal-head">
-          <h3 id="menuTitle">メニュー</h3>
+          <h3 id="menuTitle">設定</h3>
           <button id="menuCloseBtn" class="menu-close-btn" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
         </div>
 
-        <!-- メニューの中身は開いた場所と読書モードで組み替える（reader.ts の
-             arrangeMenu）。分類は全画面で 音／表示／再生 の3つに固定する
-             （v1.13.3 で再編：モード別見出し「耳で読む」の設定／「目で読む」の
-             設定は廃止。全設定は両モード共通という実態に見せ方を合わせた）。
-             目で読むでは朗読に紐づく行（再生速度・バックグラウンド再生・
-             朗読中の文を強調）を隠し、「再生」の見出しも一緒に隠す。
+        <!-- 移動のボタンはパネル上部に並べる（v1.13.11、設定画面の整理。
+             ユーザー決定）：「表紙へ」は表紙から開いたときだけ隠す -->
+        <div class="menu-nav-btns">
+          <button id="toCoverFromMenuBtn" type="button" class="menu-nav-btn" hidden>表紙へ</button>
+          <button id="tocFromMenuBtn" type="button" class="menu-nav-btn">目次へ</button>
+        </div>
+
+        <!-- 設定の中身は開いた場所と読書モードで組み替える（reader.ts の
+             arrangeMenu）。分類は全画面で 音／表示／朗読 の3つに固定する
+             （v1.13.3 で再編し、v1.13.11 で「再生」を「朗読」へ改称）。
+             目で読むでは朗読に紐づく行（速さ・バックグラウンド再生・
+             朗読中の文を強調）を隠し、「朗読」の見出しも一緒に隠す。
              行要素は id で引いてグループ間を移すので、ここでの並びは
              耳で読む（本文）の初期形としておく -->
         <div class="menu-section">
-          <h4 class="setting-group" id="menuHeadNav" hidden>共通</h4>
-          <div id="menuGroupNav">
-            <button id="toCoverFromMenuBtn" class="menu-nav-row" hidden>表紙に戻る</button>
-            <button id="tocFromMenuBtn" class="menu-nav-row">目次を開く</button>
-            <button id="install-open" type="button" class="menu-nav-row">📲 アプリとしてインストールする方法</button>
-          </div>
           <h4 class="setting-group" id="menuHeadAudio">音</h4>
           <div id="menuGroupAudio">
             <label class="menu-row toggle-label" id="rowPageSound"><span>ページめくり音</span><input type="checkbox" id="pageSoundToggle" checked /></label>
@@ -203,34 +205,40 @@
               </div>
             </div>
             <label class="menu-row toggle-label" id="rowRuby"><span>フリガナ</span><input type="checkbox" id="rubyToggle" /></label>
-            <label class="menu-row toggle-label" id="rowHl"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowBg"><span>背景イメージ</span><input type="checkbox" id="bgToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowWake"><span>画面を暗くしない</span><input type="checkbox" id="wakeLockToggle" checked /></label>
           </div>
-          <h4 class="setting-group" id="menuHeadPlay">再生</h4>
+          <h4 class="setting-group" id="menuHeadPlay">朗読</h4>
           <div id="menuGroupPlay">
-            <!-- 再生速度は楕円ピル（押すたび巡回）を廃止し、文字サイズと同じ
+            <!-- 速さは楕円ピル（押すたび巡回）を廃止し、文字サイズと同じ
                  「文字の選択肢の並び」にした（v1.13.3）。候補は SPEEDS が正で、
                  ボタンは reader.ts が生成する -->
             <div class="menu-row" id="rowSpeed">
-              <span>再生速度</span>
-              <div class="speed-choices" id="speedChoices" role="group" aria-label="再生速度"></div>
+              <span>速さ</span>
+              <div class="speed-choices" id="speedChoices" role="group" aria-label="速さ"></div>
             </div>
+            <label class="menu-row toggle-label" id="rowHl"><span>朗読中の文を強調</span><input type="checkbox" id="hlToggle" checked /></label>
             <label class="menu-row toggle-label" id="rowBgPlay"><span>バックグラウンド再生</span><input type="checkbox" id="bgPlayToggle" checked /></label>
           </div>
         </div>
 
-        <!-- 末尾の「設定」グループは廃止した（v1.13.2）：中身がインストール
-             案内のリンク1件だけで、見出しを立てる量がなかった。案内は
-             ナビゲーションのグループ（menuGroupNav）の末尾へ統合した。
-             記録のバックアップ（ファイルへの持ち出し）は、このアプリには置かない
+        <!-- インストール案内はパネル末尾の静かな行として残す（v1.13.11 で
+             ナビゲーションのグループから末尾へ移設） -->
+        <div class="menu-foot">
+          <button id="install-open" type="button" class="menu-nav-row">📲 アプリとしてインストールする方法</button>
+        </div>
+
+        <!-- 記録のバックアップ（ファイルへの持ち出し）は、このアプリには置かない
              （納品される単行本には不要というユーザー判断。保存自体は localStorage に残る） -->
       </div>
     </div>
 
     <!-- インストール方法（最初の画面から開く） -->
     <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">
-      <h2 id="install-title">ホーム画面に追加して使う</h2>
+      <div class="modal-head">
+        <h2 id="install-title">ホーム画面に追加して使う</h2>
+        <button type="button" class="menu-close-btn" data-close aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+      </div>
       <p class="muted">インストールすると、ホーム画面から開けて、オフラインでも使えます。</p>
       <button id="install-now" type="button" class="primary" hidden>今すぐインストール</button>
 
@@ -260,7 +268,6 @@
         </ol>
       </details>
 
-      <button type="button" data-close>とじる</button>
     </dialog>
 
     <!-- 初回だけの案内（音声の総容量と Wi-Fi でのダウンロード推奨）。
