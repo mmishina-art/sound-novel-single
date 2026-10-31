@@ -302,7 +302,8 @@ body.bound-left .book-cover::before {
   background: linear-gradient(105deg, transparent 55%, rgba(255,255,255,.06));
 }
 .cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cover-logo { /* 版元の印：公式ロゴの線画（藍）を小口側の上に後付けする。
+.cover-logo { /* 版元の印：公式ロゴの線画（白＝生成り）を小口側の上に後付けする。
+  v1.13.14 で地絵が紺地になったため、藍の線画から白（#f7f2e7）の線画へ切替。
   地絵には描き込まない（v1.13.3 で新装丁と同時に導入。旧「サウンド単行本」の
   刷り込み文字は、印と重なるため廃止した）。
   大きさ・位置は決定モックの実測：幅は表紙幅の約7%、左端 5.8%／上端 4.3%。
@@ -313,20 +314,22 @@ body.bound-left .book-cover::before {
 body.bound-right .cover-logo { left: 5.8%; }
 body.bound-left .cover-logo { right: 5.8%; }
 .cover-vtitle { /* 題字：背の内側に置く。縦書きでは縦書き題字、右の列から読む。
-  位置は上 12%／背の余白 14%、色は地絵（淡い雨空）の上で読める濃藍（v1.13.3） */
+  位置は上 12%／背の余白 14%、色は生成り #f7f2e7（v1.13.14 で紺地の地絵に
+  合わせ、v1.13.3 の濃藍から切替。公式ロゴの白版と同じ色） */
   position: absolute; top: 12%; z-index: 3;
   font-size: 8.4cqw; font-weight: 700; letter-spacing: .14em; line-height: 1.5;
-  color: #1e2d52; white-space: nowrap;
+  color: #f7f2e7; white-space: nowrap;
 }
 body.dir-vertical .cover-vtitle { writing-mode: vertical-rl; -webkit-writing-mode: vertical-rl; }
 body.bound-right .cover-vtitle { right: 14%; }
 body.bound-left .cover-vtitle { left: 14%; }
-.cover-author { /* 著者名：地絵の店の中心に合わせて下部に置く（水彩版の地絵では
-  明かりの点いた店先が幅の約24〜56%にあり、中心は約40%。実測で合わせた）。
-  地絵基準の位置なので、綴じ方向では反転させない */
-  position: absolute; bottom: 4.2%; left: 40%; transform: translateX(-50%); z-index: 3;
+.cover-author { /* 著者名：地絵のモチーフ（切り絵の鳥＋白い封筒）の中心に
+  合わせて下部に置く（v1.13.14 の紺版地絵ではモチーフ中心は幅の約50%。
+  完成モック cover-navy-finished.png の実測 50.3% と一致）。
+  地絵基準の位置なので、綴じ方向では反転させない。色は題字と同じ生成り */
+  position: absolute; bottom: 4.2%; left: 50%; transform: translateX(-50%); z-index: 3;
   font-size: 3.6cqw; letter-spacing: .5em; margin-right: -.5em;
-  color: #1e2d52; white-space: nowrap;
+  color: #f7f2e7; white-space: nowrap;
 }
 .cover-vtitle .vt-line { display: block; }
 .cover-hint { color: var(--desk-text); font-size: .88rem; margin: 4px 0 0; text-align: center; opacity: .85; }

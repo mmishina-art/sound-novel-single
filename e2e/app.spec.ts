@@ -127,10 +127,10 @@ test('表紙は新装丁：地絵の上に題字・著者名・線画ロゴを�
   await expect(page.locator('.cover-img')).toHaveAttribute('src', /cover-art\.webp/);
   // 刷り込み文字「サウンド単行本」は廃止（印と重なるため）
   await expect(page.locator('.cover-colophon')).toHaveCount(0);
-  // ロゴは公式の線画（藍）を小口側の上に後付け表示する
+  // ロゴは公式の線画（白＝生成り。v1.13.14 で紺地の地絵に合わせて藍から切替）を小口側の上に後付け表示する
   const logo = page.locator('.cover-logo');
   await expect(logo).toBeVisible();
-  await expect(logo).toHaveAttribute('src', /logo-line-indigo\.svg/);
+  await expect(logo).toHaveAttribute('src', /logo-line-white\.svg/);
   // 位置と大きさを表紙ボックスに対する割合で固定する（決定モックの実測値）
   const geo = await page.evaluate(() => {
     const box = document.querySelector('.book-cover')!.getBoundingClientRect();
@@ -160,8 +160,8 @@ test('表紙は新装丁：地絵の上に題字・著者名・線画ロゴを�
   expect(geo.title.top).toBeLessThan(0.14);
   expect(geo.title.right).toBeGreaterThan(0.03);
   expect(geo.title.right).toBeLessThan(0.15);
-  // 著者名：中心が表紙幅の約40%（水彩版の地絵の店の中心に合わせる）、下部に置く
-  expect(Math.abs(geo.author.centerX / geo.cover.w - 0.40)).toBeLessThan(0.03);
+  // 著者名：中心が表紙幅の約50%（紺版の地絵のモチーフ＝鳥＋封筒の中心に合わせる）、下部に置く
+  expect(Math.abs(geo.author.centerX / geo.cover.w - 0.50)).toBeLessThan(0.03);
   expect(geo.author.bottom).toBeGreaterThan(0.02);
   expect(geo.author.bottom).toBeLessThan(0.08);
 });
